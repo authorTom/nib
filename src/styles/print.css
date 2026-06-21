@@ -1,0 +1,50 @@
+/* Print-only stylesheet: produces a clean PDF via the browser's
+   "Save as PDF" option. Everything except the editor content is hidden. */
+@media print {
+  .sidebar,
+  .scrim,
+  .topbar,
+  .toolbar,
+  .bubble-menu {
+    display: none !important;
+  }
+
+  html,
+  body,
+  #root,
+  .app,
+  .main,
+  .content {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+    background: #ffffff !important;
+  }
+
+  /* Force a light palette for printed output regardless of theme */
+  :root,
+  :root[data-theme='dark'] {
+    --text: #000000;
+    --text-muted: #333333;
+    --border: #cccccc;
+    --bg: #ffffff;
+    --bg-elevated: #f5f5f5;
+    --bg-hover: #f0f0f0;
+    --accent: #1a1a1a;
+  }
+
+  .editor-wrap {
+    max-width: none;
+    padding: 0;
+  }
+
+  .ProseMirror {
+    min-height: 0;
+    color: #000;
+    font-size: 12pt;
+  }
+
+  @page {
+    margin: 2cm;
+  }
+}
