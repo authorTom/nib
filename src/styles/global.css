@@ -688,6 +688,11 @@ button {
   color: var(--text-muted);
 }
 
+.brand-mark {
+  display: block;
+  margin-bottom: 2px;
+}
+
 .brand {
   font-size: 2.4rem;
   font-weight: 700;

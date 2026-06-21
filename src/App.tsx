@@ -205,6 +205,7 @@ export default function App() {
             {theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
           </button>
           <div className="empty-state">
+            <img className="brand-mark" src="/nib.svg" alt="" width={44} height={44} />
             <div className="brand">Nib</div>
             {status === 'loading' && <p>Loading…</p>}
 
