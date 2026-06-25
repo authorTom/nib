@@ -995,6 +995,49 @@ button {
   align-items: flex-end;
   padding: 12px;
   border-top: 1px solid var(--border);
+  position: relative;
+}
+
+.mention-pop {
+  position: absolute;
+  bottom: 100%;
+  left: 12px;
+  right: 12px;
+  margin-bottom: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  overflow-y: auto;
+  max-height: 220px;
+  z-index: 5;
+  padding: 4px;
+}
+
+.mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.82rem;
+  text-align: left;
+}
+
+.mention-item span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mention-item.active,
+.mention-item:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .assistant-input textarea {

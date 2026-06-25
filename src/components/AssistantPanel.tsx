@@ -4,6 +4,7 @@ import {
   Check,
   CheckCheck,
   FileEdit,
+  FileText,
   Settings2,
   Sparkles,
   Square,
@@ -16,6 +17,8 @@ import type { AssistantSettings, ChatMessage, Provider } from '../ai/types'
 interface AssistantPanelProps {
   open: boolean
   onClose: () => void
+  filePaths: string[]
+  activePath: string | null
   settings: AssistantSettings
   onUpdateSettings: (s: AssistantSettings) => void
   messages: ChatMessage[]
@@ -192,9 +195,26 @@ function SettingsView({
   )
 }
 
+/** Detect a "/path" token being typed at the caret (for the file picker). */
+function getMention(value: string, caret: number): { start: number; query: string } | null {
+  let i = caret - 1
+  while (i >= 0 && !/\s/.test(value[i])) {
+    if (value[i] === '/') {
+      if (i === 0 || /\s/.test(value[i - 1])) {
+        return { start: i, query: value.slice(i + 1, caret) }
+      }
+      return null
+    }
+    i--
+  }
+  return null
+}
+
 export default function AssistantPanel({
   open,
   onClose,
+  filePaths,
+  activePath,
   settings,
   onUpdateSettings,
   messages,
@@ -209,7 +229,10 @@ export default function AssistantPanel({
 }: AssistantPanelProps) {
   const [input, setInput] = useState('')
   const [showSettings, setShowSettings] = useState(false)
+  const [mention, setMention] = useState<{ start: number; query: string } | null>(null)
+  const [mentionIndex, setMentionIndex] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
@@ -220,10 +243,38 @@ export default function AssistantPanel({
   const busy = status === 'thinking' || status === 'awaiting-approval'
   const pendingCount = pending.filter((p) => p.status === 'pending').length
 
+  const suggestions = mention
+    ? filePaths
+        .filter((p) => p.toLowerCase().includes(mention.query.toLowerCase()))
+        .slice(0, 8)
+    : []
+
+  const refreshMention = (value: string, caret: number) => {
+    setMention(getMention(value, caret))
+    setMentionIndex(0)
+  }
+
+  const pickFile = (path: string) => {
+    const ta = textareaRef.current
+    const caret = ta?.selectionStart ?? input.length
+    if (!mention) return
+    const before = input.slice(0, mention.start)
+    const after = input.slice(caret)
+    const next = `${before}${path} ${after}`
+    setInput(next)
+    setMention(null)
+    const pos = before.length + path.length + 1
+    requestAnimationFrame(() => {
+      ta?.focus()
+      ta?.setSelectionRange(pos, pos)
+    })
+  }
+
   const submit = () => {
     if (!input.trim() || busy) return
     onSend(input)
     setInput('')
+    setMention(null)
   }
 
   return (
@@ -272,6 +323,14 @@ export default function AssistantPanel({
                   the whole vault and propose changes for your approval.
                 </p>
                 <p className="assistant-note">
+                  Type <strong>/</strong> to reference a specific note.
+                  {activePath && (
+                    <>
+                      {' '}I can already see the open note (<strong>{activePath}</strong>).
+                    </>
+                  )}
+                </p>
+                <p className="assistant-note">
                   Using <strong>{PROVIDER_LABEL[settings.provider]}</strong>.
                 </p>
               </div>
@@ -311,16 +370,68 @@ export default function AssistantPanel({
           </div>
 
           <div className="assistant-input">
+            {mention && suggestions.length > 0 && (
+              <div className="mention-pop">
+                {suggestions.map((path, i) => (
+                  <button
+                    key={path}
+                    type="button"
+                    className={`mention-item${i === mentionIndex ? ' active' : ''}`}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      pickFile(path)
+                    }}
+                  >
+                    <FileText size={14} />
+                    <span>{path}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             <textarea
+              ref={textareaRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value)
+                refreshMention(e.target.value, e.target.selectionStart ?? e.target.value.length)
+              }}
+              onClick={(e) =>
+                refreshMention(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
+              }
+              onKeyUp={(e) => {
+                if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+                  refreshMention(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
+                }
+              }}
               onKeyDown={(e) => {
+                if (mention && suggestions.length > 0) {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    setMentionIndex((i) => (i + 1) % suggestions.length)
+                    return
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    setMentionIndex((i) => (i - 1 + suggestions.length) % suggestions.length)
+                    return
+                  }
+                  if (e.key === 'Enter' || e.key === 'Tab') {
+                    e.preventDefault()
+                    pickFile(suggestions[mentionIndex])
+                    return
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    setMention(null)
+                    return
+                  }
+                }
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
                   submit()
                 }
               }}
-              placeholder="Ask the assistant…"
+              placeholder="Ask the assistant…  (type / to reference a note)"
               rows={2}
               disabled={status === 'awaiting-approval'}
             />
