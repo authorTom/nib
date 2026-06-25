@@ -356,9 +356,16 @@ export function useNotes() {
 
   const activeNote = files.find((n) => n.id === activeId) ?? null
 
+  // Reload the tree (e.g. after the AI assistant changes files on disk).
+  const reload = useCallback(async () => {
+    if (dir) await refresh(dir)
+  }, [dir, refresh])
+
   return {
     status,
     vaultName: dir?.name ?? null,
+    vaultDir: dir,
+    reload,
     tree,
     notes: files,
     activeNote,

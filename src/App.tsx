@@ -8,6 +8,7 @@ import {
   Minimize2,
   Moon,
   Plus,
+  Sparkles,
   Sun,
   Trash2,
 } from 'lucide-react'
@@ -16,6 +17,8 @@ import Sidebar from './components/Sidebar'
 import Editor from './components/Editor'
 import CommandPalette, { type Command } from './components/CommandPalette'
 import TrashModal from './components/TrashModal'
+import AssistantPanel from './components/AssistantPanel'
+import { useAssistant } from './ai/useAssistant'
 import {
   formatActions,
   headingActions,
@@ -30,6 +33,8 @@ export default function App() {
   const {
     status,
     vaultName,
+    vaultDir,
+    reload,
     tree,
     notes,
     activeNote,
@@ -70,6 +75,12 @@ export default function App() {
     await loadTrash()
     setTrashOpen(true)
   }, [loadTrash])
+
+  // AI assistant (right-side panel)
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  const getDir = useCallback(() => vaultDir, [vaultDir])
+  const onAssistantMutated = useCallback(() => void reload(), [reload])
+  const assistant = useAssistant({ getDir, onMutated: onAssistantMutated })
 
   // Keyboard shortcuts: Ctrl/Cmd+K opens the palette,
   // Ctrl/Cmd+Shift+F toggles focus, Escape exits focus.
@@ -191,6 +202,13 @@ export default function App() {
         icon: Trash2,
         keywords: 'trash deleted bin restore',
         run: () => void openTrash(),
+      },
+      {
+        id: 'toggle-assistant',
+        label: 'Toggle AI assistant',
+        icon: Sparkles,
+        keywords: 'ai assistant chat llm claude openai',
+        run: () => setAssistantOpen((o) => !o),
       },
     ]
     if (activeNote) {
@@ -359,6 +377,7 @@ export default function App() {
           onToggleSidebar={() => setSidebarOpen((o) => !o)}
           onToggleFocus={toggleFocus}
           onOpenPalette={() => setPaletteOpen(true)}
+          onOpenAssistant={() => setAssistantOpen(true)}
           onEditorReady={setEditor}
           theme={theme}
           onToggleTheme={toggleTheme}
@@ -413,6 +432,22 @@ export default function App() {
         onRestore={(name) => void restoreFromTrash(name)}
         onDeleteForever={(name) => void deleteFromTrash(name)}
         onEmpty={() => void emptyTrash()}
+      />
+
+      <AssistantPanel
+        open={assistantOpen}
+        onClose={() => setAssistantOpen(false)}
+        settings={assistant.settings}
+        onUpdateSettings={assistant.updateSettings}
+        messages={assistant.messages}
+        status={assistant.status}
+        pending={assistant.pending}
+        onSend={assistant.send}
+        onApprove={assistant.approve}
+        onReject={assistant.reject}
+        onApproveAll={assistant.approveAll}
+        onStop={assistant.stop}
+        onClear={assistant.clear}
       />
     </div>
   )

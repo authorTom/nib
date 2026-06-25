@@ -19,6 +19,7 @@ interface WorkspaceProps {
   onToggleSidebar: () => void
   onToggleFocus: () => void
   onOpenPalette: () => void
+  onOpenAssistant: () => void
   onEditorReady: (editor: TiptapEditor | null) => void
   theme: Theme
   onToggleTheme: () => void
@@ -33,6 +34,7 @@ export default function Editor({
   onToggleSidebar,
   onToggleFocus,
   onOpenPalette,
+  onOpenAssistant,
   onEditorReady,
   theme,
   onToggleTheme,
@@ -79,6 +81,7 @@ export default function Editor({
         onToggleSidebar={onToggleSidebar}
         onToggleFocus={onToggleFocus}
         onOpenPalette={onOpenPalette}
+        onOpenAssistant={onOpenAssistant}
         theme={theme}
         onToggleTheme={onToggleTheme}
         hasNote

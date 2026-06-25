@@ -7,6 +7,7 @@ import {
   Moon,
   Plus,
   Search,
+  Sparkles,
   Sun,
 } from 'lucide-react'
 import type { Theme } from '../hooks/useTheme'
@@ -25,6 +26,7 @@ interface TopBarProps {
   onToggleSidebar: () => void
   onToggleFocus: () => void
   onOpenPalette: () => void
+  onOpenAssistant: () => void
   theme: Theme
   onToggleTheme: () => void
   hasNote: boolean
@@ -39,6 +41,7 @@ export default function TopBar({
   onToggleSidebar,
   onToggleFocus,
   onOpenPalette,
+  onOpenAssistant,
   theme,
   onToggleTheme,
   hasNote,
@@ -124,6 +127,15 @@ export default function TopBar({
           aria-label="Export to PDF"
         >
           <FileDown size={19} />
+        </button>
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={onOpenAssistant}
+          title="AI assistant"
+          aria-label="AI assistant"
+        >
+          <Sparkles size={18} />
         </button>
         <button
           type="button"
