@@ -567,3 +567,24 @@ export async function trashFolder(
   await parent.removeEntry(name, { recursive: true })
   return notes.length
 }
+
+// ---- Helpers used by the AI assistant -------------------------------------
+
+/** Create a folder at an exact path (creating intermediate folders). */
+export async function ensureFolder(
+  dir: FileSystemDirectoryHandle,
+  path: string,
+): Promise<void> {
+  await getDirByPath(dir, path, true)
+}
+
+/** Move/rename a note to an exact destination path (permanent, not trashed). */
+export async function movePath(
+  dir: FileSystemDirectoryHandle,
+  from: string,
+  to: string,
+): Promise<void> {
+  const content = await readNote(dir, from)
+  await writeNote(dir, to, content)
+  await deleteNote(dir, from)
+}

@@ -19,6 +19,11 @@ folder on your computer, Obsidian-style. No account, no server, no lock-in.
 - **Search across the vault** — find notes by title, path, or file contents.
 - **Recycle bin** — deleted notes move to a hidden `.trash` folder and can be
   restored or permanently removed.
+- **AI assistant** — an optional right-side chat panel that can read your whole
+  vault and create/edit/move/delete notes and folders. Every change is shown as
+  a diff and must be approved before it runs. Works with an OpenAI or Anthropic
+  API key, or fully locally via [LM Studio](https://lmstudio.ai). API keys are
+  stored only in your browser.
 - **Quick formatting** — toolbar + floating selection menu for bold, italic,
   strikethrough, inline code, headings (H1–H3), bulleted / numbered lists, quotes.
 - **Focus mode** — hide all chrome for distraction-free writing
