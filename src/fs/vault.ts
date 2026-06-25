@@ -100,7 +100,8 @@ function asAsyncEntries(
   }).values()
 }
 
-/** Recursively build the folder/file tree. Empty folders are pruned. */
+/** Recursively build the folder/file tree. Hidden entries (dotfiles) are
+ *  skipped; empty folders are kept so newly created folders remain visible. */
 export async function buildTree(
   dir: FileSystemDirectoryHandle,
   prefix = '',
