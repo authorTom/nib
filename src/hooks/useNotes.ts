@@ -224,6 +224,23 @@ export function useNotes() {
     [dir, flush, refresh, activeId],
   )
 
+  const renameFolder = useCallback(
+    async (folderPath: string, newName: string) => {
+      if (!dir) return
+      await flush() // persist any buffered edits before moving files
+      const newPath = await vault.renameFolder(dir, folderPath, newName)
+      await refresh(dir)
+      // If the open note lived inside the folder, its path changed too.
+      if (
+        activeId &&
+        (activeId === folderPath || activeId.startsWith(`${folderPath}/`))
+      ) {
+        setActiveId(newPath + activeId.slice(folderPath.length))
+      }
+    },
+    [dir, flush, refresh, activeId],
+  )
+
   const moveNote = useCallback(
     async (id: string, targetFolderPath: string) => {
       if (!dir) return
@@ -353,6 +370,7 @@ export function useNotes() {
     createNote,
     createFolder,
     deleteFolder,
+    renameFolder,
     moveNote,
     deleteNote,
     saveContent,
