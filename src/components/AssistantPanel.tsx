@@ -182,14 +182,18 @@ function SettingsView({
         </>
       )}
 
-      {draft.provider === 'anthropic' && (
+      {draft.provider !== 'openai' && (
         <label className="field-row">
           <input
             type="checkbox"
             checked={draft.thinking}
             onChange={(e) => set({ thinking: e.target.checked })}
           />
-          <span>Extended thinking (Claude reasons before answering)</span>
+          <span>
+            {draft.provider === 'anthropic'
+              ? 'Extended thinking (Claude reasons before answering)'
+              : 'Thinking (for reasoning models, e.g. Qwen3 / DeepSeek-R1)'}
+          </span>
         </label>
       )}
 
@@ -309,14 +313,14 @@ export default function AssistantPanel({
           <Sparkles size={16} /> Assistant
         </span>
         <div className="assistant-header-actions">
-          {settings.provider === 'anthropic' && (
+          {settings.provider !== 'openai' && (
             <button
               className={`icon-btn${settings.thinking ? ' active' : ''}`}
               onClick={() =>
                 onUpdateSettings({ ...settings, thinking: !settings.thinking })
               }
               title={settings.thinking ? 'Thinking: on' : 'Thinking: off'}
-              aria-label="Toggle extended thinking"
+              aria-label="Toggle thinking"
               aria-pressed={settings.thinking}
             >
               <Brain size={17} />
