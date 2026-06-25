@@ -1,10 +1,12 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useEditor, EditorContent, BubbleMenu, type Editor as TiptapEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Markdown } from 'tiptap-markdown'
+import { Brain } from 'lucide-react'
 import TopBar from './TopBar'
 import Toolbar from './Toolbar'
+import InlineAssistant from './InlineAssistant'
 import { formatActions, listActions, type FormatAction } from './formatActions'
 import { downloadMarkdown } from '../lib/exportMarkdown'
 import { exportToPdf } from '../lib/exportPdf'
@@ -20,6 +22,11 @@ interface WorkspaceProps {
   onToggleFocus: () => void
   onOpenPalette: () => void
   onOpenAssistant: () => void
+  onInlineAsk: (
+    instruction: string,
+    selectedText: string,
+    signal: AbortSignal,
+  ) => Promise<string>
   onEditorReady: (editor: TiptapEditor | null) => void
   theme: Theme
   onToggleTheme: () => void
@@ -35,10 +42,16 @@ export default function Editor({
   onToggleFocus,
   onOpenPalette,
   onOpenAssistant,
+  onInlineAsk,
   onEditorReady,
   theme,
   onToggleTheme,
 }: WorkspaceProps) {
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiRange, setAiRange] = useState<{ from: number; to: number; text: string } | null>(null)
+  // Read inside the bubble-menu shouldShow (which may capture a stale closure).
+  const aiOpenRef = useRef(false)
+  aiOpenRef.current = aiOpen
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
@@ -70,6 +83,27 @@ export default function Editor({
     downloadMarkdown(title, editor.storage.markdown.getMarkdown())
   }
 
+  // ---- Inline "Ask AI" on a selection ----
+  const openInlineAi = () => {
+    if (!editor) return
+    const { from, to } = editor.state.selection
+    if (from === to) return
+    setAiRange({ from, to, text: editor.state.doc.textBetween(from, to, '\n') })
+    setAiOpen(true)
+  }
+
+  const replaceSelection = (text: string) => {
+    if (!editor || !aiRange) return
+    editor.chain().focus().insertContentAt({ from: aiRange.from, to: aiRange.to }, text).run()
+    setAiOpen(false)
+  }
+
+  const insertBelowSelection = (text: string) => {
+    if (!editor || !aiRange) return
+    editor.chain().focus().insertContentAt(aiRange.to, `\n\n${text}`).run()
+    setAiOpen(false)
+  }
+
   return (
     <div className="main">
       <TopBar
@@ -94,24 +128,47 @@ export default function Editor({
           {editor && (
             <BubbleMenu
               editor={editor}
-              tippyOptions={{ duration: 100 }}
-              className="bubble-menu"
+              tippyOptions={{ duration: 100, interactive: true, maxWidth: 'none' }}
+              shouldShow={({ state }) => aiOpenRef.current || !state.selection.empty}
+              className={`bubble-menu${aiOpen ? ' ai' : ''}`}
             >
-              {[...formatActions, ...listActions].map((action: FormatAction) => {
-                const { Icon, label, run, isActive } = action
-                return (
+              {aiOpen && aiRange ? (
+                <InlineAssistant
+                  selectedText={aiRange.text}
+                  ask={onInlineAsk}
+                  onReplace={replaceSelection}
+                  onInsertBelow={insertBelowSelection}
+                  onClose={() => setAiOpen(false)}
+                />
+              ) : (
+                <>
                   <button
-                    key={action.name}
                     type="button"
-                    className={`toolbar-btn${isActive(editor) ? ' active' : ''}`}
-                    title={label}
-                    aria-label={label}
-                    onClick={() => run(editor)}
+                    className="toolbar-btn ai-trigger"
+                    title="Ask AI about selection"
+                    aria-label="Ask AI about selection"
+                    onClick={openInlineAi}
                   >
-                    <Icon size={16} />
+                    <Brain size={16} />
                   </button>
-                )
-              })}
+                  <span className="toolbar-divider" />
+                  {[...formatActions, ...listActions].map((action: FormatAction) => {
+                    const { Icon, label, run, isActive } = action
+                    return (
+                      <button
+                        key={action.name}
+                        type="button"
+                        className={`toolbar-btn${isActive(editor) ? ' active' : ''}`}
+                        title={label}
+                        aria-label={label}
+                        onClick={() => run(editor)}
+                      >
+                        <Icon size={16} />
+                      </button>
+                    )
+                  })}
+                </>
+              )}
             </BubbleMenu>
           )}
           <EditorContent editor={editor} />

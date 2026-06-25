@@ -177,6 +177,75 @@ async function runOpenAICompatible(
 
 // ---- Dispatch --------------------------------------------------------------
 
+/**
+ * One-shot completion (no tools) — used by the inline "Ask AI" popover to
+ * transform or answer questions about a text selection.
+ */
+export async function runCompletion(
+  settings: AssistantSettings,
+  system: string,
+  userText: string,
+  signal: AbortSignal,
+): Promise<string> {
+  if (settings.provider === 'anthropic') {
+    if (!settings.anthropicKey) throw new Error('Add your Anthropic API key in settings.')
+    const client = new Anthropic({
+      apiKey: settings.anthropicKey,
+      dangerouslyAllowBrowser: true,
+    })
+    const params: Record<string, unknown> = {
+      model: settings.models.anthropic || 'claude-opus-4-8',
+      max_tokens: 2000,
+      system,
+      messages: [{ role: 'user', content: userText }],
+    }
+    if (settings.thinking) params.thinking = { type: 'adaptive' }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resp: any = await client.messages.create(params as any, { signal })
+    return (resp.content ?? [])
+      .filter((b: { type: string }) => b.type === 'text')
+      .map((b: { text: string }) => b.text)
+      .join('')
+      .trim()
+  }
+
+  const isOpenAI = settings.provider === 'openai'
+  const baseUrl = isOpenAI
+    ? 'https://api.openai.com/v1'
+    : settings.lmstudioUrl || 'http://localhost:1234/v1'
+  const apiKey = isOpenAI ? settings.openaiKey : ''
+  const model = isOpenAI
+    ? settings.models.openai || 'gpt-4o'
+    : settings.models.lmstudio || 'local-model'
+  if (isOpenAI && !apiKey) throw new Error('Add your OpenAI API key in settings.')
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`
+  const body: Record<string, unknown> = {
+    model,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: userText },
+    ],
+  }
+  if (!isOpenAI) body.chat_template_kwargs = { enable_thinking: settings.thinking }
+
+  const resp = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+    signal,
+  })
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => '')
+    throw new Error(`Request failed (${resp.status}). ${detail.slice(0, 300)}`)
+  }
+  const data = await resp.json()
+  let text = data.choices?.[0]?.message?.content ?? ''
+  if (!isOpenAI) text = stripThinkTags(text)
+  return text.trim()
+}
+
 export async function runTurn(
   settings: AssistantSettings,
   system: string,

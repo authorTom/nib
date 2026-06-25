@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { runTurn } from './providers'
+import { runCompletion, runTurn } from './providers'
 import { buildPreview, executeTool, toolByName, TOOL_DEFS } from './tools'
 import type { ActionPreview } from './tools'
 import { loadSettings, saveSettings } from './settings'
@@ -253,6 +253,23 @@ export function useAssistant({
     abortRef.current?.abort()
   }, [])
 
+  // One-shot transform/answer for the inline "Ask AI" popover.
+  const complete = useCallback(
+    (instruction: string, selectedText: string, signal: AbortSignal) => {
+      const custom = settingsRef.current.systemPrompt.trim()
+      const system = [
+        `You are a writing assistant inside a Markdown note editor. The user selected some text and gave an instruction.`,
+        `Respond with ONLY the result — the revised or requested text — as plain Markdown that matches the selection's style. No preamble, no commentary, no surrounding quotes or code fences unless they are part of the content. If the instruction is a question, answer it concisely.`,
+        custom ? `Additional user instructions:\n${custom}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n')
+      const userText = `Instruction: ${instruction}\n\nSelected text:\n${selectedText}`
+      return runCompletion(settingsRef.current, system, userText, signal)
+    },
+    [],
+  )
+
   const clear = useCallback(() => {
     if (status === 'thinking' || status === 'awaiting-approval') return
     setMessages([])
@@ -271,5 +288,6 @@ export function useAssistant({
     approveAll,
     stop,
     clear,
+    complete,
   }
 }

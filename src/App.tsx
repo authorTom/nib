@@ -383,6 +383,7 @@ export default function App() {
           onToggleFocus={toggleFocus}
           onOpenPalette={() => setPaletteOpen(true)}
           onOpenAssistant={() => setAssistantOpen(true)}
+          onInlineAsk={assistant.complete}
           onEditorReady={setEditor}
           theme={theme}
           onToggleTheme={toggleTheme}
