@@ -138,14 +138,27 @@ export function useAssistant({
   const runLoop = useCallback(
     async (dir: FileSystemDirectoryHandle, working: ChatMessage[], signal: AbortSignal) => {
       const activePath = getActivePath()
-      const system = activePath
-        ? `${SYSTEM_PROMPT}\n\nThe note currently open in the editor is "${activePath}". When the user says "this note" or asks you to summarize/edit something without naming a file, assume they mean this note and read it first — do not ask for a path.`
-        : SYSTEM_PROMPT
+      const custom = settingsRef.current.systemPrompt.trim()
+      const system = [
+        SYSTEM_PROMPT,
+        activePath
+          ? `The note currently open in the editor is "${activePath}". When the user says "this note" or asks you to summarize/edit something without naming a file, assume they mean this note and read it first — do not ask for a path.`
+          : '',
+        custom ? `Additional instructions from the user:\n${custom}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n')
 
       for (let guard = 0; guard < 50; guard++) {
         setStatus('thinking')
         const turn = await runTurn(settingsRef.current, system, working, TOOL_DEFS, signal)
-        working.push({ id: uid(), role: 'assistant', content: turn.text, toolCalls: turn.toolCalls })
+        working.push({
+          id: uid(),
+          role: 'assistant',
+          content: turn.text,
+          toolCalls: turn.toolCalls,
+          providerRaw: turn.raw,
+        })
         commit(working)
 
         if (turn.toolCalls.length === 0) {

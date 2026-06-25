@@ -40,6 +40,9 @@ function toAnthropicMessages(history: ChatMessage[]): unknown[] {
     flush()
     if (m.role === 'user') {
       messages.push({ role: 'user', content: m.content })
+    } else if (m.providerRaw) {
+      // Resend Claude's native blocks verbatim (preserves thinking + signatures).
+      messages.push({ role: 'assistant', content: m.providerRaw })
     } else {
       const content: unknown[] = []
       if (m.content) content.push({ type: 'text', text: m.content })
@@ -65,7 +68,7 @@ async function runAnthropic(
     apiKey: settings.anthropicKey,
     dangerouslyAllowBrowser: true,
   })
-  const params = {
+  const params: Record<string, unknown> = {
     model: settings.models.anthropic || 'claude-opus-4-8',
     max_tokens: 8000,
     system,
@@ -76,6 +79,8 @@ async function runAnthropic(
     })),
     messages: toAnthropicMessages(history),
   }
+  // Extended ("adaptive") thinking — omit entirely when toggled off.
+  if (settings.thinking) params.thinking = { type: 'adaptive' }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const resp: any = await client.messages.create(params as any, { signal })
   let text = ''
@@ -86,7 +91,7 @@ async function runAnthropic(
       toolCalls.push({ id: block.id, name: block.name, arguments: block.input ?? {} })
     }
   }
-  return { text, toolCalls }
+  return { text, toolCalls, raw: resp.content }
 }
 
 // ---- OpenAI-compatible (OpenAI + LM Studio) --------------------------------

@@ -1097,7 +1097,8 @@ button {
 }
 
 .assistant-settings input,
-.assistant-settings select {
+.assistant-settings select,
+.assistant-settings textarea {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg);
@@ -1108,9 +1109,36 @@ button {
   outline: none;
 }
 
+.assistant-settings textarea {
+  resize: vertical;
+  min-height: 70px;
+  line-height: 1.5;
+}
+
 .assistant-settings input:focus,
-.assistant-settings select:focus {
+.assistant-settings select:focus,
+.assistant-settings textarea:focus {
   border-color: var(--accent);
+}
+
+.assistant-settings .field-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.assistant-settings .field-row input {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.icon-btn.active {
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .assistant-note {
