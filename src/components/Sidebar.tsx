@@ -29,6 +29,7 @@ interface SidebarProps {
   onCreate: () => void
   onCreateInFolder: (folderPath: string) => void
   onCreateFolder: (parentPath: string) => Promise<string | undefined>
+  onDeleteFolder: (folderPath: string) => void
   onMoveNote: (id: string, targetFolderPath: string) => void
   onDelete: (id: string) => void
   onSwitchVault: () => void
@@ -62,6 +63,7 @@ export default function Sidebar({
   onCreate,
   onCreateInFolder,
   onCreateFolder,
+  onDeleteFolder,
   onMoveNote,
   onDelete,
   onSwitchVault,
@@ -166,6 +168,19 @@ export default function Sidebar({
                 }}
               >
                 <FilePlus size={15} />
+              </span>
+              <span
+                className="tree-action"
+                role="button"
+                tabIndex={0}
+                title="Delete folder"
+                aria-label="Delete folder"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onDeleteFolder(node.id)
+                }}
+              >
+                <Trash2 size={15} />
               </span>
             </button>
             {isOpen && renderNodes(node.children, depth + 1)}
