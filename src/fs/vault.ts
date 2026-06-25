@@ -479,3 +479,23 @@ export async function emptyTrash(
     // nothing to empty
   }
 }
+
+/**
+ * Delete a folder: move every note inside it (recursively) to the recycle bin,
+ * then remove the folder and any remaining (non-note) contents. Returns the
+ * number of notes sent to the bin.
+ */
+export async function trashFolder(
+  dir: FileSystemDirectoryHandle,
+  folderPath: string,
+): Promise<number> {
+  const folderHandle = await getDirByPath(dir, folderPath)
+  const notes = flattenFiles(await buildTree(folderHandle, folderPath))
+  for (const note of notes) {
+    await trashNote(dir, note.id)
+  }
+  const { parentPath, name } = splitPath(folderPath)
+  const parent = await getDirByPath(dir, parentPath)
+  await parent.removeEntry(name, { recursive: true })
+  return notes.length
+}

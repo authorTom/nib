@@ -210,6 +210,20 @@ export function useNotes() {
     [dir, refresh],
   )
 
+  const deleteFolder = useCallback(
+    async (folderPath: string) => {
+      if (!dir) return
+      await flush() // persist any buffered edits to a note inside the folder
+      await vault.trashFolder(dir, folderPath)
+      const list = await refresh(dir)
+      // If the open note lived in the deleted folder, pick another.
+      if (activeId && !list.some((n) => n.id === activeId)) {
+        setActiveId(list[0]?.id ?? null)
+      }
+    },
+    [dir, flush, refresh, activeId],
+  )
+
   const moveNote = useCallback(
     async (id: string, targetFolderPath: string) => {
       if (!dir) return
@@ -338,6 +352,7 @@ export function useNotes() {
     reconnect,
     createNote,
     createFolder,
+    deleteFolder,
     moveNote,
     deleteNote,
     saveContent,

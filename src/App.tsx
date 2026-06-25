@@ -40,6 +40,7 @@ export default function App() {
     reconnect,
     createNote,
     createFolder,
+    deleteFolder,
     moveNote,
     deleteNote,
     saveContent,
@@ -114,6 +115,22 @@ export default function App() {
       return await createFolder(parentPath, name)
     },
     [createFolder],
+  )
+
+  const handleDeleteFolder = useCallback(
+    (folderPath: string) => {
+      const name = folderPath.includes('/')
+        ? folderPath.slice(folderPath.lastIndexOf('/') + 1)
+        : folderPath
+      if (
+        window.confirm(
+          `Delete the folder "${name}"? Its notes will be moved to the Recycle Bin.`,
+        )
+      ) {
+        void deleteFolder(folderPath)
+      }
+    },
+    [deleteFolder],
   )
 
   // ---- Command palette actions ----
@@ -305,6 +322,7 @@ export default function App() {
         }}
         onCreateInFolder={(folderPath) => void createNote(folderPath)}
         onCreateFolder={handleCreateFolder}
+        onDeleteFolder={handleDeleteFolder}
         onMoveNote={(id, target) => void moveNote(id, target)}
         onDelete={handleDelete}
         onSwitchVault={() => void connect()}
