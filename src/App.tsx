@@ -15,6 +15,7 @@ import type { Editor as TiptapEditor } from '@tiptap/react'
 import Sidebar from './components/Sidebar'
 import Editor from './components/Editor'
 import CommandPalette, { type Command } from './components/CommandPalette'
+import TrashModal from './components/TrashModal'
 import {
   formatActions,
   headingActions,
@@ -43,6 +44,11 @@ export default function App() {
     deleteNote,
     saveContent,
     renameActive,
+    trashItems,
+    loadTrash,
+    restoreFromTrash,
+    deleteFromTrash,
+    emptyTrash,
     query,
     setQuery,
     searchResults,
@@ -56,6 +62,12 @@ export default function App() {
 
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [editor, setEditor] = useState<TiptapEditor | null>(null)
+
+  const [trashOpen, setTrashOpen] = useState(false)
+  const openTrash = useCallback(async () => {
+    await loadTrash()
+    setTrashOpen(true)
+  }, [loadTrash])
 
   // Keyboard shortcuts: Ctrl/Cmd+K opens the palette,
   // Ctrl/Cmd+Shift+F toggles focus, Escape exits focus.
@@ -87,15 +99,12 @@ export default function App() {
     [setActiveId, closeSidebar],
   )
 
+  // Deleting moves the note to the recycle bin (recoverable), so no confirm.
   const handleDelete = useCallback(
     (id: string) => {
-      const note = notes.find((n) => n.id === id)
-      const name = note?.title ?? 'this note'
-      if (window.confirm(`Delete "${name}"? This removes the file from disk.`)) {
-        void deleteNote(id)
-      }
+      void deleteNote(id)
     },
-    [notes, deleteNote],
+    [deleteNote],
   )
 
   const handleCreateFolder = useCallback(
@@ -146,6 +155,13 @@ export default function App() {
         keywords: 'vault switch change',
         run: () => void connect(),
       },
+      {
+        id: 'open-trash',
+        label: 'Open Recycle Bin',
+        icon: Trash2,
+        keywords: 'trash deleted bin restore',
+        run: () => void openTrash(),
+      },
     ]
     if (activeNote) {
       list.push({
@@ -157,9 +173,9 @@ export default function App() {
       })
       list.push({
         id: 'delete-note',
-        label: 'Delete current note',
+        label: 'Move current note to Recycle Bin',
         icon: Trash2,
-        keywords: 'remove trash',
+        keywords: 'remove trash delete bin',
         run: () => handleDelete(activeNote.id),
       })
     }
@@ -186,6 +202,7 @@ export default function App() {
     theme,
     toggleTheme,
     connect,
+    openTrash,
     activeNote,
     handleDelete,
     editor,
@@ -291,6 +308,7 @@ export default function App() {
         onMoveNote={(id, target) => void moveNote(id, target)}
         onDelete={handleDelete}
         onSwitchVault={() => void connect()}
+        onOpenTrash={() => void openTrash()}
       />
 
       <div
@@ -354,6 +372,15 @@ export default function App() {
         commands={commands}
         notes={notes}
         onOpenNote={handleSelect}
+      />
+
+      <TrashModal
+        open={trashOpen}
+        items={trashItems}
+        onClose={() => setTrashOpen(false)}
+        onRestore={(name) => void restoreFromTrash(name)}
+        onDeleteForever={(name) => void deleteFromTrash(name)}
+        onEmpty={() => void emptyTrash()}
       />
     </div>
   )

@@ -17,6 +17,8 @@ folder on your computer, Obsidian-style. No account, no server, no lock-in.
 - **Command palette** — `Ctrl`/`Cmd`+`K` opens a fast, fully keyboard-driven palette
   for commands, formatting, and jumping to any note.
 - **Search across the vault** — find notes by title, path, or file contents.
+- **Recycle bin** — deleted notes move to a hidden `.trash` folder and can be
+  restored or permanently removed.
 - **Quick formatting** — toolbar + floating selection menu for bold, italic,
   strikethrough, inline code, headings (H1–H3), bulleted / numbered lists, quotes.
 - **Focus mode** — hide all chrome for distraction-free writing

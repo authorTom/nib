@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { loadVaultHandle, saveVaultHandle } from '../db/notes'
 import * as vault from '../fs/vault'
-import type { TreeNode } from '../fs/vault'
+import type { TreeNode, TrashItem } from '../fs/vault'
 
 export type VaultStatus =
   | 'loading'
@@ -174,23 +174,18 @@ export function useNotes() {
     [dir, refresh],
   )
 
+  // Deleting moves the note to the recycle bin (.trash) rather than erasing it.
   const deleteNote = useCallback(
     async (id: string) => {
       if (!dir) return
-      // Cancel any buffered write for this note, otherwise the pending save
-      // would recreate the file moments after it's deleted.
-      if (pending.current?.id === id) {
-        pending.current = null
-        if (timer.current) {
-          clearTimeout(timer.current)
-          timer.current = undefined
-        }
-      }
-      await vault.deleteNote(dir, id)
+      // Flush buffered edits first so the trashed copy is current, and so the
+      // pending timer can't recreate the note after it's moved to the bin.
+      await flush()
+      await vault.trashNote(dir, id)
       const list = await refresh(dir)
       if (id === activeId) setActiveId(list[0]?.id ?? null)
     },
-    [dir, refresh, activeId],
+    [dir, flush, refresh, activeId],
   )
 
   // Rename the active note's file to match a new title (commit on blur/Enter).
@@ -225,6 +220,43 @@ export function useNotes() {
     },
     [dir, activeId, flush, refresh],
   )
+
+  // ---- Recycle bin ----
+  const [trashItems, setTrashItems] = useState<TrashItem[]>([])
+
+  const loadTrash = useCallback(async () => {
+    if (!dir) {
+      setTrashItems([])
+      return
+    }
+    setTrashItems(await vault.listTrash(dir))
+  }, [dir])
+
+  const restoreFromTrash = useCallback(
+    async (trashName: string) => {
+      if (!dir) return
+      const newId = await vault.restoreTrash(dir, trashName)
+      await refresh(dir)
+      setTrashItems(await vault.listTrash(dir))
+      if (newId) setActiveId(newId)
+    },
+    [dir, refresh],
+  )
+
+  const deleteFromTrash = useCallback(
+    async (trashName: string) => {
+      if (!dir) return
+      await vault.deleteTrashItem(dir, trashName)
+      setTrashItems(await vault.listTrash(dir))
+    },
+    [dir],
+  )
+
+  const emptyTrash = useCallback(async () => {
+    if (!dir) return
+    await vault.emptyTrash(dir)
+    setTrashItems([])
+  }, [dir])
 
   // ---- Search across the whole tree (title, path, and file contents) ----
   const [query, setQuery] = useState('')
@@ -310,6 +342,11 @@ export function useNotes() {
     deleteNote,
     saveContent,
     renameActive,
+    trashItems,
+    loadTrash,
+    restoreFromTrash,
+    deleteFromTrash,
+    emptyTrash,
     query,
     setQuery,
     searchResults,

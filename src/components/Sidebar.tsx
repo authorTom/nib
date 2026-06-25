@@ -10,6 +10,7 @@ import {
   FolderPlus,
   Plus,
   Search,
+  Trash,
   Trash2,
   X,
 } from 'lucide-react'
@@ -31,6 +32,7 @@ interface SidebarProps {
   onMoveNote: (id: string, targetFolderPath: string) => void
   onDelete: (id: string) => void
   onSwitchVault: () => void
+  onOpenTrash: () => void
 }
 
 const ROOT = '__root__'
@@ -63,6 +65,7 @@ export default function Sidebar({
   onMoveNote,
   onDelete,
   onSwitchVault,
+  onOpenTrash,
 }: SidebarProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverId, setDragOverId] = useState<string | null>(null)
@@ -246,6 +249,15 @@ export default function Sidebar({
           {vaultName ?? 'Notes'}
         </span>
         <div className="sidebar-header-actions">
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={onOpenTrash}
+            title="Recycle bin"
+            aria-label="Recycle bin"
+          >
+            <Trash size={18} />
+          </button>
           <button
             type="button"
             className="icon-btn"

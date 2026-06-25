@@ -345,3 +345,137 @@ export async function moveNote(
 
   return joinPath(targetFolderPath, targetName)
 }
+
+// ---- Recycle bin -----------------------------------------------------------
+// Deleted notes are moved into a hidden ".trash" folder at the vault root
+// (skipped by buildTree). A JSON index records each item's original location
+// and deletion time so it can be restored.
+
+export interface TrashItem {
+  /** File name within the .trash folder (unique). */
+  trashName: string
+  /** Path the note was deleted from, e.g. "Projects/idea.md". */
+  originalPath: string
+  title: string
+  deletedAt: number
+}
+
+const TRASH_DIR = '.trash'
+const TRASH_INDEX = 'index.json'
+
+async function readTrashIndex(
+  dir: FileSystemDirectoryHandle,
+): Promise<TrashItem[]> {
+  try {
+    const trash = await dir.getDirectoryHandle(TRASH_DIR)
+    const handle = await trash.getFileHandle(TRASH_INDEX)
+    const parsed = JSON.parse(await (await handle.getFile()).text())
+    return Array.isArray(parsed) ? (parsed as TrashItem[]) : []
+  } catch {
+    return []
+  }
+}
+
+async function writeTrashIndex(
+  dir: FileSystemDirectoryHandle,
+  items: TrashItem[],
+): Promise<void> {
+  const trash = await dir.getDirectoryHandle(TRASH_DIR, { create: true })
+  await writeRaw(trash, TRASH_INDEX, JSON.stringify(items, null, 2))
+}
+
+/** Move a note into the recycle bin. */
+export async function trashNote(
+  dir: FileSystemDirectoryHandle,
+  id: string,
+): Promise<void> {
+  const { name } = splitPath(id)
+  const content = await readNote(dir, id)
+  const trash = await dir.getDirectoryHandle(TRASH_DIR, { create: true })
+  const trashName = await uniqueName(trash, name)
+  await writeRaw(trash, trashName, content)
+  await deleteNote(dir, id)
+
+  const items = await readTrashIndex(dir)
+  items.push({
+    trashName,
+    originalPath: id,
+    title: baseName(name),
+    deletedAt: Date.now(),
+  })
+  await writeTrashIndex(dir, items)
+}
+
+/** List recycle-bin items (newest first), dropping any stale index entries. */
+export async function listTrash(
+  dir: FileSystemDirectoryHandle,
+): Promise<TrashItem[]> {
+  let trash: FileSystemDirectoryHandle
+  try {
+    trash = await dir.getDirectoryHandle(TRASH_DIR)
+  } catch {
+    return []
+  }
+  const items = await readTrashIndex(dir)
+  const valid: TrashItem[] = []
+  for (const item of items) {
+    if (await fileExists(trash, item.trashName)) valid.push(item)
+  }
+  valid.sort((a, b) => b.deletedAt - a.deletedAt)
+  return valid
+}
+
+/** Restore a recycle-bin item to its original location. Returns the new id. */
+export async function restoreTrash(
+  dir: FileSystemDirectoryHandle,
+  trashName: string,
+): Promise<string | null> {
+  const items = await readTrashIndex(dir)
+  const entry = items.find((i) => i.trashName === trashName)
+  if (!entry) return null
+
+  const trash = await dir.getDirectoryHandle(TRASH_DIR)
+  const content = await (
+    await (await trash.getFileHandle(trashName)).getFile()
+  ).text()
+
+  const { parentPath, name } = splitPath(entry.originalPath)
+  const parent = await getDirByPath(dir, parentPath, true)
+  const target = await uniqueName(parent, name)
+  await writeRaw(parent, target, content)
+  await trash.removeEntry(trashName)
+  await writeTrashIndex(
+    dir,
+    items.filter((i) => i.trashName !== trashName),
+  )
+  return joinPath(parentPath, target)
+}
+
+/** Permanently delete a single recycle-bin item. */
+export async function deleteTrashItem(
+  dir: FileSystemDirectoryHandle,
+  trashName: string,
+): Promise<void> {
+  const trash = await dir.getDirectoryHandle(TRASH_DIR, { create: true })
+  try {
+    await trash.removeEntry(trashName)
+  } catch {
+    // already gone
+  }
+  const items = await readTrashIndex(dir)
+  await writeTrashIndex(
+    dir,
+    items.filter((i) => i.trashName !== trashName),
+  )
+}
+
+/** Permanently delete everything in the recycle bin. */
+export async function emptyTrash(
+  dir: FileSystemDirectoryHandle,
+): Promise<void> {
+  try {
+    await dir.removeEntry(TRASH_DIR, { recursive: true })
+  } catch {
+    // nothing to empty
+  }
+}
