@@ -12,6 +12,8 @@ export type VaultStatus =
 
 const ACTIVE_KEY = 'notes-active-id'
 const SAVE_DEBOUNCE_MS = 500
+// Cap the search content cache so a large vault can't grow it without bound.
+const CONTENT_CACHE_MAX = 300
 
 export function useNotes() {
   const [status, setStatus] = useState<VaultStatus>('loading')
@@ -248,14 +250,23 @@ export function useNotes() {
           file.title.toLowerCase().includes(q) || folderPath.toLowerCase().includes(q)
 
         const key = `${file.id}::${file.updatedAt}`
-        let content = contentCache.current.get(key)
+        const cache = contentCache.current
+        let content = cache.get(key)
         if (content === undefined) {
           try {
             content = await vault.readNote(dir, file.id)
           } catch {
             content = ''
           }
-          contentCache.current.set(key, content)
+        } else {
+          // Refresh recency (Map keeps insertion order → LRU eviction below).
+          cache.delete(key)
+        }
+        cache.set(key, content)
+        while (cache.size > CONTENT_CACHE_MAX) {
+          const oldest = cache.keys().next().value
+          if (oldest === undefined) break
+          cache.delete(oldest)
         }
 
         let snippet = ''
