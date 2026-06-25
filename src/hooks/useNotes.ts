@@ -137,12 +137,29 @@ export function useNotes() {
   const saveContent = useCallback(
     (content: string) => {
       if (!dir || !activeId) return
+      // If a *different* note still has buffered edits, persist them now before
+      // we reuse the single pending slot — otherwise those edits are lost.
+      const prev = pending.current
+      if (prev && prev.id !== activeId) {
+        void vault.writeNote(dir, prev.id, prev.content)
+      }
       pending.current = { id: activeId, content }
       if (timer.current) clearTimeout(timer.current)
       timer.current = setTimeout(() => void flush(), SAVE_DEBOUNCE_MS)
     },
     [dir, activeId, flush],
   )
+
+  // Best-effort: persist buffered edits when the tab is hidden or closed.
+  useEffect(() => {
+    const onHide = () => void flush()
+    window.addEventListener('beforeunload', onHide)
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      window.removeEventListener('beforeunload', onHide)
+      document.removeEventListener('visibilitychange', onHide)
+    }
+  }, [flush])
 
   // ---- CRUD ----
   const createNote = useCallback(
@@ -158,6 +175,15 @@ export function useNotes() {
   const deleteNote = useCallback(
     async (id: string) => {
       if (!dir) return
+      // Cancel any buffered write for this note, otherwise the pending save
+      // would recreate the file moments after it's deleted.
+      if (pending.current?.id === id) {
+        pending.current = null
+        if (timer.current) {
+          clearTimeout(timer.current)
+          timer.current = undefined
+        }
+      }
       await vault.deleteNote(dir, id)
       const list = await refresh(dir)
       if (id === activeId) setActiveId(list[0]?.id ?? null)
