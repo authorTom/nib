@@ -29,6 +29,8 @@ Guidelines:
 interface UseAssistantOptions {
   getDir: () => FileSystemDirectoryHandle | null
   onMutated: () => void
+  /** Path of the note currently open in the editor, if any. */
+  getActivePath: () => string | null
 }
 
 let counter = 0
@@ -41,7 +43,11 @@ interface GateContext {
   resolve: () => void
 }
 
-export function useAssistant({ getDir, onMutated }: UseAssistantOptions) {
+export function useAssistant({
+  getDir,
+  onMutated,
+  getActivePath,
+}: UseAssistantOptions) {
   const [settings, setSettingsState] = useState<AssistantSettings>(loadSettings)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [status, setStatus] = useState<AssistantStatus>('idle')
@@ -131,9 +137,14 @@ export function useAssistant({ getDir, onMutated }: UseAssistantOptions) {
 
   const runLoop = useCallback(
     async (dir: FileSystemDirectoryHandle, working: ChatMessage[], signal: AbortSignal) => {
+      const activePath = getActivePath()
+      const system = activePath
+        ? `${SYSTEM_PROMPT}\n\nThe note currently open in the editor is "${activePath}". When the user says "this note" or asks you to summarize/edit something without naming a file, assume they mean this note and read it first — do not ask for a path.`
+        : SYSTEM_PROMPT
+
       for (let guard = 0; guard < 50; guard++) {
         setStatus('thinking')
-        const turn = await runTurn(settingsRef.current, SYSTEM_PROMPT, working, TOOL_DEFS, signal)
+        const turn = await runTurn(settingsRef.current, system, working, TOOL_DEFS, signal)
         working.push({ id: uid(), role: 'assistant', content: turn.text, toolCalls: turn.toolCalls })
         commit(working)
 
@@ -174,7 +185,7 @@ export function useAssistant({ getDir, onMutated }: UseAssistantOptions) {
         }
       }
     },
-    [commit, gate, safeExec],
+    [commit, gate, getActivePath, safeExec],
   )
 
   const send = useCallback(

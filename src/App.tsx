@@ -80,7 +80,12 @@ export default function App() {
   const [assistantOpen, setAssistantOpen] = useState(false)
   const getDir = useCallback(() => vaultDir, [vaultDir])
   const onAssistantMutated = useCallback(() => void reload(), [reload])
-  const assistant = useAssistant({ getDir, onMutated: onAssistantMutated })
+  const getActivePath = useCallback(() => activeNote?.id ?? null, [activeNote])
+  const assistant = useAssistant({
+    getDir,
+    onMutated: onAssistantMutated,
+    getActivePath,
+  })
 
   // Keyboard shortcuts: Ctrl/Cmd+K opens the palette,
   // Ctrl/Cmd+Shift+F toggles focus, Escape exits focus.
@@ -437,6 +442,8 @@ export default function App() {
       <AssistantPanel
         open={assistantOpen}
         onClose={() => setAssistantOpen(false)}
+        filePaths={notes.map((n) => n.id)}
+        activePath={activeNote?.id ?? null}
         settings={assistant.settings}
         onUpdateSettings={assistant.updateSettings}
         messages={assistant.messages}
