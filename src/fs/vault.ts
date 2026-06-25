@@ -319,6 +319,74 @@ export async function createFolder(
   return joinPath(parentPath, folderName)
 }
 
+/** Recursively copy every entry (files preserved as binary) into `dest`. */
+async function copyDirContents(
+  src: FileSystemDirectoryHandle,
+  dest: FileSystemDirectoryHandle,
+): Promise<void> {
+  for await (const entry of asAsyncEntries(src)) {
+    if (entry.kind === 'file') {
+      const file = await (entry as FileSystemFileHandle).getFile()
+      const handle = await dest.getFileHandle(entry.name, { create: true })
+      const writable = await handle.createWritable()
+      await writable.write(file) // a File is a Blob → copies binary content
+      await writable.close()
+    } else {
+      const childSrc = entry as FileSystemDirectoryHandle
+      const childDest = await dest.getDirectoryHandle(entry.name, { create: true })
+      await copyDirContents(childSrc, childDest)
+    }
+  }
+}
+
+/**
+ * Rename a folder, keeping it in the same parent. Returns the new path.
+ * The File System Access API has no native rename, so this copies the folder's
+ * contents into a new directory and removes the old one.
+ */
+export async function renameFolder(
+  dir: FileSystemDirectoryHandle,
+  folderPath: string,
+  newName: string,
+): Promise<string> {
+  const { parentPath, name } = splitPath(folderPath)
+  const desired = sanitizeName(newName, name)
+  if (desired === name) return folderPath
+
+  const parent = await getDirByPath(dir, parentPath)
+  const src = await parent.getDirectoryHandle(name)
+
+  // Distinguish a case-only rename (same entry on case-insensitive systems)
+  // from a real collision with a different existing folder.
+  let sameEntryDifferentCase = false
+  let realConflict = false
+  try {
+    const existing = await parent.getDirectoryHandle(desired)
+    if (await existing.isSameEntry(src)) sameEntryDifferentCase = true
+    else realConflict = true
+  } catch {
+    // `desired` doesn't exist — free to use it.
+  }
+
+  if (sameEntryDifferentCase) {
+    // Case-only rename: hop through a temp folder so the entry adopts the case.
+    const tempName = `.nib-rename-${Date.now()}`
+    const temp = await parent.getDirectoryHandle(tempName, { create: true })
+    await copyDirContents(src, temp)
+    await parent.removeEntry(name, { recursive: true })
+    const finalDir = await parent.getDirectoryHandle(desired, { create: true })
+    await copyDirContents(temp, finalDir)
+    await parent.removeEntry(tempName, { recursive: true })
+    return joinPath(parentPath, desired)
+  }
+
+  const target = realConflict ? await uniqueFolderName(parent, desired) : desired
+  const dest = await parent.getDirectoryHandle(target, { create: true })
+  await copyDirContents(src, dest)
+  await parent.removeEntry(name, { recursive: true })
+  return joinPath(parentPath, target)
+}
+
 /**
  * Move a note file into `targetFolderPath` (root if empty). Returns the new id.
  * No-op (returns the original id) if already in that folder.

@@ -8,6 +8,7 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  Pencil,
   Plus,
   Search,
   Trash,
@@ -30,6 +31,7 @@ interface SidebarProps {
   onCreateInFolder: (folderPath: string) => void
   onCreateFolder: (parentPath: string) => Promise<string | undefined>
   onDeleteFolder: (folderPath: string) => void
+  onRenameFolder: (folderPath: string) => void
   onMoveNote: (id: string, targetFolderPath: string) => void
   onDelete: (id: string) => void
   onSwitchVault: () => void
@@ -64,6 +66,7 @@ export default function Sidebar({
   onCreateInFolder,
   onCreateFolder,
   onDeleteFolder,
+  onRenameFolder,
   onMoveNote,
   onDelete,
   onSwitchVault,
@@ -168,6 +171,19 @@ export default function Sidebar({
                 }}
               >
                 <FilePlus size={15} />
+              </span>
+              <span
+                className="tree-action"
+                role="button"
+                tabIndex={0}
+                title="Rename folder"
+                aria-label="Rename folder"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRenameFolder(node.id)
+                }}
+              >
+                <Pencil size={14} />
               </span>
               <span
                 className="tree-action"

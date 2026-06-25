@@ -41,6 +41,7 @@ export default function App() {
     createNote,
     createFolder,
     deleteFolder,
+    renameFolder,
     moveNote,
     deleteNote,
     saveContent,
@@ -131,6 +132,18 @@ export default function App() {
       }
     },
     [deleteFolder],
+  )
+
+  const handleRenameFolder = useCallback(
+    (folderPath: string) => {
+      const current = folderPath.includes('/')
+        ? folderPath.slice(folderPath.lastIndexOf('/') + 1)
+        : folderPath
+      const name = window.prompt('Rename folder', current)
+      if (!name || name === current) return
+      void renameFolder(folderPath, name)
+    },
+    [renameFolder],
   )
 
   // ---- Command palette actions ----
@@ -323,6 +336,7 @@ export default function App() {
         onCreateInFolder={(folderPath) => void createNote(folderPath)}
         onCreateFolder={handleCreateFolder}
         onDeleteFolder={handleDeleteFolder}
+        onRenameFolder={handleRenameFolder}
         onMoveNote={(id, target) => void moveNote(id, target)}
         onDelete={handleDelete}
         onSwitchVault={() => void connect()}
