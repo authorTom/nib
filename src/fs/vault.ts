@@ -222,6 +222,18 @@ export async function createNote(
   }
 }
 
+/** Write text to `name` within a directory handle (creating it if needed). */
+async function writeRaw(
+  parent: FileSystemDirectoryHandle,
+  name: string,
+  content: string,
+): Promise<void> {
+  const handle = await parent.getFileHandle(name, { create: true })
+  const writable = await handle.createWritable()
+  await writable.write(content)
+  await writable.close()
+}
+
 /**
  * Rename a note's file to match a new title, keeping it in the same folder.
  * Returns the new id. Assumes latest content is already on disk.
@@ -236,15 +248,37 @@ export async function renameNote(
   if (desired === name) return id
 
   const parent = await getDirByPath(dir, parentPath)
-  const target = await uniqueName(parent, desired, name)
-  if (target === name) return id
+  const src = await parent.getFileHandle(name)
+  const content = await (await src.getFile()).text()
 
-  const content = await (await (await parent.getFileHandle(name)).getFile()).text()
-  const writable = await (
-    await parent.getFileHandle(target, { create: true })
-  ).createWritable()
-  await writable.write(content)
-  await writable.close()
+  // Does a file with the desired name already exist, and is it a *different*
+  // file than the source? (On case-insensitive filesystems, "Note.md"
+  // resolves to the same entry as "note.md".)
+  let sameEntryDifferentCase = false
+  let realConflict = false
+  try {
+    const existing = await parent.getFileHandle(desired)
+    if (await existing.isSameEntry(src)) sameEntryDifferentCase = true
+    else realConflict = true
+  } catch {
+    // `desired` doesn't exist — free to use it.
+  }
+
+  if (sameEntryDifferentCase) {
+    // Case-only rename on a case-insensitive filesystem. Creating the new name
+    // directly just re-opens the same file, so hop through a temporary name to
+    // force the directory entry to adopt the new casing.
+    const tempName = `.nib-rename-${Date.now()}.md`
+    await writeRaw(parent, tempName, content)
+    await parent.removeEntry(name)
+    await writeRaw(parent, desired, content)
+    await parent.removeEntry(tempName)
+    return joinPath(parentPath, desired)
+  }
+
+  const target = realConflict ? await uniqueName(parent, desired, name) : desired
+  if (target === name) return id
+  await writeRaw(parent, target, content)
   await parent.removeEntry(name)
 
   return joinPath(parentPath, target)
