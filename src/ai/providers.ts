@@ -14,6 +14,17 @@ function safeParse(text: string): Record<string, unknown> {
   }
 }
 
+/** Remove reasoning model <think>…</think> blocks from displayed output. */
+function stripThinkTags(text: string): string {
+  let t = text.replace(/<think>[\s\S]*?<\/think>/gi, '')
+  // Some models start reasoning immediately and only emit a closing tag.
+  const close = t.indexOf('</think>')
+  if (close !== -1 && t.indexOf('<think>') === -1) {
+    t = t.slice(close + '</think>'.length)
+  }
+  return t.trim()
+}
+
 // ---- Anthropic (official SDK) ----------------------------------------------
 
 // Build Anthropic message blocks from our normalized history, merging
@@ -126,6 +137,7 @@ async function runOpenAICompatible(
   history: ChatMessage[],
   tools: ToolDef[],
   signal: AbortSignal,
+  opts: { extra?: Record<string, unknown>; stripThink?: boolean } = {},
 ): Promise<ProviderTurn> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`
@@ -137,6 +149,7 @@ async function runOpenAICompatible(
       function: { name: t.name, description: t.description, parameters: t.parameters },
     })),
     tool_choice: 'auto',
+    ...(opts.extra ?? {}),
   }
   const resp = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
@@ -157,7 +170,9 @@ async function runOpenAICompatible(
       arguments: safeParse(tc.function.arguments),
     }),
   )
-  return { text: msg.content ?? '', toolCalls }
+  let text = msg.content ?? ''
+  if (opts.stripThink) text = stripThinkTags(text)
+  return { text, toolCalls }
 }
 
 // ---- Dispatch --------------------------------------------------------------
@@ -184,7 +199,8 @@ export async function runTurn(
       signal,
     )
   }
-  // LM Studio (local, no key)
+  // LM Studio (local, no key). Toggle reasoning via the chat template flag and
+  // strip <think>…</think> blocks from the visible answer.
   return runOpenAICompatible(
     settings.lmstudioUrl || 'http://localhost:1234/v1',
     '',
@@ -193,5 +209,9 @@ export async function runTurn(
     history,
     tools,
     signal,
+    {
+      extra: { chat_template_kwargs: { enable_thinking: settings.thinking } },
+      stripThink: true,
+    },
   )
 }
