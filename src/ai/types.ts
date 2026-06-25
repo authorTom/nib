@@ -10,6 +10,10 @@ export interface AssistantSettings {
     openai: string
     lmstudio: string
   }
+  /** Enable extended ("adaptive") thinking — Claude only. */
+  thinking: boolean
+  /** Optional custom instructions appended to the system prompt. */
+  systemPrompt: string
 }
 
 export interface ToolCall {
@@ -30,11 +34,18 @@ export interface ChatMessage {
   toolCallId?: string
   toolName?: string
   isError?: boolean
+  /**
+   * assistant: the provider's native content blocks, resent verbatim so
+   * Claude's thinking blocks (with signatures) are preserved across turns.
+   */
+  providerRaw?: unknown
 }
 
 export interface ProviderTurn {
   text: string
   toolCalls: ToolCall[]
+  /** Provider-native assistant content (Anthropic content blocks), if any. */
+  raw?: unknown
 }
 
 /** A normalized tool definition shared by both provider wire formats. */

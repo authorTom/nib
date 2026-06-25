@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowUp,
+  Brain,
   Check,
   CheckCheck,
   FileEdit,
@@ -8,7 +9,7 @@ import {
   Settings2,
   Sparkles,
   Square,
-  Trash2,
+  SquarePen,
   X,
 } from 'lucide-react'
 import type { AssistantStatus, PendingAction } from '../ai/useAssistant'
@@ -181,6 +182,30 @@ function SettingsView({
         </>
       )}
 
+      {draft.provider === 'anthropic' && (
+        <label className="field-row">
+          <input
+            type="checkbox"
+            checked={draft.thinking}
+            onChange={(e) => set({ thinking: e.target.checked })}
+          />
+          <span>Extended thinking (Claude reasons before answering)</span>
+        </label>
+      )}
+
+      <label className="field">
+        <span>Custom instructions</span>
+        <textarea
+          value={draft.systemPrompt}
+          onChange={(e) => set({ systemPrompt: e.target.value })}
+          rows={4}
+          placeholder="e.g. Always write in British English. Keep notes concise and use bullet points."
+        />
+        <span className="assistant-note">
+          Added to every message to guide the assistant's behavior and style.
+        </span>
+      </label>
+
       {draft.provider !== 'lmstudio' && (
         <p className="assistant-note">
           Your API key is stored only in this browser and sent directly to the provider.
@@ -284,6 +309,27 @@ export default function AssistantPanel({
           <Sparkles size={16} /> Assistant
         </span>
         <div className="assistant-header-actions">
+          {settings.provider === 'anthropic' && (
+            <button
+              className={`icon-btn${settings.thinking ? ' active' : ''}`}
+              onClick={() =>
+                onUpdateSettings({ ...settings, thinking: !settings.thinking })
+              }
+              title={settings.thinking ? 'Thinking: on' : 'Thinking: off'}
+              aria-label="Toggle extended thinking"
+              aria-pressed={settings.thinking}
+            >
+              <Brain size={17} />
+            </button>
+          )}
+          <button
+            className="icon-btn"
+            onClick={onClear}
+            title="New chat"
+            aria-label="New chat"
+          >
+            <SquarePen size={17} />
+          </button>
           <button
             className="icon-btn"
             onClick={() => setShowSettings((s) => !s)}
@@ -291,14 +337,6 @@ export default function AssistantPanel({
             aria-label="Assistant settings"
           >
             <Settings2 size={17} />
-          </button>
-          <button
-            className="icon-btn"
-            onClick={onClear}
-            title="Clear conversation"
-            aria-label="Clear conversation"
-          >
-            <Trash2 size={16} />
           </button>
           <button className="icon-btn" onClick={onClose} title="Close" aria-label="Close assistant">
             <X size={18} />

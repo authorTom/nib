@@ -12,6 +12,8 @@ export const DEFAULT_SETTINGS: AssistantSettings = {
     openai: 'gpt-4o',
     lmstudio: 'local-model',
   },
+  thinking: true,
+  systemPrompt: '',
 }
 
 export function loadSettings(): AssistantSettings {
