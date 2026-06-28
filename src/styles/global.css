@@ -1016,6 +1016,33 @@ button {
   color: var(--danger);
 }
 
+/* Collapsible chain-of-thought for reasoning models. */
+.msg-reasoning {
+  margin-bottom: 6px;
+  font-size: 0.82rem;
+}
+
+.msg-reasoning > summary {
+  cursor: pointer;
+  color: var(--text-faint);
+  font-style: italic;
+  user-select: none;
+  list-style: revert;
+}
+
+.msg-reasoning > summary:hover {
+  color: var(--text-muted);
+}
+
+.msg-reasoning-body {
+  margin-top: 6px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .tool-chip {
   align-self: flex-start;
   max-width: 100%;

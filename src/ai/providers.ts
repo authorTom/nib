@@ -14,15 +14,35 @@ function safeParse(text: string): Record<string, unknown> {
   }
 }
 
-/** Remove reasoning model <think>…</think> blocks from displayed output. */
-function stripThinkTags(text: string): string {
-  let t = text.replace(/<think>[\s\S]*?<\/think>/gi, '')
-  // Some models start reasoning immediately and only emit a closing tag.
-  const close = t.indexOf('</think>')
-  if (close !== -1 && t.indexOf('<think>') === -1) {
-    t = t.slice(close + '</think>'.length)
+/**
+ * Split a reasoning model's output into its chain-of-thought and its answer.
+ * Handles complete <think>…</think> blocks, a leading dangling close tag (the
+ * model started reasoning immediately), and an unclosed <think> (reasoning that
+ * was truncated or never closed). Returning the reasoning instead of discarding
+ * it means a turn that is *all* thinking no longer renders as a blank bubble.
+ */
+function splitThink(text: string): { reasoning: string; answer: string } {
+  const parts: string[] = []
+  let answer = (text ?? '').replace(
+    /<think>([\s\S]*?)<\/think>/gi,
+    (_m, r: string) => {
+      parts.push(r)
+      return ''
+    },
+  )
+  // Reasoning emitted first with only a closing tag (no opening <think>).
+  const close = answer.indexOf('</think>')
+  if (close !== -1 && !answer.includes('<think>')) {
+    parts.unshift(answer.slice(0, close))
+    answer = answer.slice(close + '</think>'.length)
   }
-  return t.trim()
+  // Reasoning that was opened but never closed (truncated / still-open block).
+  const open = answer.indexOf('<think>')
+  if (open !== -1) {
+    parts.push(answer.slice(open + '<think>'.length))
+    answer = answer.slice(0, open)
+  }
+  return { reasoning: parts.join('\n\n').trim(), answer: answer.trim() }
 }
 
 // ---- Anthropic (official SDK) ----------------------------------------------
@@ -95,14 +115,16 @@ async function runAnthropic(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const resp: any = await client.messages.create(params as any, { signal })
   let text = ''
+  let reasoning = ''
   const toolCalls: ProviderTurn['toolCalls'] = []
   for (const block of resp.content ?? []) {
     if (block.type === 'text') text += block.text
+    else if (block.type === 'thinking') reasoning += block.thinking ?? ''
     else if (block.type === 'tool_use') {
       toolCalls.push({ id: block.id, name: block.name, arguments: block.input ?? {} })
     }
   }
-  return { text, toolCalls, raw: resp.content }
+  return { text, toolCalls, raw: resp.content, reasoning: reasoning.trim() || undefined }
 }
 
 // ---- OpenAI-compatible (OpenAI + OpenRouter + LM Studio) -------------------
@@ -242,8 +264,15 @@ async function runOpenAICompatible(
     }),
   )
   let text = msg.content ?? ''
-  if (opts.stripThink) text = stripThinkTags(text)
-  return { text, toolCalls }
+  // Reasoning models expose their chain-of-thought either in a dedicated field
+  // (OpenRouter / LM Studio) or inline as a <think> block in the content.
+  let reasoning = String(msg.reasoning ?? msg.reasoning_content ?? '')
+  if (opts.stripThink) {
+    const split = splitThink(text)
+    text = split.answer
+    if (!reasoning) reasoning = split.reasoning
+  }
+  return { text, toolCalls, reasoning: reasoning.trim() || undefined }
 }
 
 // ---- Dispatch --------------------------------------------------------------
@@ -310,7 +339,7 @@ export async function runCompletion(
   }
   const data = await resp.json()
   let text = data.choices?.[0]?.message?.content ?? ''
-  if (cfg.stripThink) text = stripThinkTags(text)
+  if (cfg.stripThink) text = splitThink(text).answer
   return text.trim()
 }
 
