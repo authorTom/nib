@@ -386,10 +386,21 @@ export function useNotes() {
 
   const activeNote = files.find((n) => n.id === activeId) ?? null
 
-  // Reload the tree (e.g. after the AI assistant changes files on disk).
+  // Reload after the AI assistant changes files on disk: rebuild the tree and
+  // re-read the open note's content, so an edit to the currently-open note shows
+  // up immediately instead of only after switching away and back.
   const reload = useCallback(async () => {
-    if (dir) await refresh(dir)
-  }, [dir, refresh])
+    if (!dir) return
+    await refresh(dir)
+    if (activeId) {
+      try {
+        setActiveContent(await vault.readNote(dir, activeId))
+      } catch {
+        // The active note may have been moved/deleted by the change; the tree
+        // refresh above will reflect that.
+      }
+    }
+  }, [dir, refresh, activeId])
 
   return {
     status,

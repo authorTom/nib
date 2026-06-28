@@ -64,13 +64,17 @@ export default function Editor({
     },
   })
 
-  // Parse the markdown content into the editor once it's ready. This component
-  // is remounted per note (keyed by id in App), so this runs for each note.
+  // Load the note's markdown into the editor when it's ready, and re-sync if the
+  // content changes underneath us — e.g. the AI assistant edits the open note.
+  // `content` only changes on a fresh load from disk (typing doesn't update it),
+  // so this won't fire on the user's own keystrokes. The guard avoids resetting
+  // the cursor when the incoming text already matches what's in the editor.
   useEffect(() => {
     if (!editor) return
+    if (content === editor.storage.markdown.getMarkdown()) return
     editor.commands.setContent(content, false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor])
+  }, [editor, content])
 
   // Expose the editor instance so the command palette can run formatting.
   useEffect(() => {
