@@ -1,13 +1,15 @@
-export type Provider = 'anthropic' | 'openai' | 'lmstudio'
+export type Provider = 'anthropic' | 'openai' | 'openrouter' | 'lmstudio'
 
 export interface AssistantSettings {
   provider: Provider
   anthropicKey: string
   openaiKey: string
+  openrouterKey: string
   lmstudioUrl: string
   models: {
     anthropic: string
     openai: string
+    openrouter: string
     lmstudio: string
   }
   /** Enable extended ("adaptive") thinking — Claude only. */

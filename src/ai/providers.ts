@@ -105,7 +105,71 @@ async function runAnthropic(
   return { text, toolCalls, raw: resp.content }
 }
 
-// ---- OpenAI-compatible (OpenAI + LM Studio) --------------------------------
+// ---- OpenAI-compatible (OpenAI + OpenRouter + LM Studio) -------------------
+
+const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
+// Optional ranking/attribution headers recommended by OpenRouter. "HTTP-Referer"
+// (not the browser-forbidden "Referer") and "X-Title" are safe to set from fetch.
+const OPENROUTER_HEADERS: Record<string, string> = {
+  'HTTP-Referer': 'https://github.com/authorTom/nib',
+  'X-Title': 'Nib',
+}
+
+interface CompatibleConfig {
+  baseUrl: string
+  apiKey: string
+  model: string
+  /** Local (LM Studio): toggle reasoning via a chat-template flag rather than a key. */
+  isLocal: boolean
+  /** Strip <think>…</think> blocks from the visible answer (reasoning models). */
+  stripThink: boolean
+  /** Extra request headers (OpenRouter attribution). */
+  extraHeaders?: Record<string, string>
+}
+
+/** Resolve the OpenAI-compatible endpoint config for the active provider
+ *  (everything except Anthropic, which uses its own SDK). */
+function resolveCompatible(settings: AssistantSettings): CompatibleConfig {
+  switch (settings.provider) {
+    case 'openai':
+      return {
+        baseUrl: 'https://api.openai.com/v1',
+        apiKey: settings.openaiKey,
+        model: settings.models.openai || 'gpt-4o',
+        isLocal: false,
+        stripThink: false,
+      }
+    case 'openrouter':
+      return {
+        baseUrl: OPENROUTER_BASE,
+        apiKey: settings.openrouterKey,
+        model: settings.models.openrouter || 'openrouter/auto',
+        isLocal: false,
+        stripThink: true,
+        extraHeaders: OPENROUTER_HEADERS,
+      }
+    default: // lmstudio
+      return {
+        baseUrl: settings.lmstudioUrl || 'http://localhost:1234/v1',
+        apiKey: '',
+        model: settings.models.lmstudio || 'local-model',
+        isLocal: true,
+        stripThink: true,
+      }
+  }
+}
+
+/** Error message if the active OpenAI-compatible provider is missing its key. */
+function compatibleKeyError(settings: AssistantSettings): string | null {
+  if (settings.provider === 'openai' && !settings.openaiKey) {
+    return 'Add your OpenAI API key in settings.'
+  }
+  if (settings.provider === 'openrouter' && !settings.openrouterKey) {
+    return 'Add your OpenRouter API key in settings.'
+  }
+  return null
+}
+
 
 function toOpenAIMessages(system: string, history: ChatMessage[]): unknown[] {
   const messages: unknown[] = [{ role: 'system', content: system }]
@@ -137,9 +201,16 @@ async function runOpenAICompatible(
   history: ChatMessage[],
   tools: ToolDef[],
   signal: AbortSignal,
-  opts: { extra?: Record<string, unknown>; stripThink?: boolean } = {},
+  opts: {
+    extra?: Record<string, unknown>
+    stripThink?: boolean
+    extraHeaders?: Record<string, string>
+  } = {},
 ): Promise<ProviderTurn> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(opts.extraHeaders ?? {}),
+  }
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`
   const body = {
     model,
@@ -209,28 +280,25 @@ export async function runCompletion(
       .trim()
   }
 
-  const isOpenAI = settings.provider === 'openai'
-  const baseUrl = isOpenAI
-    ? 'https://api.openai.com/v1'
-    : settings.lmstudioUrl || 'http://localhost:1234/v1'
-  const apiKey = isOpenAI ? settings.openaiKey : ''
-  const model = isOpenAI
-    ? settings.models.openai || 'gpt-4o'
-    : settings.models.lmstudio || 'local-model'
-  if (isOpenAI && !apiKey) throw new Error('Add your OpenAI API key in settings.')
+  const keyError = compatibleKeyError(settings)
+  if (keyError) throw new Error(keyError)
+  const cfg = resolveCompatible(settings)
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (apiKey) headers.Authorization = `Bearer ${apiKey}`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(cfg.extraHeaders ?? {}),
+  }
+  if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`
   const body: Record<string, unknown> = {
-    model,
+    model: cfg.model,
     messages: [
       { role: 'system', content: system },
       { role: 'user', content: userText },
     ],
   }
-  if (!isOpenAI) body.chat_template_kwargs = { enable_thinking: settings.thinking }
+  if (cfg.isLocal) body.chat_template_kwargs = { enable_thinking: settings.thinking }
 
-  const resp = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
+  const resp = await fetch(`${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
@@ -242,7 +310,7 @@ export async function runCompletion(
   }
   const data = await resp.json()
   let text = data.choices?.[0]?.message?.content ?? ''
-  if (!isOpenAI) text = stripThinkTags(text)
+  if (cfg.stripThink) text = stripThinkTags(text)
   return text.trim()
 }
 
@@ -256,31 +324,26 @@ export async function runTurn(
   if (settings.provider === 'anthropic') {
     return runAnthropic(settings, system, history, tools, signal)
   }
-  if (settings.provider === 'openai') {
-    if (!settings.openaiKey) throw new Error('Add your OpenAI API key in settings.')
-    return runOpenAICompatible(
-      'https://api.openai.com/v1',
-      settings.openaiKey,
-      settings.models.openai || 'gpt-4o',
-      system,
-      history,
-      tools,
-      signal,
-    )
-  }
-  // LM Studio (local, no key). Toggle reasoning via the chat template flag and
-  // strip <think>…</think> blocks from the visible answer.
+  // Everything else (OpenAI, OpenRouter, LM Studio) speaks the OpenAI wire
+  // format. LM Studio toggles reasoning via a chat-template flag; cloud
+  // reasoning models instead emit <think> blocks we strip from the answer.
+  const keyError = compatibleKeyError(settings)
+  if (keyError) throw new Error(keyError)
+  const cfg = resolveCompatible(settings)
   return runOpenAICompatible(
-    settings.lmstudioUrl || 'http://localhost:1234/v1',
-    '',
-    settings.models.lmstudio || 'local-model',
+    cfg.baseUrl,
+    cfg.apiKey,
+    cfg.model,
     system,
     history,
     tools,
     signal,
     {
-      extra: { chat_template_kwargs: { enable_thinking: settings.thinking } },
-      stripThink: true,
+      extra: cfg.isLocal
+        ? { chat_template_kwargs: { enable_thinking: settings.thinking } }
+        : undefined,
+      stripThink: cfg.stripThink,
+      extraHeaders: cfg.extraHeaders,
     },
   )
 }

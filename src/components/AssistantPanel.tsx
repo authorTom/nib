@@ -36,6 +36,7 @@ interface AssistantPanelProps {
 const PROVIDER_LABEL: Record<Provider, string> = {
   anthropic: 'Anthropic (Claude)',
   openai: 'OpenAI',
+  openrouter: 'OpenRouter',
   lmstudio: 'Local (LM Studio)',
 }
 
@@ -117,6 +118,7 @@ function SettingsView({
           <option value="lmstudio">Local (LM Studio)</option>
           <option value="anthropic">Anthropic (Claude)</option>
           <option value="openai">OpenAI</option>
+          <option value="openrouter">OpenRouter</option>
         </select>
       </label>
 
@@ -162,6 +164,34 @@ function SettingsView({
         </>
       )}
 
+      {draft.provider === 'openrouter' && (
+        <>
+          <label className="field">
+            <span>OpenRouter API key</span>
+            <input
+              type="password"
+              value={draft.openrouterKey}
+              onChange={(e) => set({ openrouterKey: e.target.value })}
+              placeholder="sk-or-..."
+            />
+          </label>
+          <label className="field">
+            <span>Model</span>
+            <input
+              value={draft.models.openrouter}
+              onChange={(e) => setModel('openrouter', e.target.value)}
+              placeholder="openrouter/auto"
+            />
+            <span className="assistant-note">
+              Any model slug from openrouter.ai/models, e.g.{' '}
+              <code>anthropic/claude-sonnet-4</code> or{' '}
+              <code>openai/gpt-4o</code>. <code>openrouter/auto</code> picks one
+              for you.
+            </span>
+          </label>
+        </>
+      )}
+
       {draft.provider === 'lmstudio' && (
         <>
           <label className="field">
@@ -182,7 +212,7 @@ function SettingsView({
         </>
       )}
 
-      {draft.provider !== 'openai' && (
+      {(draft.provider === 'anthropic' || draft.provider === 'lmstudio') && (
         <label className="field-row">
           <input
             type="checkbox"
@@ -313,7 +343,7 @@ export default function AssistantPanel({
           <Sparkles size={16} /> Assistant
         </span>
         <div className="assistant-header-actions">
-          {settings.provider !== 'openai' && (
+          {(settings.provider === 'anthropic' || settings.provider === 'lmstudio') && (
             <button
               className={`icon-btn${settings.thinking ? ' active' : ''}`}
               onClick={() =>
