@@ -2,6 +2,15 @@
 // Each note is a real `.md` file inside a folder the user picks. Subfolders are
 // walked recursively, so notes can be organised in nested folders. A note's
 // `id` is its path relative to the vault root (POSIX "/" separators).
+//
+// Two storage backends, sharing the same `FileSystemDirectoryHandle` API:
+//   • On-disk folder — Chromium's `showDirectoryPicker` lets the user pick a
+//     real folder, so notes are visible on disk (open them in Obsidian, sync,
+//     back up, etc).
+//   • Origin Private File System (OPFS) — `navigator.storage.getDirectory`,
+//     supported by Safari and Firefox, gives a sandboxed per-origin directory
+//     that exposes the identical handle interface. Notes live privately inside
+//     the browser. This is the fallback when the disk picker isn't available.
 
 export interface NoteFile {
   kind: 'file'
@@ -30,27 +39,61 @@ export type NoteMeta = NoteFile
 const MD_EXT = /\.md$/i
 const ILLEGAL = /[\\/:*?"<>|]/g
 
-export function isVaultSupported(): boolean {
+/** Name of the OPFS subfolder that holds the vault, so it has a friendly
+ *  display name (the OPFS root itself has an empty name). */
+const OPFS_VAULT_NAME = 'My Notes'
+
+/** Whether the on-disk folder picker (Chromium) is available. When false, the
+ *  app falls back to OPFS, which Safari and Firefox support. */
+export function supportsDiskPicker(): boolean {
   return typeof window !== 'undefined' && 'showDirectoryPicker' in window
 }
 
+export function supportsOpfs(): boolean {
+  return (
+    typeof navigator !== 'undefined' &&
+    !!navigator.storage &&
+    typeof navigator.storage.getDirectory === 'function'
+  )
+}
+
+/** Whether *any* supported storage backend is available. */
+export function isVaultSupported(): boolean {
+  return supportsDiskPicker() || supportsOpfs()
+}
+
+/** Open (creating if needed) the OPFS-backed vault. Unlike a disk folder this
+ *  is a single fixed location, so it can be re-opened on every load without a
+ *  user gesture and without persisting a handle. */
+export async function openOpfsVault(): Promise<FileSystemDirectoryHandle> {
+  const root = await navigator.storage.getDirectory()
+  return await root.getDirectoryHandle(OPFS_VAULT_NAME, { create: true })
+}
+
 export async function pickVault(): Promise<FileSystemDirectoryHandle> {
-  return await (
-    window as unknown as {
-      showDirectoryPicker: (opts?: {
-        id?: string
-        mode?: 'read' | 'readwrite'
-      }) => Promise<FileSystemDirectoryHandle>
-    }
-  ).showDirectoryPicker({ id: 'notes-vault', mode: 'readwrite' })
+  if (supportsDiskPicker()) {
+    return await (
+      window as unknown as {
+        showDirectoryPicker: (opts?: {
+          id?: string
+          mode?: 'read' | 'readwrite'
+        }) => Promise<FileSystemDirectoryHandle>
+      }
+    ).showDirectoryPicker({ id: 'notes-vault', mode: 'readwrite' })
+  }
+  // OPFS fallback: a single private vault stored inside the browser.
+  return await openOpfsVault()
 }
 
 export async function ensurePermission(
   handle: FileSystemDirectoryHandle,
   request: boolean,
 ): Promise<boolean> {
+  // OPFS handles have no permission model (access is implicit), so they don't
+  // expose queryPermission/requestPermission — treat them as always granted.
+  if (typeof handle.queryPermission !== 'function') return true
   const opts = { mode: 'readwrite' as const }
-  if ((await handle.queryPermission?.(opts)) === 'granted') return true
+  if ((await handle.queryPermission(opts)) === 'granted') return true
   if (!request) return false
   return (await handle.requestPermission?.(opts)) === 'granted'
 }

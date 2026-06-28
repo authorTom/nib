@@ -27,6 +27,7 @@ import {
 import { exportToPdf } from './lib/exportPdf'
 import { useTheme } from './hooks/useTheme'
 import { useNotes } from './hooks/useNotes'
+import { supportsDiskPicker } from './fs/vault'
 
 export default function App() {
   const { theme, toggleTheme } = useTheme()
@@ -283,9 +284,8 @@ export default function App() {
               <>
                 <h2>Browser not supported</h2>
                 <p>
-                  This app stores notes as files in a folder on your computer,
-                  which needs a Chromium-based browser (Chrome, Edge, Brave, or
-                  Opera) on desktop.
+                  This app needs a browser with file-storage support. Please
+                  update to a recent version of Safari, Firefox, Chrome, or Edge.
                 </p>
               </>
             )}
@@ -293,11 +293,21 @@ export default function App() {
             {status === 'no-vault' && (
               <>
                 <FolderOpen size={40} />
-                <h2>Choose a notes folder</h2>
+                <h2>{supportsDiskPicker() ? 'Choose a notes folder' : 'Create your vault'}</h2>
                 <p>
-                  Pick a folder to use as your vault. Your notes are saved there
-                  as plain Markdown (.md) files — open them in Obsidian, sync
-                  them, or back them up however you like.
+                  {supportsDiskPicker() ? (
+                    <>
+                      Pick a folder to use as your vault. Your notes are saved
+                      there as plain Markdown (.md) files — open them in Obsidian,
+                      sync them, or back them up however you like.
+                    </>
+                  ) : (
+                    <>
+                      Your notes are saved privately inside this browser as
+                      Markdown (.md) files. They stay on this device and aren&rsquo;t
+                      uploaded anywhere.
+                    </>
+                  )}
                 </p>
                 <button
                   type="button"
@@ -305,7 +315,7 @@ export default function App() {
                   onClick={() => void connect()}
                 >
                   <FolderOpen size={18} />
-                  Open folder
+                  {supportsDiskPicker() ? 'Open folder' : 'Get started'}
                 </button>
               </>
             )}
