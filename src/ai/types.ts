@@ -36,6 +36,8 @@ export interface ChatMessage {
   toolCallId?: string
   toolName?: string
   isError?: boolean
+  /** assistant: the model's reasoning / chain-of-thought, shown collapsed. */
+  reasoning?: string
   /**
    * assistant: the provider's native content blocks, resent verbatim so
    * Claude's thinking blocks (with signatures) are preserved across turns.
@@ -46,6 +48,8 @@ export interface ChatMessage {
 export interface ProviderTurn {
   text: string
   toolCalls: ToolCall[]
+  /** The model's reasoning / chain-of-thought, separated from the answer. */
+  reasoning?: string
   /** Provider-native assistant content (Anthropic content blocks), if any. */
   raw?: unknown
 }

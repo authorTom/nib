@@ -156,6 +156,7 @@ export function useAssistant({
           id: uid(),
           role: 'assistant',
           content: turn.text,
+          reasoning: turn.reasoning,
           toolCalls: turn.toolCalls,
           providerRaw: turn.raw,
         })

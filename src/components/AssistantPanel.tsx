@@ -418,8 +418,18 @@ export default function AssistantPanel({
               if (m.role === 'tool') {
                 return <ToolChip key={m.id} message={m} />
               }
+              // An assistant turn can be reasoning-only (no answer text, just
+              // tool calls that render as their own chips) — don't draw a blank
+              // bubble in that case.
+              if (!m.content && !m.reasoning) return null
               return (
                 <div key={m.id} className={`msg msg-assistant${m.isError ? ' error' : ''}`}>
+                  {m.reasoning && (
+                    <details className="msg-reasoning">
+                      <summary>Thought process</summary>
+                      <div className="msg-reasoning-body">{m.reasoning}</div>
+                    </details>
+                  )}
                   {m.content && <div className="msg-text">{m.content}</div>}
                 </div>
               )
