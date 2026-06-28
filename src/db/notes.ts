@@ -39,6 +39,28 @@ export async function saveVaultHandle(
   }
 }
 
+// OPFS handles can't be structured-cloned into IndexedDB in Safari/WebKit, and
+// the OPFS vault is a single fixed location anyway — so instead of persisting a
+// handle we just remember (in localStorage) that the user opened it, and
+// re-acquire the directory on startup.
+const OPFS_FLAG = 'notes-opfs-vault'
+
+export function rememberOpfsVault(): void {
+  try {
+    localStorage.setItem(OPFS_FLAG, '1')
+  } catch {
+    // Private mode or storage disabled — the vault still works this session.
+  }
+}
+
+export function hasOpfsVault(): boolean {
+  try {
+    return localStorage.getItem(OPFS_FLAG) === '1'
+  } catch {
+    return false
+  }
+}
+
 export async function loadVaultHandle(): Promise<FileSystemDirectoryHandle | null> {
   let db: IDBDatabase
   try {

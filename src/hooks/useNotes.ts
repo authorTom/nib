@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { loadVaultHandle, saveVaultHandle } from '../db/notes'
+import {
+  loadVaultHandle,
+  saveVaultHandle,
+  rememberOpfsVault,
+  hasOpfsVault,
+} from '../db/notes'
 import * as vault from '../fs/vault'
 import type { TreeNode, TrashItem } from '../fs/vault'
 
@@ -33,16 +38,27 @@ export function useNotes() {
           setStatus('unsupported')
           return
         }
+        // Chromium: a previously picked on-disk folder is restored from its
+        // persisted handle.
         const saved = await loadVaultHandle()
         if (cancelled) return
-        if (!saved) {
-          setStatus('no-vault')
+        if (saved) {
+          const granted = await vault.ensurePermission(saved, false)
+          if (cancelled) return
+          setDir(saved)
+          setStatus(granted ? 'ready' : 'needs-permission')
           return
         }
-        const granted = await vault.ensurePermission(saved, false)
-        if (cancelled) return
-        setDir(saved)
-        setStatus(granted ? 'ready' : 'needs-permission')
+        // Safari/Firefox: re-open the OPFS vault (a fixed location, so no stored
+        // handle is needed) if the user opened it before.
+        if (!vault.supportsDiskPicker() && vault.supportsOpfs() && hasOpfsVault()) {
+          const handle = await vault.openOpfsVault()
+          if (cancelled) return
+          setDir(handle)
+          setStatus('ready')
+          return
+        }
+        setStatus('no-vault')
       } catch {
         // Never leave the app stuck on the loading screen.
         if (!cancelled) setStatus('no-vault')
@@ -100,19 +116,33 @@ export function useNotes() {
 
   // ---- Connect / reconnect ----
   const connect = useCallback(async () => {
+    let handle: FileSystemDirectoryHandle
     try {
-      const handle = await vault.pickVault()
-      const granted = await vault.ensurePermission(handle, true)
-      if (!granted) return
-      await saveVaultHandle(handle)
-      setTree([])
-      setActiveId(null)
-      setActiveContent(null)
-      setDir(handle)
-      setStatus('ready')
+      handle = await vault.pickVault()
     } catch {
       // User dismissed the picker — leave state untouched.
+      return
     }
+    const granted = await vault.ensurePermission(handle, true)
+    if (!granted) return
+    // Remember the chosen vault for next launch. Disk handles persist in
+    // IndexedDB; OPFS handles can't be cloned there (Safari), so we just record
+    // a flag and re-open the fixed OPFS location on startup. A persistence
+    // failure must not block opening the vault for this session.
+    try {
+      if (vault.supportsDiskPicker()) {
+        await saveVaultHandle(handle)
+      } else {
+        rememberOpfsVault()
+      }
+    } catch {
+      // Best effort — continue with the open vault even if it won't be remembered.
+    }
+    setTree([])
+    setActiveId(null)
+    setActiveContent(null)
+    setDir(handle)
+    setStatus('ready')
   }, [])
 
   const reconnect = useCallback(async () => {
