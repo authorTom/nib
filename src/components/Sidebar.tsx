@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
-import type { DragEvent } from 'react'
+import type { DragEvent, KeyboardEvent } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -39,6 +39,15 @@ interface SidebarProps {
 }
 
 const ROOT = '__root__'
+
+/** Activate a role="button" span with Enter/Space (they're spans because a
+ *  real <button> can't nest inside the tree-row <button>). */
+function onActionKey(e: KeyboardEvent<HTMLSpanElement>, action: () => void) {
+  if (e.key !== 'Enter' && e.key !== ' ') return
+  e.preventDefault()
+  e.stopPropagation()
+  action()
+}
 
 /** Folder ids that are ancestors of a note path, e.g. "a/b/n.md" → ["a","a/b"]. */
 function ancestorFolderIds(id: string): string[] {
@@ -156,6 +165,7 @@ export default function Sidebar({
                   e.stopPropagation()
                   void handleNewFolder(node.id)
                 }}
+                onKeyDown={(e) => onActionKey(e, () => void handleNewFolder(node.id))}
               >
                 <FolderPlus size={15} />
               </span>
@@ -169,6 +179,7 @@ export default function Sidebar({
                   e.stopPropagation()
                   onCreateInFolder(node.id)
                 }}
+                onKeyDown={(e) => onActionKey(e, () => onCreateInFolder(node.id))}
               >
                 <FilePlus size={15} />
               </span>
@@ -182,6 +193,7 @@ export default function Sidebar({
                   e.stopPropagation()
                   onRenameFolder(node.id)
                 }}
+                onKeyDown={(e) => onActionKey(e, () => onRenameFolder(node.id))}
               >
                 <Pencil size={14} />
               </span>
@@ -195,6 +207,7 @@ export default function Sidebar({
                   e.stopPropagation()
                   onDeleteFolder(node.id)
                 }}
+                onKeyDown={(e) => onActionKey(e, () => onDeleteFolder(node.id))}
               >
                 <Trash2 size={15} />
               </span>
@@ -233,6 +246,7 @@ export default function Sidebar({
               e.stopPropagation()
               onDelete(node.id)
             }}
+            onKeyDown={(e) => onActionKey(e, () => onDelete(node.id))}
           >
             <Trash2 size={14} />
           </span>

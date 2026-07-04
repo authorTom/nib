@@ -627,7 +627,34 @@ export async function movePath(
   from: string,
   to: string,
 ): Promise<void> {
+  if (from === to) return
   const content = await readNote(dir, from)
+
+  // On a case-insensitive filesystem (macOS default), a destination differing
+  // from the source only by case resolves to the *same* file — write-then-
+  // delete would destroy the note. Detect that and hop through a temp name,
+  // as renameNote does.
+  const { parentPath: fromParent, name: fromName } = splitPath(from)
+  const srcParent = await getDirByPath(dir, fromParent)
+  const src = await srcParent.getFileHandle(fromName)
+  const { parentPath: toParent, name: toName } = splitPath(to)
+  const destParent = await getDirByPath(dir, toParent, true)
+  let sameEntry = false
+  try {
+    sameEntry = await (await destParent.getFileHandle(toName)).isSameEntry(src)
+  } catch {
+    // Destination doesn't exist — free to use it.
+  }
+
+  if (sameEntry) {
+    const tempName = `.nib-rename-${Date.now()}.md`
+    await writeRaw(destParent, tempName, content)
+    await srcParent.removeEntry(fromName)
+    await writeRaw(destParent, toName, content)
+    await destParent.removeEntry(tempName)
+    return
+  }
+
   await writeNote(dir, to, content)
   await deleteNote(dir, from)
 }

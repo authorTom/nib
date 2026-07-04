@@ -103,12 +103,15 @@ export default function App() {
         e.preventDefault()
         toggleFocus()
       } else if (e.key === 'Escape') {
-        setFocusMode(false)
+        // Close the topmost layer first; only exit focus mode if nothing is open.
+        // (The command palette handles its own Escape and stops propagation.)
+        if (trashOpen) setTrashOpen(false)
+        else setFocusMode(false)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [toggleFocus])
+  }, [toggleFocus, trashOpen])
 
   const handleSelect = useCallback(
     (id: string) => {

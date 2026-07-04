@@ -198,6 +198,17 @@ export function useAssistant({
           await gate(dir, working, toApprove)
         }
       }
+
+      // Safety guard tripped: the model kept calling tools without finishing.
+      // Surface it and return to idle instead of leaving the panel stuck.
+      working.push({
+        id: uid(),
+        role: 'assistant',
+        content: '⚠️ Stopped after too many consecutive tool calls. Send a message to continue.',
+        isError: true,
+      })
+      commit(working)
+      setStatus('idle')
     },
     [commit, gate, getActivePath, safeExec],
   )

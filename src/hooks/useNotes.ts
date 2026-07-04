@@ -391,16 +391,34 @@ export function useNotes() {
   // up immediately instead of only after switching away and back.
   const reload = useCallback(async () => {
     if (!dir) return
-    await refresh(dir)
-    if (activeId) {
-      try {
-        setActiveContent(await vault.readNote(dir, activeId))
-      } catch {
-        // The active note may have been moved/deleted by the change; the tree
-        // refresh above will reflect that.
+    const list = await refresh(dir)
+    if (!activeId) return
+
+    if (!list.some((n) => n.id === activeId)) {
+      // The open note was deleted or moved by the change. Drop any buffered
+      // edits so the debounced save can't recreate the file, then move on.
+      if (pending.current?.id === activeId) {
+        pending.current = null
+        if (timer.current) {
+          clearTimeout(timer.current)
+          timer.current = undefined
+        }
       }
+      setActiveId(list[0]?.id ?? null)
+      return
     }
-  }, [dir, refresh, activeId])
+
+    // Persist buffered edits before re-reading, so a keystroke made moments
+    // before the AI change isn't clobbered by stale disk content. In the rare
+    // case where the AI edited the very note being typed in, the user's
+    // buffer wins — deterministic, and the editor never diverges from disk.
+    await flush()
+    try {
+      setActiveContent(await vault.readNote(dir, activeId))
+    } catch {
+      // Transient read failure — keep showing the current content.
+    }
+  }, [dir, refresh, activeId, flush])
 
   return {
     status,

@@ -110,8 +110,10 @@ async function runAnthropic(
     })),
     messages: toAnthropicMessages(history),
   }
-  // Extended ("adaptive") thinking — omit entirely when toggled off.
-  if (settings.thinking) params.thinking = { type: 'adaptive' }
+  // Extended ("adaptive") thinking — omit entirely when toggled off. Without
+  // display: 'summarized', recent models return thinking blocks with empty
+  // text (display defaults to "omitted"), leaving the reasoning UI blank.
+  if (settings.thinking) params.thinking = { type: 'adaptive', display: 'summarized' }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const resp: any = await client.messages.create(params as any, { signal })
   let text = ''

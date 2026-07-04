@@ -504,6 +504,8 @@ export default function AssistantPanel({
                   }
                   if (e.key === 'Escape') {
                     e.preventDefault()
+                    // Don't let the global handler also exit focus mode.
+                    e.stopPropagation()
                     setMention(null)
                     return
                   }
