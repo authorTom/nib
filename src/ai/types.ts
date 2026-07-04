@@ -14,6 +14,10 @@ export interface AssistantSettings {
   }
   /** Enable extended ("adaptive") thinking — Claude only. */
   thinking: boolean
+  /** Semantic vault search via embeddings (OpenAI / LM Studio only). */
+  semanticSearch: boolean
+  /** Embedding model id; blank uses the provider default (OpenAI). */
+  embeddingModel: string
   /** Optional custom instructions appended to the system prompt. */
   systemPrompt: string
 }

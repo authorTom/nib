@@ -6,7 +6,9 @@ import {
   hasOpfsVault,
 } from '../db/notes'
 import * as vault from '../fs/vault'
+import * as history from '../fs/history'
 import type { TreeNode, TrashItem } from '../fs/vault'
+import type { HistoryItem } from '../fs/history'
 
 export type VaultStatus =
   | 'loading'
@@ -17,6 +19,8 @@ export type VaultStatus =
 
 const ACTIVE_KEY = 'notes-active-id'
 const SAVE_DEBOUNCE_MS = 500
+// While editing, snapshot the previous on-disk version at most this often.
+const SNAPSHOT_INTERVAL_MS = 5 * 60_000
 // Cap the search content cache so a large vault can't grow it without bound.
 const CONTENT_CACHE_MAX = 300
 
@@ -154,6 +158,8 @@ export function useNotes() {
   // ---- Debounced content persistence ----
   const pending = useRef<{ id: string; content: string } | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // Per-note timestamp of the last history snapshot (throttles edit snapshots).
+  const lastSnapshotAt = useRef<Map<string, number>>(new Map())
 
   const flush = useCallback(async () => {
     if (timer.current) {
@@ -163,6 +169,20 @@ export function useNotes() {
     const p = pending.current
     if (!p || !dir) return
     pending.current = null
+    // Periodically keep the version being overwritten, so an editing session
+    // leaves a trail of restore points (at most one per SNAPSHOT_INTERVAL_MS).
+    const last = lastSnapshotAt.current.get(p.id) ?? 0
+    if (Date.now() - last > SNAPSHOT_INTERVAL_MS) {
+      lastSnapshotAt.current.set(p.id, Date.now())
+      try {
+        const prev = await vault.readNote(dir, p.id)
+        if (prev.trim() && prev !== p.content) {
+          await history.snapshotNote(dir, p.id, prev, 'edit')
+        }
+      } catch {
+        // New note — nothing to snapshot.
+      }
+    }
     await vault.writeNote(dir, p.id, p.content)
   }, [dir])
 
@@ -224,6 +244,7 @@ export function useNotes() {
       if (!dir || !activeId) return
       await flush() // ensure latest content is on disk before moving the file
       const newId = await vault.renameNote(dir, activeId, newTitle)
+      if (newId !== activeId) await history.retargetHistory(dir, activeId, newId)
       await refresh(dir)
       if (newId !== activeId) setActiveId(newId)
     },
@@ -276,6 +297,7 @@ export function useNotes() {
       if (!dir) return
       if (id === activeId) await flush() // persist edits before moving the file
       const newId = await vault.moveNote(dir, id, targetFolderPath)
+      if (newId !== id) await history.retargetHistory(dir, id, newId)
       await refresh(dir)
       if (id === activeId && newId !== id) setActiveId(newId)
     },
@@ -318,6 +340,62 @@ export function useNotes() {
     await vault.emptyTrash(dir)
     setTrashItems([])
   }, [dir])
+
+  // ---- Version history (for the active note) ----
+  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([])
+
+  const loadHistory = useCallback(async () => {
+    if (!dir || !activeId) {
+      setHistoryItems([])
+      return
+    }
+    await flush() // so the newest state is what a restore would snapshot
+    setHistoryItems(await history.listHistory(dir, activeId))
+  }, [dir, activeId, flush])
+
+  const previewVersion = useCallback(
+    async (snapName: string) => {
+      if (!dir) return ''
+      try {
+        return await history.readSnapshot(dir, snapName)
+      } catch {
+        return ''
+      }
+    },
+    [dir],
+  )
+
+  const restoreVersion = useCallback(
+    async (snapName: string) => {
+      if (!dir || !activeId) return
+      await flush()
+      const snapContent = await history.readSnapshot(dir, snapName)
+      // Keep the current state as its own restore point before replacing it.
+      try {
+        const cur = await vault.readNote(dir, activeId)
+        if (cur.trim() && cur !== snapContent) {
+          await history.snapshotNote(dir, activeId, cur, 'restore')
+        }
+      } catch {
+        // Note missing on disk — restore recreates it below.
+      }
+      lastSnapshotAt.current.set(activeId, Date.now())
+      await vault.writeNote(dir, activeId, snapContent)
+      setActiveContent(snapContent)
+      await refresh(dir)
+      setHistoryItems(await history.listHistory(dir, activeId))
+    },
+    [dir, activeId, flush, refresh],
+  )
+
+  const deleteVersion = useCallback(
+    async (snapName: string) => {
+      if (!dir || !activeId) return
+      await history.deleteSnapshot(dir, snapName)
+      setHistoryItems(await history.listHistory(dir, activeId))
+    },
+    [dir, activeId],
+  )
 
   // ---- Search across the whole tree (title, path, and file contents) ----
   const [query, setQuery] = useState('')
@@ -446,6 +524,11 @@ export function useNotes() {
     restoreFromTrash,
     deleteFromTrash,
     emptyTrash,
+    historyItems,
+    loadHistory,
+    previewVersion,
+    restoreVersion,
+    deleteVersion,
     query,
     setQuery,
     searchResults,

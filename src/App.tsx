@@ -4,6 +4,7 @@ import {
   FilePlus,
   FolderOpen,
   FolderPlus,
+  History,
   Maximize2,
   Minimize2,
   Moon,
@@ -17,6 +18,7 @@ import Sidebar from './components/Sidebar'
 import Editor from './components/Editor'
 import CommandPalette, { type Command } from './components/CommandPalette'
 import TrashModal from './components/TrashModal'
+import HistoryModal from './components/HistoryModal'
 import AssistantPanel from './components/AssistantPanel'
 import { useAssistant } from './ai/useAssistant'
 import {
@@ -57,6 +59,11 @@ export default function App() {
     restoreFromTrash,
     deleteFromTrash,
     emptyTrash,
+    historyItems,
+    loadHistory,
+    previewVersion,
+    restoreVersion,
+    deleteVersion,
     query,
     setQuery,
     searchResults,
@@ -76,6 +83,12 @@ export default function App() {
     await loadTrash()
     setTrashOpen(true)
   }, [loadTrash])
+
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const openHistory = useCallback(async () => {
+    await loadHistory()
+    setHistoryOpen(true)
+  }, [loadHistory])
 
   // AI assistant (right-side panel)
   const [assistantOpen, setAssistantOpen] = useState(false)
@@ -105,13 +118,14 @@ export default function App() {
       } else if (e.key === 'Escape') {
         // Close the topmost layer first; only exit focus mode if nothing is open.
         // (The command palette handles its own Escape and stops propagation.)
-        if (trashOpen) setTrashOpen(false)
+        if (historyOpen) setHistoryOpen(false)
+        else if (trashOpen) setTrashOpen(false)
         else setFocusMode(false)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [toggleFocus, trashOpen])
+  }, [toggleFocus, trashOpen, historyOpen])
 
   const handleSelect = useCallback(
     (id: string) => {
@@ -222,6 +236,13 @@ export default function App() {
     ]
     if (activeNote) {
       list.push({
+        id: 'history',
+        label: 'Version history',
+        icon: History,
+        keywords: 'versions snapshots restore undo backup',
+        run: () => void openHistory(),
+      })
+      list.push({
         id: 'export-pdf',
         label: 'Export current note to PDF',
         icon: FileDown,
@@ -260,6 +281,7 @@ export default function App() {
     toggleTheme,
     connect,
     openTrash,
+    openHistory,
     activeNote,
     handleDelete,
     editor,
@@ -392,6 +414,7 @@ export default function App() {
           onContentChange={saveContent}
           onTitleCommit={(title) => void renameActive(title)}
           onNew={() => void createNote()}
+          onOpenHistory={() => void openHistory()}
           onToggleSidebar={() => setSidebarOpen((o) => !o)}
           onToggleFocus={toggleFocus}
           onOpenPalette={() => setPaletteOpen(true)}
@@ -451,6 +474,16 @@ export default function App() {
         onRestore={(name) => void restoreFromTrash(name)}
         onDeleteForever={(name) => void deleteFromTrash(name)}
         onEmpty={() => void emptyTrash()}
+      />
+
+      <HistoryModal
+        open={historyOpen}
+        noteTitle={activeNote?.title ?? ''}
+        items={historyItems}
+        onClose={() => setHistoryOpen(false)}
+        onRestore={(name) => void restoreVersion(name)}
+        onDelete={(name) => void deleteVersion(name)}
+        loadContent={previewVersion}
       />
 
       <AssistantPanel

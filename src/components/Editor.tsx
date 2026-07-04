@@ -18,6 +18,7 @@ interface WorkspaceProps {
   onContentChange: (markdown: string) => void
   onTitleCommit: (title: string) => void
   onNew: () => void
+  onOpenHistory: () => void
   onToggleSidebar: () => void
   onToggleFocus: () => void
   onOpenPalette: () => void
@@ -38,6 +39,7 @@ export default function Editor({
   onContentChange,
   onTitleCommit,
   onNew,
+  onOpenHistory,
   onToggleSidebar,
   onToggleFocus,
   onOpenPalette,
@@ -116,6 +118,7 @@ export default function Editor({
         onNew={onNew}
         onSaveMarkdown={handleSaveMarkdown}
         onExportPdf={() => exportToPdf(title)}
+        onOpenHistory={onOpenHistory}
         onToggleSidebar={onToggleSidebar}
         onToggleFocus={onToggleFocus}
         onOpenPalette={onOpenPalette}

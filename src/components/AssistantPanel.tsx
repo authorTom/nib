@@ -227,6 +227,38 @@ function SettingsView({
         </label>
       )}
 
+      {(draft.provider === 'openai' || draft.provider === 'lmstudio') && (
+        <>
+          <label className="field-row">
+            <input
+              type="checkbox"
+              checked={draft.semanticSearch}
+              onChange={(e) => set({ semanticSearch: e.target.checked })}
+            />
+            <span>Semantic vault search (embeddings)</span>
+          </label>
+          {draft.semanticSearch && (
+            <label className="field">
+              <span>Embedding model</span>
+              <input
+                value={draft.embeddingModel}
+                onChange={(e) => set({ embeddingModel: e.target.value })}
+                placeholder={
+                  draft.provider === 'openai'
+                    ? 'text-embedding-3-small'
+                    : 'e.g. text-embedding-nomic-embed-text-v1.5'
+                }
+              />
+              <span className="assistant-note">
+                {draft.provider === 'openai'
+                  ? 'Notes are embedded via the OpenAI API when the assistant searches your vault (a small per-note cost, cached until a note changes).'
+                  : 'Requires an embedding model loaded in LM Studio — runs fully locally. If unavailable, search falls back to keyword matching.'}
+              </span>
+            </label>
+          )}
+        </>
+      )}
+
       <label className="field">
         <span>Custom instructions</span>
         <textarea

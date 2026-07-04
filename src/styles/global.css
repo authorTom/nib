@@ -931,6 +931,42 @@ button {
   color: var(--danger);
 }
 
+/* ---------- Version history modal ---------- */
+.history-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.history-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.history-preview {
+  margin: 0 10px 10px 33px;
+  padding: 10px 12px;
+  max-height: 240px;
+  overflow: auto;
+  border-left: 2px solid var(--border);
+  background: var(--bg-hover);
+  border-radius: 0 8px 8px 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-muted);
+}
+
 /* ---------- AI assistant panel ---------- */
 .assistant-panel {
   width: 380px;

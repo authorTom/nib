@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   FileDown,
   FileText,
+  History,
   Maximize2,
   Menu,
   Moon,
@@ -23,6 +24,7 @@ interface TopBarProps {
   onNew: () => void
   onSaveMarkdown: () => void
   onExportPdf: () => void
+  onOpenHistory: () => void
   onToggleSidebar: () => void
   onToggleFocus: () => void
   onOpenPalette: () => void
@@ -38,6 +40,7 @@ export default function TopBar({
   onNew,
   onSaveMarkdown,
   onExportPdf,
+  onOpenHistory,
   onToggleSidebar,
   onToggleFocus,
   onOpenPalette,
@@ -107,6 +110,16 @@ export default function TopBar({
           aria-label="New note"
         >
           <Plus size={20} />
+        </button>
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={onOpenHistory}
+          disabled={!hasNote}
+          title="Version history"
+          aria-label="Version history"
+        >
+          <History size={19} />
         </button>
         <button
           type="button"

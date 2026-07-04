@@ -19,7 +19,10 @@ The user's notes are plain Markdown (.md) files in a folder ("vault"). You can r
 edit them with the provided tools.
 
 Guidelines:
-- Call list_files first to understand the vault, then read_file before editing a note.
+- When the user asks about the content of their notes, use search_notes to find the
+  relevant notes, then read_file the best matches before answering. Cite which notes
+  you drew from. Use list_files when you need the folder structure instead.
+- Call read_file before editing a note.
 - Keep notes as clean Markdown. Preserve the user's existing content unless asked to change it.
 - Use exact relative paths (e.g. "Projects/idea.md"). Folders use create_folder.
 - Creating, editing, moving, and deleting require the user's approval before they take effect —
@@ -73,7 +76,10 @@ export function useAssistant({
   const safeExec = useCallback(
     async (dir: FileSystemDirectoryHandle, call: ToolCall) => {
       try {
-        return { content: await executeTool(dir, call), isError: false }
+        const content = await executeTool(dir, call, {
+          settings: settingsRef.current,
+        })
+        return { content, isError: false }
       } catch (e) {
         return { content: `Error: ${(e as Error).message}`, isError: true }
       }

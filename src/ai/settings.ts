@@ -16,6 +16,8 @@ export const DEFAULT_SETTINGS: AssistantSettings = {
     lmstudio: 'local-model',
   },
   thinking: true,
+  semanticSearch: false,
+  embeddingModel: '',
   systemPrompt: '',
 }
 

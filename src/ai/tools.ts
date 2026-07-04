@@ -1,6 +1,8 @@
 import * as vault from '../fs/vault'
+import * as history from '../fs/history'
+import { searchVault } from './retrieval'
 import type { TreeNode } from '../fs/vault'
-import type { ToolCall, ToolDef } from './types'
+import type { AssistantSettings, ToolCall, ToolDef } from './types'
 
 export const TOOL_DEFS: ToolDef[] = [
   {
@@ -8,6 +10,23 @@ export const TOOL_DEFS: ToolDef[] = [
     description:
       'List every folder and Markdown note in the vault as an indented tree. Use this first to understand the structure.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
+    readOnly: true,
+  },
+  {
+    name: 'search_notes',
+    description:
+      'Search the vault for notes relevant to a query — matches titles, paths, and content (plus semantic similarity when enabled). Returns the best-matching note paths with snippets; use read_file to read a result in full.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'What to look for — a question, topic, or keywords.',
+        },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    },
     readOnly: true,
   },
   {
@@ -116,6 +135,7 @@ function str(args: Record<string, unknown>, key: string): string {
 export async function executeTool(
   dir: FileSystemDirectoryHandle,
   call: ToolCall,
+  ctx?: { settings: AssistantSettings },
 ): Promise<string> {
   const a = call.arguments
   switch (call.name) {
@@ -123,16 +143,35 @@ export async function executeTool(
       const tree = await vault.buildTree(dir)
       return renderTree(tree).trim() || '(the vault is empty)'
     }
+    case 'search_notes': {
+      const files = vault.flattenFiles(await vault.buildTree(dir))
+      const results = await searchVault(dir, files, str(a, 'query'), ctx?.settings)
+      if (!results.length) return 'No matching notes found.'
+      const lines = results.map(
+        (r, i) => `${i + 1}. ${r.id}\n   ${r.snippet || '(empty note)'}`,
+      )
+      return `Most relevant notes (best first):\n\n${lines.join('\n')}\n\nUse read_file to read any of these in full.`
+    }
     case 'read_file':
       return await vault.readNote(dir, str(a, 'path'))
-    case 'write_file':
-      await vault.writeNote(dir, str(a, 'path'), str(a, 'content'))
-      return `Saved ${str(a, 'path')}`
+    case 'write_file': {
+      const path = str(a, 'path')
+      // Keep a restorable snapshot of anything the AI is about to overwrite.
+      try {
+        const before = await vault.readNote(dir, path)
+        if (before.trim()) await history.snapshotNote(dir, path, before, 'ai')
+      } catch {
+        // New file — nothing to snapshot.
+      }
+      await vault.writeNote(dir, path, str(a, 'content'))
+      return `Saved ${path}`
+    }
     case 'create_folder':
       await vault.ensureFolder(dir, str(a, 'path'))
       return `Created folder ${str(a, 'path')}`
     case 'move_file':
       await vault.movePath(dir, str(a, 'from'), str(a, 'to'))
+      await history.retargetHistory(dir, str(a, 'from'), str(a, 'to'))
       return `Moved ${str(a, 'from')} to ${str(a, 'to')}`
     case 'delete_file':
       await vault.trashNote(dir, str(a, 'path'))
