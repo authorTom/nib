@@ -78,6 +78,81 @@ To use the AI assistant, open the panel (sparkles icon) → settings (gear) and
 pick a provider: Anthropic (Claude), OpenAI, OpenRouter, or a local LM Studio
 server. Keys are kept in `localStorage` and sent only to the provider you chose.
 
+## Docker
+
+Nib ships as a small production container: a multi-stage build compiles the app
+with Node, then [nginx-unprivileged](https://github.com/nginxinc/docker-nginx-unprivileged)
+(Alpine, non-root, port **8080**) serves the static files with gzip, immutable
+caching for hashed assets, security headers, and a built-in health check.
+
+### Run the published image
+
+Every push to `main` publishes a multi-arch (amd64 + arm64) image to GitHub
+Container Registry via the included workflow:
+
+```bash
+docker run -d --name nib -p 8080:8080 --restart unless-stopped \
+  ghcr.io/authortom/nib:latest
+# → http://localhost:8080
+```
+
+### Build and run locally
+
+```bash
+docker build -t nib .
+docker run -d -p 8080:8080 nib
+
+# or with compose:
+docker compose up -d          # production build at http://localhost:8080
+```
+
+### Test environment
+
+The compose file includes a containerised dev server (hot reload, no local
+Node install needed):
+
+```bash
+docker compose --profile dev up dev   # → http://localhost:5173
+```
+
+> **HTTPS matters in production.** The File System Access API and OPFS require
+> a secure context — `http://localhost` is fine for local use, but anything
+> served from another host must sit behind TLS (e.g. Caddy, Traefik, or nginx
+> with certificates), or the vault features won't be available.
+
+### Where to store the image
+
+**Recommended: GitHub Container Registry (GHCR)** — the repo already lives on
+GitHub, so images stay next to the code, the included workflow authenticates
+with the built-in `GITHUB_TOKEN` (no extra secrets to manage), and it's free
+for public images. The first published package is private by default — flip it
+to public (or grant access) under the package's settings on GitHub.
+
+Alternatives: **Docker Hub** (most familiar `docker pull` experience, but rate
+limits and a separate access token to manage) or a cloud registry
+(ECR/GCR/ACR) if you deploy into that cloud anyway.
+
+### Updating when you push new commits
+
+Publishing is already automated: `.github/workflows/docker.yml` rebuilds and
+pushes on every push to `main`, tagging `latest` and `sha-<commit>`; pushing a
+git tag like `v1.0.0` also publishes a `1.0.0` tag.
+
+On the machine running the container, updating is a pull away:
+
+```bash
+docker compose pull && docker compose up -d   # or: docker pull … && docker restart
+```
+
+Two good ways to make that automatic:
+
+- **[Watchtower](https://containrrr.dev/watchtower/)** — runs alongside your
+  container and restarts it whenever `:latest` changes. Zero ceremony; best
+  for a personal server.
+- **Pinned tags + explicit deploys** — in production, reference an immutable
+  tag (`sha-<commit>` or a `vX.Y.Z` semver tag) instead of `:latest`, and roll
+  forward by changing the tag. Predictable and trivially rolled back.
+
 ## Tech stack
 
 React · TypeScript · Vite · TipTap + tiptap-markdown (editor) · lucide-react
