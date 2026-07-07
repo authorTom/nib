@@ -33,9 +33,6 @@ export interface NoteFolder {
 
 export type TreeNode = NoteFile | NoteFolder
 
-/** A flat note entry (used by app logic that doesn't care about the tree). */
-export type NoteMeta = NoteFile
-
 const MD_EXT = /\.md$/i
 const ILLEGAL = /[\\/:*?"<>|]/g
 
@@ -203,11 +200,8 @@ export async function writeNote(
 ): Promise<number> {
   const { parentPath, name } = splitPath(id)
   const parent = await getDirByPath(dir, parentPath, true)
-  const handle = await parent.getFileHandle(name, { create: true })
-  const writable = await handle.createWritable()
-  await writable.write(content)
-  await writable.close()
-  return (await handle.getFile()).lastModified
+  await writeRaw(parent, name, content)
+  return (await (await parent.getFileHandle(name)).getFile()).lastModified
 }
 
 export async function deleteNote(
@@ -447,11 +441,7 @@ export async function moveNote(
   const targetName = await uniqueName(destParent, name)
 
   const content = await (await (await srcParent.getFileHandle(name)).getFile()).text()
-  const writable = await (
-    await destParent.getFileHandle(targetName, { create: true })
-  ).createWritable()
-  await writable.write(content)
-  await writable.close()
+  await writeRaw(destParent, targetName, content)
   await srcParent.removeEntry(name)
 
   return joinPath(targetFolderPath, targetName)

@@ -33,11 +33,12 @@ interface AssistantPanelProps {
   onClear: () => void
 }
 
+// Insertion order is the dropdown order.
 const PROVIDER_LABEL: Record<Provider, string> = {
+  lmstudio: 'Local (LM Studio)',
   anthropic: 'Anthropic (Claude)',
   openai: 'OpenAI',
   openrouter: 'OpenRouter',
-  lmstudio: 'Local (LM Studio)',
 }
 
 function ApprovalCard({
@@ -115,10 +116,11 @@ function SettingsView({
           value={draft.provider}
           onChange={(e) => set({ provider: e.target.value as Provider })}
         >
-          <option value="lmstudio">Local (LM Studio)</option>
-          <option value="anthropic">Anthropic (Claude)</option>
-          <option value="openai">OpenAI</option>
-          <option value="openrouter">OpenRouter</option>
+          {(Object.keys(PROVIDER_LABEL) as Provider[]).map((p) => (
+            <option key={p} value={p}>
+              {PROVIDER_LABEL[p]}
+            </option>
+          ))}
         </select>
       </label>
 

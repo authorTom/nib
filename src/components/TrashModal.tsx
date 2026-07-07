@@ -1,5 +1,6 @@
 import { RotateCcw, Trash2, X } from 'lucide-react'
 import type { TrashItem } from '../fs/vault'
+import { folderOf, timeAgo } from '../lib/format'
 
 interface TrashModalProps {
   open: boolean
@@ -8,22 +9,6 @@ interface TrashModalProps {
   onRestore: (trashName: string) => void
   onDeleteForever: (trashName: string) => void
   onEmpty: () => void
-}
-
-function folderOf(path: string): string {
-  return path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
-}
-
-function timeAgo(ts: number): string {
-  const diff = Date.now() - ts
-  const mins = Math.round(diff / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.round(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.round(hrs / 24)
-  if (days < 30) return `${days}d ago`
-  return new Date(ts).toLocaleDateString()
 }
 
 export default function TrashModal({

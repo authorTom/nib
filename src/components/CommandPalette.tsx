@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { CornerDownLeft, FileText, Search, type LucideIcon } from 'lucide-react'
 import type { NoteFile } from '../fs/vault'
+import { folderOf } from '../lib/format'
 
 export interface Command {
   id: string
@@ -26,10 +27,6 @@ interface CommandPaletteProps {
 type Item =
   | { kind: 'command'; cmd: Command }
   | { kind: 'note'; note: NoteFile }
-
-function folderOf(id: string): string {
-  return id.includes('/') ? id.slice(0, id.lastIndexOf('/')) : ''
-}
 
 export default function CommandPalette({
   open,

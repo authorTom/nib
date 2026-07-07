@@ -47,6 +47,14 @@ function splitThink(text: string): { reasoning: string; answer: string } {
 
 // ---- Anthropic (official SDK) ----------------------------------------------
 
+function anthropicClient(settings: AssistantSettings): Anthropic {
+  if (!settings.anthropicKey) throw new Error('Add your Anthropic API key in settings.')
+  return new Anthropic({
+    apiKey: settings.anthropicKey,
+    dangerouslyAllowBrowser: true,
+  })
+}
+
 // Build Anthropic message blocks from our normalized history, merging
 // consecutive tool results into a single user turn.
 function toAnthropicMessages(history: ChatMessage[]): unknown[] {
@@ -94,11 +102,7 @@ async function runAnthropic(
   tools: ToolDef[],
   signal: AbortSignal,
 ): Promise<ProviderTurn> {
-  if (!settings.anthropicKey) throw new Error('Add your Anthropic API key in settings.')
-  const client = new Anthropic({
-    apiKey: settings.anthropicKey,
-    dangerouslyAllowBrowser: true,
-  })
+  const client = anthropicClient(settings)
   const params: Record<string, unknown> = {
     model: settings.models.anthropic || 'claude-opus-4-8',
     max_tokens: 8000,
@@ -239,11 +243,15 @@ async function runOpenAICompatible(
   const body = {
     model,
     messages: toOpenAIMessages(system, history),
-    tools: tools.map((t) => ({
-      type: 'function',
-      function: { name: t.name, description: t.description, parameters: t.parameters },
-    })),
-    tool_choice: 'auto',
+    ...(tools.length
+      ? {
+          tools: tools.map((t) => ({
+            type: 'function',
+            function: { name: t.name, description: t.description, parameters: t.parameters },
+          })),
+          tool_choice: 'auto',
+        }
+      : {}),
     ...(opts.extra ?? {}),
   }
   const resp = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
@@ -290,11 +298,7 @@ export async function runCompletion(
   signal: AbortSignal,
 ): Promise<string> {
   if (settings.provider === 'anthropic') {
-    if (!settings.anthropicKey) throw new Error('Add your Anthropic API key in settings.')
-    const client = new Anthropic({
-      apiKey: settings.anthropicKey,
-      dangerouslyAllowBrowser: true,
-    })
+    const client = anthropicClient(settings)
     const params: Record<string, unknown> = {
       model: settings.models.anthropic || 'claude-opus-4-8',
       max_tokens: 2000,
@@ -314,35 +318,23 @@ export async function runCompletion(
   const keyError = compatibleKeyError(settings)
   if (keyError) throw new Error(keyError)
   const cfg = resolveCompatible(settings)
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(cfg.extraHeaders ?? {}),
-  }
-  if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`
-  const body: Record<string, unknown> = {
-    model: cfg.model,
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: userText },
-    ],
-  }
-  if (cfg.isLocal) body.chat_template_kwargs = { enable_thinking: settings.thinking }
-
-  const resp = await fetch(`${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
+  const turn = await runOpenAICompatible(
+    cfg.baseUrl,
+    cfg.apiKey,
+    cfg.model,
+    system,
+    [{ id: 'inline', role: 'user', content: userText }],
+    [], // no tools — one-shot completion
     signal,
-  })
-  if (!resp.ok) {
-    const detail = await resp.text().catch(() => '')
-    throw new Error(`Request failed (${resp.status}). ${detail.slice(0, 300)}`)
-  }
-  const data = await resp.json()
-  let text = data.choices?.[0]?.message?.content ?? ''
-  if (cfg.stripThink) text = splitThink(text).answer
-  return text.trim()
+    {
+      extra: cfg.isLocal
+        ? { chat_template_kwargs: { enable_thinking: settings.thinking } }
+        : undefined,
+      stripThink: cfg.stripThink,
+      extraHeaders: cfg.extraHeaders,
+    },
+  )
+  return turn.text.trim()
 }
 
 export async function runTurn(
