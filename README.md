@@ -1,9 +1,12 @@
 # Nib
 
-A clean, minimalist, web-based markdown note-taking & word-processing app. Live
-WYSIWYG editing, a keyboard-driven command palette, light/dark mode, fully
-responsive — and **100% local**: your notes live as plain Markdown files in a
-folder on your computer, Obsidian-style. No account, no server, no lock-in.
+A clean, minimalist, web-based **knowledge management platform**: Markdown
+notes with live WYSIWYG editing, a Todoist-style task planner, bookmarks with
+collections and comments, and an AI assistant that can search and edit your
+knowledge base — plus a keyboard-driven command palette, light/dark mode, and a
+fully responsive layout. And it's **100% local**: everything lives as plain
+files in a folder on your computer, Obsidian-style. No account, no server, no
+lock-in.
 
 ## Features
 
@@ -25,6 +28,11 @@ folder on your computer, Obsidian-style. No account, no server, no lock-in.
   `Ctrl`/`Cmd`+`Shift`+`A` (or use the selection menu) to capture it as a task
   that links back to the note. Tasks are stored in a hidden `.nib/tasks.json`
   inside your vault, so they sync and back up with your notes.
+- **Bookmarks** — a Bookmarks tab in the same left panel: save URLs, pages, and
+  products into colored collections, each with its own comment box (why you
+  saved it, prices, thoughts). Paste a link to add it, or select a link in a
+  note and use the bookmark button in the selection menu — captured bookmarks
+  link back to their source note. Stored in `.nib/bookmarks.json` in the vault.
 - **Version history** — restore points are saved automatically: before every AI
   edit, periodically while you type, and before every restore. Open the clock
   icon to preview, restore, or delete a note's earlier versions (kept in a
@@ -187,6 +195,10 @@ src/
     useTasks.ts            # Task state + persistence (vault .nib/tasks.json)
     dates.ts, types.ts     # Date/recurrence helpers and task types
     store.ts               # Load/save the task store
+  bookmarks/
+    useBookmarks.ts        # Bookmark state + persistence (.nib/bookmarks.json)
+    url.ts, types.ts       # URL normalization/extraction and bookmark types
+    store.ts               # Load/save the bookmark store
   hooks/
     useTheme.ts            # Light/dark, persisted + system default
     useNotes.ts            # Tree, active note, autosave, move, search, history
@@ -197,7 +209,8 @@ src/
     Toolbar.tsx            # Quick-format buttons
     CommandPalette.tsx     # Keyboard-driven command + note search palette
     AssistantPanel.tsx     # AI chat panel, settings, approval cards
-    TaskPanel.tsx          # Task planner: inbox/today/upcoming/projects
+    TaskPanel.tsx          # Left panel: Tasks | Bookmarks tabs
+    BookmarkList.tsx       # Bookmarks: collections, comments, quick-add
     TaskItem.tsx           # Task row + inline editor
     MiniCalendar.tsx       # Month grid for the Upcoming view
     InlineAssistant.tsx    # "Ask AI" popover on a text selection
