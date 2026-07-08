@@ -18,6 +18,13 @@ folder on your computer, Obsidian-style. No account, no server, no lock-in.
 - **Command palette** — `Ctrl`/`Cmd`+`K` opens a fast, fully keyboard-driven palette
   for commands, formatting, and jumping to any note.
 - **Search across the vault** — find notes by title, path, or file contents.
+- **Tasks & planner** — a Todoist-style panel docked on the left: Inbox, Today,
+  Upcoming (agenda + mini month calendar), projects, priorities (P1–P4),
+  recurring tasks, a completed log, and a bin for deleted tasks (restorable,
+  auto-purged after 30 days). Highlight text in a note and press
+  `Ctrl`/`Cmd`+`Shift`+`A` (or use the selection menu) to capture it as a task
+  that links back to the note. Tasks are stored in a hidden `.nib/tasks.json`
+  inside your vault, so they sync and back up with your notes.
 - **Version history** — restore points are saved automatically: before every AI
   edit, periodically while you type, and before every restore. Open the clock
   icon to preview, restore, or delete a note's earlier versions (kept in a
@@ -176,6 +183,10 @@ src/
     tools.ts               # Vault tools the model can call (+ approval previews)
     retrieval.ts           # search_notes: BM25 + optional embeddings (RRF-fused)
     settings.ts, types.ts  # Assistant settings persistence and shared types
+  tasks/
+    useTasks.ts            # Task state + persistence (vault .nib/tasks.json)
+    dates.ts, types.ts     # Date/recurrence helpers and task types
+    store.ts               # Load/save the task store
   hooks/
     useTheme.ts            # Light/dark, persisted + system default
     useNotes.ts            # Tree, active note, autosave, move, search, history
@@ -186,6 +197,9 @@ src/
     Toolbar.tsx            # Quick-format buttons
     CommandPalette.tsx     # Keyboard-driven command + note search palette
     AssistantPanel.tsx     # AI chat panel, settings, approval cards
+    TaskPanel.tsx          # Task planner: inbox/today/upcoming/projects
+    TaskItem.tsx           # Task row + inline editor
+    MiniCalendar.tsx       # Month grid for the Upcoming view
     InlineAssistant.tsx    # "Ask AI" popover on a text selection
     HistoryModal.tsx       # Version history: preview / restore / delete
     TrashModal.tsx         # Recycle bin
@@ -201,6 +215,7 @@ src/
 | Shortcut | Action |
 | --- | --- |
 | `Ctrl`/`Cmd` + `K` | Open the command palette |
+| `Ctrl`/`Cmd` + `Shift` + `A` | Capture selection as a task / toggle the task panel |
 | `Ctrl`/`Cmd` + `Shift` + `F` | Toggle focus mode |
 | `Esc` | Close the topmost dialog / exit focus mode |
 

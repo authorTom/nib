@@ -1,0 +1,441 @@
+import { useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
+import {
+  CalendarDays,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Inbox,
+  ListTodo,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Sun,
+  Trash2,
+  X,
+} from 'lucide-react'
+import MiniCalendar from './MiniCalendar'
+import TaskItem from './TaskItem'
+import { timeAgo } from '../lib/format'
+import { dayHeading, todayStr } from '../tasks/dates'
+import type { Task } from '../tasks/types'
+import type { TasksApi } from '../tasks/useTasks'
+
+interface TaskPanelProps {
+  open: boolean
+  onClose: () => void
+  tasks: TasksApi
+  onOpenNote: (noteId: string) => void
+}
+
+/** Priority first, then due date (undated last), then creation order. */
+function sortTasks(list: Task[]): Task[] {
+  return [...list].sort(
+    (a, b) =>
+      a.priority - b.priority ||
+      (a.due ?? '9999').localeCompare(b.due ?? '9999') ||
+      a.createdAt - b.createdAt,
+  )
+}
+
+export default function TaskPanel({
+  open,
+  onClose,
+  tasks,
+  onOpenNote,
+}: TaskPanelProps) {
+  const [view, setView] = useState('inbox')
+  const [selectedDate, setSelectedDate] = useState(todayStr)
+  const [calOpen, setCalOpen] = useState(true)
+  const [quickTitle, setQuickTitle] = useState('')
+
+  const { store } = tasks
+  const today = todayStr()
+
+  const openTasks = useMemo(
+    () => store.tasks.filter((t) => !t.completedAt && !t.deletedAt),
+    [store.tasks],
+  )
+  const markedDates = useMemo(
+    () => new Set(openTasks.filter((t) => t.due).map((t) => t.due!)),
+    [openTasks],
+  )
+
+  if (!open) return null
+
+  const project = view.startsWith('project:')
+    ? store.projects.find((p) => p.id === view.slice('project:'.length))
+    : undefined
+  // Fall back to the inbox if the viewed project was deleted.
+  const activeView = view.startsWith('project:') && !project ? 'inbox' : view
+
+  const inboxCount = openTasks.filter((t) => !t.projectId).length
+  const todayCount = openTasks.filter((t) => t.due && t.due <= today).length
+
+  const renderList = (list: Task[], showProject = true): ReactNode =>
+    list.map((t) => (
+      <TaskItem
+        key={t.id}
+        task={t}
+        projects={store.projects}
+        showProject={showProject}
+        onToggle={() => tasks.toggleComplete(t.id)}
+        onUpdate={(patch) => tasks.updateTask(t.id, patch)}
+        onDelete={() => tasks.deleteTask(t.id)}
+        onOpenNote={onOpenNote}
+      />
+    ))
+
+  const quickAdd = () => {
+    const title = quickTitle.trim()
+    if (!title) return
+    tasks.addTask({
+      title,
+      due:
+        activeView === 'today'
+          ? today
+          : activeView === 'upcoming'
+            ? selectedDate
+            : null,
+      projectId: project?.id ?? null,
+    })
+    setQuickTitle('')
+  }
+
+  const quickAddPlaceholder =
+    activeView === 'today'
+      ? 'Add a task for today…'
+      : activeView === 'upcoming'
+        ? `Add a task for ${dayHeading(selectedDate)}…`
+        : project
+          ? `Add a task to ${project.name}…`
+          : 'Add a task to the Inbox…'
+
+  let content: ReactNode
+  if (activeView === 'inbox') {
+    const list = sortTasks(openTasks.filter((t) => !t.projectId))
+    content = list.length ? (
+      renderList(list)
+    ) : (
+      <div className="task-empty">
+        Inbox zero 🎉 — capture tasks here with Ctrl/Cmd+Shift+A.
+      </div>
+    )
+  } else if (activeView === 'today') {
+    const overdue = sortTasks(openTasks.filter((t) => t.due && t.due < today))
+    const dueToday = sortTasks(openTasks.filter((t) => t.due === today))
+    content = (
+      <>
+        {overdue.length > 0 && (
+          <>
+            <div className="task-section overdue">Overdue</div>
+            {renderList(overdue)}
+          </>
+        )}
+        {dueToday.length > 0 && (
+          <>
+            <div className="task-section">Today</div>
+            {renderList(dueToday)}
+          </>
+        )}
+        {overdue.length === 0 && dueToday.length === 0 && (
+          <div className="task-empty">Nothing due today.</div>
+        )}
+      </>
+    )
+  } else if (activeView === 'upcoming') {
+    const overdue =
+      selectedDate === today
+        ? sortTasks(openTasks.filter((t) => t.due && t.due < today))
+        : []
+    const dated = sortTasks(
+      openTasks.filter((t) => t.due && t.due >= selectedDate),
+    )
+    const byDate = new Map<string, Task[]>()
+    for (const t of dated) {
+      const list = byDate.get(t.due!) ?? []
+      list.push(t)
+      byDate.set(t.due!, list)
+    }
+    const dates = [...byDate.keys()].sort()
+    content = (
+      <>
+        <button
+          type="button"
+          className="task-cal-toggle"
+          onClick={() => setCalOpen((o) => !o)}
+          aria-expanded={calOpen}
+        >
+          {calOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          Calendar
+        </button>
+        {calOpen && (
+          <MiniCalendar
+            selected={selectedDate}
+            onSelect={setSelectedDate}
+            markedDates={markedDates}
+          />
+        )}
+        {overdue.length > 0 && (
+          <>
+            <div className="task-section overdue">Overdue</div>
+            {renderList(overdue)}
+          </>
+        )}
+        {dates.map((date) => (
+          <div key={date}>
+            <div className="task-section">{dayHeading(date)}</div>
+            {renderList(byDate.get(date)!)}
+          </div>
+        ))}
+        {overdue.length === 0 && dates.length === 0 && (
+          <div className="task-empty">
+            No upcoming tasks from {dayHeading(selectedDate)}.
+          </div>
+        )}
+      </>
+    )
+  } else if (activeView === 'completed') {
+    const done = store.tasks
+      .filter((t) => t.completedAt && !t.deletedAt)
+      .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
+      .slice(0, 100)
+    content = done.length ? (
+      <>
+        {renderList(done)}
+        <button
+          type="button"
+          className="btn-secondary task-clear"
+          onClick={() => {
+            if (window.confirm('Move all completed tasks to the bin?')) {
+              tasks.clearCompleted()
+            }
+          }}
+        >
+          <Trash2 size={14} /> Clear completed
+        </button>
+      </>
+    ) : (
+      <div className="task-empty">No completed tasks yet.</div>
+    )
+  } else if (activeView === 'bin') {
+    const binned = store.tasks
+      .filter((t) => t.deletedAt)
+      .sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0))
+    content = binned.length ? (
+      <>
+        {binned.map((t) => (
+          <div key={t.id} className="task-row">
+            <div className="task-main-static">
+              <span className="task-title">{t.title}</span>
+              <span className="task-meta">deleted {timeAgo(t.deletedAt!)}</span>
+            </div>
+            <button
+              type="button"
+              className="icon-btn"
+              title="Restore"
+              aria-label="Restore task"
+              onClick={() => tasks.restoreTask(t.id)}
+            >
+              <RotateCcw size={15} />
+            </button>
+            <button
+              type="button"
+              className="icon-btn trash-danger"
+              title="Delete permanently"
+              aria-label="Delete task permanently"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Permanently delete "${t.title}"? This cannot be undone.`,
+                  )
+                ) {
+                  tasks.deleteForever(t.id)
+                }
+              }}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="btn-secondary task-clear"
+          onClick={() => {
+            if (
+              window.confirm(
+                'Permanently delete everything in the bin? This cannot be undone.',
+              )
+            ) {
+              tasks.emptyTaskBin()
+            }
+          }}
+        >
+          <Trash2 size={14} /> Empty bin
+        </button>
+        <div className="task-empty">
+          Items in the bin are removed automatically after 30 days.
+        </div>
+      </>
+    ) : (
+      <div className="task-empty">The bin is empty.</div>
+    )
+  } else if (project) {
+    const list = sortTasks(openTasks.filter((t) => t.projectId === project.id))
+    content = (
+      <>
+        <div className="task-projhead">
+          <span
+            className="task-project-dot"
+            style={{ background: project.color }}
+          />
+          <strong>{project.name}</strong>
+          <button
+            type="button"
+            className="icon-btn"
+            title="Rename project"
+            aria-label="Rename project"
+            onClick={() => {
+              const name = window.prompt('Rename project', project.name)
+              if (name) tasks.renameProject(project.id, name)
+            }}
+          >
+            <Pencil size={14} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn trash-danger"
+            title="Delete project"
+            aria-label="Delete project"
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Delete "${project.name}"? Its tasks move to the Inbox.`,
+                )
+              ) {
+                tasks.deleteProject(project.id)
+                setView('inbox')
+              }
+            }}
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+        {list.length ? (
+          renderList(list, false)
+        ) : (
+          <div className="task-empty">No tasks in this project.</div>
+        )}
+      </>
+    )
+  }
+
+  return (
+    <aside className="task-panel">
+      <div className="task-header">
+        <span className="task-header-title">
+          <ListTodo size={16} /> Tasks
+        </span>
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={onClose}
+          title="Close"
+          aria-label="Close tasks"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="task-nav">
+        <button
+          type="button"
+          className={`task-pill${activeView === 'inbox' ? ' active' : ''}`}
+          onClick={() => setView('inbox')}
+        >
+          <Inbox size={13} /> Inbox
+          {inboxCount > 0 && <span className="task-count">{inboxCount}</span>}
+        </button>
+        <button
+          type="button"
+          className={`task-pill${activeView === 'today' ? ' active' : ''}`}
+          onClick={() => setView('today')}
+        >
+          <Sun size={13} /> Today
+          {todayCount > 0 && <span className="task-count">{todayCount}</span>}
+        </button>
+        <button
+          type="button"
+          className={`task-pill${activeView === 'upcoming' ? ' active' : ''}`}
+          onClick={() => setView('upcoming')}
+        >
+          <CalendarDays size={13} /> Upcoming
+        </button>
+        <button
+          type="button"
+          className={`task-pill${activeView === 'completed' ? ' active' : ''}`}
+          onClick={() => setView('completed')}
+        >
+          <CheckCircle2 size={13} /> Done
+        </button>
+        <button
+          type="button"
+          className={`task-pill${activeView === 'bin' ? ' active' : ''}`}
+          onClick={() => setView('bin')}
+        >
+          <Trash2 size={13} /> Bin
+        </button>
+      </div>
+
+      <div className="task-projects">
+        {store.projects.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            className={`task-pill${view === `project:${p.id}` ? ' active' : ''}`}
+            onClick={() => setView(`project:${p.id}`)}
+          >
+            <span className="task-project-dot" style={{ background: p.color }} />
+            {p.name}
+            {(() => {
+              const n = openTasks.filter((t) => t.projectId === p.id).length
+              return n > 0 ? <span className="task-count">{n}</span> : null
+            })()}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="task-pill"
+          title="New project"
+          onClick={() => {
+            const name = window.prompt('Project name')
+            if (name?.trim()) setView(`project:${tasks.addProject(name)}`)
+          }}
+        >
+          <Plus size={13} /> Project
+        </button>
+      </div>
+
+      <div className="task-body">
+        {activeView !== 'completed' && activeView !== 'bin' && (
+          <div className="task-quickadd">
+            <Plus size={15} />
+            <input
+              value={quickTitle}
+              onChange={(e) => setQuickTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  quickAdd()
+                }
+              }}
+              placeholder={quickAddPlaceholder}
+              aria-label="Add a task"
+            />
+          </div>
+        )}
+        {content}
+      </div>
+    </aside>
+  )
+}

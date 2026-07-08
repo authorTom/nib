@@ -3,7 +3,7 @@ import { useEditor, EditorContent, BubbleMenu, type Editor as TiptapEditor } fro
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Markdown } from 'tiptap-markdown'
-import { Brain } from 'lucide-react'
+import { Brain, SquareCheckBig } from 'lucide-react'
 import TopBar from './TopBar'
 import Toolbar from './Toolbar'
 import InlineAssistant from './InlineAssistant'
@@ -28,6 +28,8 @@ interface WorkspaceProps {
     selectedText: string,
     signal: AbortSignal,
   ) => Promise<string>
+  /** Capture the current selection as a task. */
+  onAddTask: (text: string) => void
   onEditorReady: (editor: TiptapEditor | null) => void
   theme: Theme
   onToggleTheme: () => void
@@ -45,6 +47,7 @@ export default function Editor({
   onOpenPalette,
   onOpenAssistant,
   onInlineAsk,
+  onAddTask,
   onEditorReady,
   theme,
   onToggleTheme,
@@ -98,6 +101,14 @@ export default function Editor({
     setAiOpen(true)
   }
 
+  const addSelectionTask = () => {
+    if (!editor) return
+    const { from, to } = editor.state.selection
+    if (from === to) return
+    const text = editor.state.doc.textBetween(from, to, ' ')
+    onAddTask(text)
+  }
+
   const replaceSelection = (text: string) => {
     if (!editor || !aiRange) return
     editor.chain().focus().insertContentAt({ from: aiRange.from, to: aiRange.to }, text).run()
@@ -149,6 +160,15 @@ export default function Editor({
                 />
               ) : (
                 <>
+                  <button
+                    type="button"
+                    className="toolbar-btn"
+                    title="Add as task (Ctrl/Cmd+Shift+A)"
+                    aria-label="Add selection as task"
+                    onClick={addSelectionTask}
+                  >
+                    <SquareCheckBig size={16} />
+                  </button>
                   <button
                     type="button"
                     className="toolbar-btn ai-trigger"

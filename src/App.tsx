@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   FileDown,
   FilePlus,
   FolderOpen,
   FolderPlus,
   History,
+  ListTodo,
   Maximize2,
   Minimize2,
   Moon,
@@ -20,7 +21,9 @@ import CommandPalette, { type Command } from './components/CommandPalette'
 import TrashModal from './components/TrashModal'
 import HistoryModal from './components/HistoryModal'
 import AssistantPanel from './components/AssistantPanel'
+import TaskPanel from './components/TaskPanel'
 import { useAssistant } from './ai/useAssistant'
+import { useTasks } from './tasks/useTasks'
 import {
   formatActions,
   headingActions,
@@ -90,8 +93,47 @@ export default function App() {
     setHistoryOpen(true)
   }, [loadHistory])
 
-  // AI assistant (right-side panel)
+  // Task panel docks on the left (beside the note list); assistant on the right.
   const [assistantOpen, setAssistantOpen] = useState(false)
+  const [tasksOpen, setTasksOpen] = useState(false)
+  const toggleAssistant = useCallback(() => setAssistantOpen((o) => !o), [])
+  const toggleTasks = useCallback(() => setTasksOpen((o) => !o), [])
+
+  // Tasks (Todoist-style planner, stored in the vault's .nib/tasks.json)
+  const tasks = useTasks(vaultDir)
+
+  // Transient confirmation toast (e.g. after capturing a task).
+  const [toast, setToast] = useState<string | null>(null)
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const showToast = useCallback((msg: string) => {
+    setToast(msg)
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), 2200)
+  }, [])
+
+  const addTaskFromText = useCallback(
+    (text: string) => {
+      const title = text.replace(/\s+/g, ' ').trim().slice(0, 300)
+      if (!title) return
+      tasks.addTask({
+        title,
+        source: activeId ? { noteId: activeId } : undefined,
+      })
+      showToast('Task added to Inbox')
+    },
+    [tasks, activeId, showToast],
+  )
+
+  /** Capture the editor selection as a task; false if nothing is selected. */
+  const captureSelectionTask = useCallback(() => {
+    if (!editor) return false
+    const { from, to } = editor.state.selection
+    if (from === to) return false
+    addTaskFromText(editor.state.doc.textBetween(from, to, ' '))
+    return true
+  }, [editor, addTaskFromText])
+
+  // AI assistant (right-side panel)
   const getDir = useCallback(() => vaultDir, [vaultDir])
   const onAssistantMutated = useCallback(() => void reload(), [reload])
   const getActivePath = useCallback(() => activeNote?.id ?? null, [activeNote])
@@ -115,6 +157,14 @@ export default function App() {
       ) {
         e.preventDefault()
         toggleFocus()
+      } else if (
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === 'a'
+      ) {
+        // Capture the selection as a task; with no selection, toggle the panel.
+        e.preventDefault()
+        if (!captureSelectionTask()) toggleTasks()
       } else if (e.key === 'Escape') {
         // Close the topmost layer first; only exit focus mode if nothing is open.
         // (The command palette handles its own Escape and stops propagation.)
@@ -125,7 +175,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [toggleFocus, trashOpen, historyOpen])
+  }, [toggleFocus, trashOpen, historyOpen, captureSelectionTask, toggleTasks])
 
   const handleSelect = useCallback(
     (id: string) => {
@@ -231,7 +281,15 @@ export default function App() {
         label: 'Toggle AI assistant',
         icon: Sparkles,
         keywords: 'ai assistant chat llm claude openai',
-        run: () => setAssistantOpen((o) => !o),
+        run: toggleAssistant,
+      },
+      {
+        id: 'toggle-tasks',
+        label: 'Toggle tasks',
+        icon: ListTodo,
+        hint: 'Ctrl/Cmd+Shift+A',
+        keywords: 'todo task planner inbox today upcoming calendar',
+        run: toggleTasks,
       },
     ]
     if (activeNote) {
@@ -282,6 +340,8 @@ export default function App() {
     connect,
     openTrash,
     openHistory,
+    toggleAssistant,
+    toggleTasks,
     activeNote,
     handleDelete,
     editor,
@@ -399,6 +459,14 @@ export default function App() {
         onDelete={handleDelete}
         onSwitchVault={() => void connect()}
         onOpenTrash={() => void openTrash()}
+        onOpenTasks={toggleTasks}
+      />
+
+      <TaskPanel
+        open={tasksOpen}
+        onClose={() => setTasksOpen(false)}
+        tasks={tasks}
+        onOpenNote={handleSelect}
       />
 
       <div
@@ -418,8 +486,9 @@ export default function App() {
           onToggleSidebar={() => setSidebarOpen((o) => !o)}
           onToggleFocus={toggleFocus}
           onOpenPalette={() => setPaletteOpen(true)}
-          onOpenAssistant={() => setAssistantOpen(true)}
+          onOpenAssistant={toggleAssistant}
           onInlineAsk={assistant.complete}
+          onAddTask={addTaskFromText}
           onEditorReady={setEditor}
           theme={theme}
           onToggleTheme={toggleTheme}
@@ -503,6 +572,12 @@ export default function App() {
         onStop={assistant.stop}
         onClear={assistant.clear}
       />
+
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
+      )}
     </div>
   )
 }

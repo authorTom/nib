@@ -8,6 +8,7 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  ListTodo,
   Pencil,
   Plus,
   Search,
@@ -36,6 +37,7 @@ interface SidebarProps {
   onDelete: (id: string) => void
   onSwitchVault: () => void
   onOpenTrash: () => void
+  onOpenTasks: () => void
 }
 
 const ROOT = '__root__'
@@ -80,6 +82,7 @@ export default function Sidebar({
   onDelete,
   onSwitchVault,
   onOpenTrash,
+  onOpenTasks,
 }: SidebarProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverId, setDragOverId] = useState<string | null>(null)
@@ -294,6 +297,15 @@ export default function Sidebar({
           {vaultName ?? 'Notes'}
         </span>
         <div className="sidebar-header-actions">
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={onOpenTasks}
+            title="Tasks (Ctrl/Cmd+Shift+A)"
+            aria-label="Tasks"
+          >
+            <ListTodo size={18} />
+          </button>
           <button
             type="button"
             className="icon-btn"
