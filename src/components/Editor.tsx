@@ -3,7 +3,7 @@ import { useEditor, EditorContent, BubbleMenu, type Editor as TiptapEditor } fro
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Markdown } from 'tiptap-markdown'
-import { Brain, SquareCheckBig } from 'lucide-react'
+import { BookmarkPlus, Brain, SquareCheckBig } from 'lucide-react'
 import TopBar from './TopBar'
 import Toolbar from './Toolbar'
 import InlineAssistant from './InlineAssistant'
@@ -30,6 +30,8 @@ interface WorkspaceProps {
   ) => Promise<string>
   /** Capture the current selection as a task. */
   onAddTask: (text: string) => void
+  /** Capture the current selection as a bookmark. */
+  onAddBookmark: () => void
   onEditorReady: (editor: TiptapEditor | null) => void
   theme: Theme
   onToggleTheme: () => void
@@ -48,6 +50,7 @@ export default function Editor({
   onOpenAssistant,
   onInlineAsk,
   onAddTask,
+  onAddBookmark,
   onEditorReady,
   theme,
   onToggleTheme,
@@ -168,6 +171,15 @@ export default function Editor({
                     onClick={addSelectionTask}
                   >
                     <SquareCheckBig size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    className="toolbar-btn"
+                    title="Bookmark link in selection"
+                    aria-label="Bookmark link in selection"
+                    onClick={onAddBookmark}
+                  >
+                    <BookmarkPlus size={16} />
                   </button>
                   <button
                     type="button"

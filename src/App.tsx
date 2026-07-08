@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  Bookmark,
   FileDown,
   FilePlus,
   FolderOpen,
@@ -24,6 +25,8 @@ import AssistantPanel from './components/AssistantPanel'
 import TaskPanel from './components/TaskPanel'
 import { useAssistant } from './ai/useAssistant'
 import { useTasks } from './tasks/useTasks'
+import { useBookmarks } from './bookmarks/useBookmarks'
+import { domainOf, findUrl, normalizeUrl } from './bookmarks/url'
 import {
   formatActions,
   headingActions,
@@ -93,14 +96,35 @@ export default function App() {
     setHistoryOpen(true)
   }, [loadHistory])
 
-  // Task panel docks on the left (beside the note list); assistant on the right.
+  // Tasks & bookmarks share a tabbed panel docked on the left (beside the
+  // note list); the assistant stays on the right.
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [tasksOpen, setTasksOpen] = useState(false)
+  const [panelTab, setPanelTab] = useState<'tasks' | 'bookmarks'>('tasks')
   const toggleAssistant = useCallback(() => setAssistantOpen((o) => !o), [])
-  const toggleTasks = useCallback(() => setTasksOpen((o) => !o), [])
+  /** Open the panel on a tab; clicking the active tab's button closes it. */
+  const openPanelTab = useCallback(
+    (which: 'tasks' | 'bookmarks') => {
+      if (tasksOpen && panelTab === which) {
+        setTasksOpen(false)
+        return
+      }
+      setPanelTab(which)
+      setTasksOpen(true)
+    },
+    [tasksOpen, panelTab],
+  )
+  const toggleTasks = useCallback(() => openPanelTab('tasks'), [openPanelTab])
+  const toggleBookmarks = useCallback(
+    () => openPanelTab('bookmarks'),
+    [openPanelTab],
+  )
 
   // Tasks (Todoist-style planner, stored in the vault's .nib/tasks.json)
   const tasks = useTasks(vaultDir)
+
+  // Bookmarks (stored in the vault's .nib/bookmarks.json)
+  const bookmarks = useBookmarks(vaultDir)
 
   // Transient confirmation toast (e.g. after capturing a task).
   const [toast, setToast] = useState<string | null>(null)
@@ -132,6 +156,39 @@ export default function App() {
     addTaskFromText(editor.state.doc.textBetween(from, to, ' '))
     return true
   }, [editor, addTaskFromText])
+
+  /** Capture the link in the editor selection as a bookmark. */
+  const captureSelectionBookmark = useCallback(() => {
+    if (!editor) return
+    const { from, to } = editor.state.selection
+    if (from === to) {
+      showToast('Select a link or URL first')
+      return
+    }
+    // Prefer an actual link mark in the selection; fall back to a URL in the text.
+    let href: string | null = null
+    editor.state.doc.nodesBetween(from, to, (node) => {
+      if (href) return false
+      const mark = node.marks.find((m) => m.type.name === 'link')
+      if (mark) href = (mark.attrs as { href?: string }).href ?? null
+      return true
+    })
+    const text = editor.state.doc.textBetween(from, to, ' ').replace(/\s+/g, ' ').trim()
+    const raw = href ?? findUrl(text)
+    const url = raw ? normalizeUrl(raw) : null
+    if (!url) {
+      showToast('No link found in selection')
+      return
+    }
+    const title =
+      text.replace(raw!, '').replace(/\s+/g, ' ').trim().slice(0, 200) || domainOf(url)
+    bookmarks.addBookmark({
+      url,
+      title,
+      source: activeId ? { noteId: activeId } : undefined,
+    })
+    showToast('Bookmark saved')
+  }, [editor, bookmarks, activeId, showToast])
 
   // AI assistant (right-side panel)
   const getDir = useCallback(() => vaultDir, [vaultDir])
@@ -291,6 +348,13 @@ export default function App() {
         keywords: 'todo task planner inbox today upcoming calendar',
         run: toggleTasks,
       },
+      {
+        id: 'toggle-bookmarks',
+        label: 'Toggle bookmarks',
+        icon: Bookmark,
+        keywords: 'bookmark url link page product saved collection',
+        run: toggleBookmarks,
+      },
     ]
     if (activeNote) {
       list.push({
@@ -318,6 +382,13 @@ export default function App() {
 
     // Formatting commands act on the live editor (only when one is mounted).
     if (editor) {
+      list.push({
+        id: 'bookmark-selection',
+        label: 'Save selection as bookmark',
+        icon: Bookmark,
+        keywords: 'bookmark link url save page product',
+        run: captureSelectionBookmark,
+      })
       for (const action of [...headingActions, ...formatActions, ...listActions]) {
         list.push({
           id: `fmt-${action.name}`,
@@ -342,6 +413,8 @@ export default function App() {
     openHistory,
     toggleAssistant,
     toggleTasks,
+    toggleBookmarks,
+    captureSelectionBookmark,
     activeNote,
     handleDelete,
     editor,
@@ -460,12 +533,16 @@ export default function App() {
         onSwitchVault={() => void connect()}
         onOpenTrash={() => void openTrash()}
         onOpenTasks={toggleTasks}
+        onOpenBookmarks={toggleBookmarks}
       />
 
       <TaskPanel
         open={tasksOpen}
+        tab={panelTab}
+        onTabChange={setPanelTab}
         onClose={() => setTasksOpen(false)}
         tasks={tasks}
+        bookmarks={bookmarks}
         onOpenNote={handleSelect}
       />
 
@@ -489,6 +566,7 @@ export default function App() {
           onOpenAssistant={toggleAssistant}
           onInlineAsk={assistant.complete}
           onAddTask={addTaskFromText}
+          onAddBookmark={captureSelectionBookmark}
           onEditorReady={setEditor}
           theme={theme}
           onToggleTheme={toggleTheme}

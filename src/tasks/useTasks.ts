@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EMPTY_STORE, loadTaskStore, saveTaskStore } from './store'
 import { nextOccurrence } from './dates'
+import { PALETTE } from '../lib/palette'
 import type { Priority, Recurrence, Task, TaskStore } from './types'
 
 let counter = 0
@@ -9,11 +10,6 @@ const uid = (prefix: string) =>
 
 /** Binned tasks older than this are purged when the store loads. */
 const TRASH_RETENTION_MS = 30 * 86_400_000
-
-const PROJECT_COLORS = [
-  '#ef4444', '#f59e0b', '#22c55e', '#3b82f6',
-  '#8b5cf6', '#ec4899', '#14b8a6', '#f97316',
-]
 
 export interface AddTaskInput {
   title: string
@@ -190,7 +186,7 @@ export function useTasks(dir: FileSystemDirectoryHandle | null) {
           {
             id,
             name: name.trim() || 'New project',
-            color: PROJECT_COLORS[s.projects.length % PROJECT_COLORS.length],
+            color: PALETTE[s.projects.length % PALETTE.length],
           },
         ],
       }))

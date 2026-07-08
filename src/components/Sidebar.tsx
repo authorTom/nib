@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import type { DragEvent, KeyboardEvent } from 'react'
 import {
+  Bookmark,
   ChevronDown,
   ChevronRight,
   FilePlus,
@@ -38,6 +39,7 @@ interface SidebarProps {
   onSwitchVault: () => void
   onOpenTrash: () => void
   onOpenTasks: () => void
+  onOpenBookmarks: () => void
 }
 
 const ROOT = '__root__'
@@ -83,6 +85,7 @@ export default function Sidebar({
   onSwitchVault,
   onOpenTrash,
   onOpenTasks,
+  onOpenBookmarks,
 }: SidebarProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverId, setDragOverId] = useState<string | null>(null)
@@ -305,6 +308,15 @@ export default function Sidebar({
             aria-label="Tasks"
           >
             <ListTodo size={18} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={onOpenBookmarks}
+            title="Bookmarks"
+            aria-label="Bookmarks"
+          >
+            <Bookmark size={17} />
           </button>
           <button
             type="button"

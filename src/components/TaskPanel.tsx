@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
+  Bookmark,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
@@ -14,17 +15,22 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import BookmarkList from './BookmarkList'
 import MiniCalendar from './MiniCalendar'
 import TaskItem from './TaskItem'
 import { timeAgo } from '../lib/format'
 import { dayHeading, todayStr } from '../tasks/dates'
 import type { Task } from '../tasks/types'
 import type { TasksApi } from '../tasks/useTasks'
+import type { BookmarksApi } from '../bookmarks/useBookmarks'
 
 interface TaskPanelProps {
   open: boolean
+  tab: 'tasks' | 'bookmarks'
+  onTabChange: (tab: 'tasks' | 'bookmarks') => void
   onClose: () => void
   tasks: TasksApi
+  bookmarks: BookmarksApi
   onOpenNote: (noteId: string) => void
 }
 
@@ -40,8 +46,11 @@ function sortTasks(list: Task[]): Task[] {
 
 export default function TaskPanel({
   open,
+  tab,
+  onTabChange,
   onClose,
   tasks,
+  bookmarks,
   onOpenNote,
 }: TaskPanelProps) {
   const [view, setView] = useState('inbox')
@@ -333,20 +342,39 @@ export default function TaskPanel({
   return (
     <aside className="task-panel">
       <div className="task-header">
-        <span className="task-header-title">
-          <ListTodo size={16} /> Tasks
-        </span>
+        <div className="panel-tabs">
+          <button
+            type="button"
+            className={`panel-tab${tab === 'tasks' ? ' active' : ''}`}
+            onClick={() => onTabChange('tasks')}
+          >
+            <ListTodo size={15} /> Tasks
+          </button>
+          <button
+            type="button"
+            className={`panel-tab${tab === 'bookmarks' ? ' active' : ''}`}
+            onClick={() => onTabChange('bookmarks')}
+          >
+            <Bookmark size={15} /> Bookmarks
+          </button>
+        </div>
         <button
           type="button"
           className="icon-btn"
           onClick={onClose}
           title="Close"
-          aria-label="Close tasks"
+          aria-label="Close panel"
         >
           <X size={18} />
         </button>
       </div>
 
+      {tab === 'bookmarks' && (
+        <BookmarkList bookmarks={bookmarks} onOpenNote={onOpenNote} />
+      )}
+
+      {tab === 'tasks' && (
+        <>
       <div className="task-nav">
         <button
           type="button"
@@ -436,6 +464,8 @@ export default function TaskPanel({
         )}
         {content}
       </div>
+        </>
+      )}
     </aside>
   )
 }
