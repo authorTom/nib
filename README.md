@@ -8,6 +8,14 @@ fully responsive layout. And it's **100% local**: everything lives as plain
 files in a folder on your computer, Obsidian-style. No account, no server, no
 lock-in.
 
+![Nib — Markdown notes with a folder tree, live WYSIWYG editing, and a command palette](docs/screenshots/editor.png)
+
+| Task planner — Inbox, Today, Upcoming with a mini calendar | Bookmarks — collections and per-bookmark comments |
+| --- | --- |
+| ![Todoist-style task planner with due dates, priorities, and a month calendar](docs/screenshots/tasks.png) | ![Bookmarks with colored collections and a comment box](docs/screenshots/bookmarks.png) |
+| **AI assistant — search and edit your vault (dark mode)** | **Command palette — everything a keystroke away** |
+| ![AI assistant panel in dark mode](docs/screenshots/assistant.png) | ![Command palette in dark mode](docs/screenshots/palette.png) |
+
 ## Features
 
 - **Live WYSIWYG markdown** — type markdown (`# `, `**bold**`, `- list`) and it
