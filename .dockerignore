@@ -6,5 +6,8 @@ dist
 *.md
 LICENSE
 Dockerfile
-docker-compose.yml
+compose.yaml
 .dockerignore
+.env
+.env.*
+!.env.example
