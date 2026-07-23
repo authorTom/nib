@@ -108,10 +108,35 @@ with Node, then [nginx-unprivileged](https://github.com/nginxinc/docker-nginx-un
 (Alpine, non-root, port **8080**) serves the static files with gzip, immutable
 caching for hashed assets, security headers, and a built-in health check.
 
-### Run the published image
+### Deploy with Compose (recommended)
 
 Every push to `main` publishes a multi-arch (amd64 + arm64) image to GitHub
-Container Registry via the included workflow:
+Container Registry via the included workflow, so deploying is just: grab the
+compose file and bring it up — no source checkout, no local build.
+
+```bash
+# On the server, in an empty deploy directory:
+curl -O https://raw.githubusercontent.com/authorTom/nib/main/compose.yaml
+docker compose up -d          # pulls ghcr.io/authortom/nib:latest
+# → http://localhost:8080
+```
+
+`compose.yaml` pulls the prebuilt image by default — no `build:` needed — which
+is what tools like Dockge and Portainer expect. To change the host port or pin
+a specific image tag, drop a `.env` next to `compose.yaml` (Compose reads it
+automatically):
+
+```bash
+curl -O https://raw.githubusercontent.com/authorTom/nib/main/.env.example
+mv .env.example .env          # then edit NIB_PORT / NIB_IMAGE
+```
+
+There are **no server-side secrets** to configure: Nib is a static SPA and your
+vault, tasks, and AI API keys all live in the browser, not on the server.
+
+### Run the published image directly
+
+Prefer `docker run`? Same image, no compose file:
 
 ```bash
 docker run -d --name nib -p 8080:8080 --restart unless-stopped \
@@ -119,20 +144,23 @@ docker run -d --name nib -p 8080:8080 --restart unless-stopped \
 # → http://localhost:8080
 ```
 
-### Build and run locally
+### Build from source instead of pulling
+
+To build the image yourself rather than pull it, uncomment the `build:` block
+in `compose.yaml` and run with `--build` (requires a full repo checkout):
 
 ```bash
+docker compose up -d --build   # builds locally, serves at http://localhost:8080
+
+# or without compose:
 docker build -t nib .
 docker run -d -p 8080:8080 nib
-
-# or with compose:
-docker compose up -d          # production build at http://localhost:8080
 ```
 
 ### Test environment
 
-The compose file includes a containerised dev server (hot reload, no local
-Node install needed):
+`compose.yaml` also includes a containerised dev server (hot reload, no local
+Node install needed; run from a source checkout):
 
 ```bash
 docker compose --profile dev up dev   # → http://localhost:5173

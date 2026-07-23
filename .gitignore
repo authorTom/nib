@@ -2,6 +2,11 @@ node_modules
 dist
 dist-ssr
 *.local
+
+# Local Compose config — keep the template, ignore real env files.
+.env
+.env.*
+!.env.example
 *.tsbuildinfo
 .DS_Store
 .vscode/*
