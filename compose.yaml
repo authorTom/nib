@@ -8,9 +8,14 @@
 #                                   -> http://localhost:5173
 #
 # Compose automatically reads a sibling ".env" file in this directory for the
-# ${...} values below. Copy .env.example to .env to override the port or pin a
-# specific image tag. There are no server-side secrets: Nib is a static SPA and
-# all user data (vault, tasks, API keys) lives in the browser, not the server.
+# ${...} values below. Copy .env.example to .env to set a vault password,
+# override the port, or pin a specific image tag.
+#
+# By default this runs a *server vault*: your notes are stored as .md files in
+# the "nib-vault" volume below, so Nib works from any device and any browser
+# with nothing kept locally. The app still offers a local folder / in-browser
+# vault as well — you choose on first load. To turn the server vault off
+# entirely, set NIB_SERVER_VAULT=false in .env.
 
 services:
   web:
@@ -28,9 +33,32 @@ services:
       - "${NIB_PORT:-8080}:8080"
     init: true                 # PID 1 signal forwarding + zombie reaping
     restart: unless-stopped
+
+    environment:
+      # Store notes in the container (see the volume below). "false" turns this
+      # off and makes Nib a purely static, browser-storage app again.
+      NIB_SERVER_VAULT: "${NIB_SERVER_VAULT:-true}"
+      # Name shown in the app's sidebar for the server vault.
+      NIB_VAULT_NAME: "${NIB_VAULT_NAME:-My Notes}"
+      # Password for the server vault. UNSET MEANS NO PASSWORD — anyone who can
+      # reach this port can read and write every note. Leave it unset only when
+      # something else already guards the port (a VPN, Tailscale, or a reverse
+      # proxy that authenticates).
+      NIB_PASSWORD: "${NIB_PASSWORD:-}"
+      # Optional: keeps sign-ins valid across restarts. Without it, a restart
+      # generates a new signing key and everyone signs in again.
+      NIB_SESSION_SECRET: "${NIB_SESSION_SECRET:-}"
+
+    volumes:
+      # Your notes. A named volume survives `docker compose down` and image
+      # upgrades; swap in a host path (e.g. ./notes:/data) to keep the Markdown
+      # files somewhere you can open in Obsidian or back up directly — the host
+      # directory must be writable by uid 1000.
+      - nib-vault:/data
+
     healthcheck:
       # Array (exec) form keeps the "://" and ":8080" out of YAML's way - no
-      # colon-space, no quoting gotcha. busybox wget ships in the nginx-alpine
+      # colon-space, no quoting gotcha. busybox wget ships in the node-alpine
       # runtime image (the Dockerfile's own HEALTHCHECK uses it too); the slim
       # image has no curl.
       test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8080/ || exit 1"]
@@ -56,4 +84,5 @@ services:
       - "5173:5173"
 
 volumes:
+  nib-vault:
   node_modules:

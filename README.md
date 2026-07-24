@@ -4,9 +4,12 @@ A clean, minimalist, web-based **knowledge management platform**: Markdown
 notes with live WYSIWYG editing, a Todoist-style task planner, bookmarks with
 collections and comments, and an AI assistant that can search and edit your
 knowledge base — plus a keyboard-driven command palette, light/dark mode, and a
-fully responsive layout. And it's **100% local**: everything lives as plain
-files in a folder on your computer, Obsidian-style. No account, no server, no
-lock-in.
+fully responsive layout.
+
+Everything lives as plain Markdown files, and you choose where: a folder on your
+computer, Obsidian-style, or — if you self-host with Docker — a volume on your
+own server, which makes Nib fully web based and leaves nothing on the device
+you're using. No third-party account, no lock-in.
 
 ![Nib — Markdown notes with a folder tree, live WYSIWYG editing, and a command palette](docs/screenshots/editor.png)
 
@@ -23,7 +26,11 @@ lock-in.
 - **Local folder vault** — pick a folder and Nib reads/writes your notes there as
   real `.md` files. Open the same folder in Obsidian, sync it, or back it up — it's
   just Markdown on disk. (Chromium browsers; Safari/Firefox use private in-browser
-  storage — see [Browser support](#browser-support).)
+  storage — see [Where your notes are stored](#where-your-notes-are-stored).)
+- **Or a server vault** — self-host with Docker and your notes can live in a
+  volume on your own server instead, password protected, reachable from any
+  browser or device with nothing stored locally. See
+  [Server vault](#server-vault-fully-web-based).
 - **Folder tree** — browse nested subfolders, create folders, and **drag-and-drop**
   notes between them.
 - **Command palette** — `Ctrl`/`Cmd`+`K` opens a fast, fully keyboard-driven palette
@@ -69,19 +76,32 @@ lock-in.
 - **Responsive** — desktop, tablet, and mobile (collapsible note drawer).
 - **Export** — download a note as `.md`, or export to PDF via a clean print layout.
 
-## Browser support
+## Where your notes are stored
 
-Nib has two storage backends behind the same vault interface:
+Nib has three storage backends behind the same vault interface. Whichever you
+use, your notes are ordinary `.md` files in an identical folder layout — so a
+vault copied from a disk folder into the server's volume (or the other way
+round) just works. Only the in-browser vault is awkward to copy, since it lives
+in browser-managed storage rather than a folder you can open.
 
-- **Chromium desktop browsers** (Chrome, Edge, Brave, Opera) use the
+- **A folder on your computer** — **Chromium desktop browsers** (Chrome, Edge,
+  Brave, Opera) use the
   [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API):
   you pick a real folder on disk and your notes are ordinary files you can open
   in other apps, sync, or back up.
-- **Safari and Firefox** fall back to the
+- **Privately in your browser** — **Safari and Firefox** fall back to the
   [Origin Private File System](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system):
   notes are still real `.md` files, but they live in private browser storage on
   your device — not in a folder you can browse — because those browsers don't
   implement the folder picker.
+- **On your own server** — when you [self-host with Docker](#server-vault-fully-web-based),
+  notes are stored in a volume on the machine running Nib. The app then works
+  from any browser, including Safari and mobile, and nothing is kept on the
+  device you're using. See [Server vault](#server-vault-fully-web-based).
+
+When a server vault is available, Nib asks which you want on first load; you can
+switch later from the command palette (`Ctrl`/`Cmd`+`K`). Nothing is copied
+between backends automatically.
 
 ## Getting started
 
@@ -95,7 +115,9 @@ npm run preview  # preview the production build
 On first run in a Chromium browser, click **Open folder** and choose a folder to
 use as your vault — Nib remembers it for next time (you may be asked to re-grant
 access on return). In Safari/Firefox, click **Get started** to create the
-private in-browser vault.
+private in-browser vault. If you're running a Docker deployment with the
+[server vault](#server-vault-fully-web-based) enabled, you'll be asked which of
+the two you want instead.
 
 To use the AI assistant, open the panel (sparkles icon) → settings (gear) and
 pick a provider: Anthropic (Claude), OpenAI, OpenRouter, or a local LM Studio
@@ -104,9 +126,21 @@ server. Keys are kept in `localStorage` and sent only to the provider you chose.
 ## Docker
 
 Nib ships as a small production container: a multi-stage build compiles the app
-with Node, then [nginx-unprivileged](https://github.com/nginxinc/docker-nginx-unprivileged)
-(Alpine, non-root, port **8080**) serves the static files with gzip, immutable
-caching for hashed assets, security headers, and a built-in health check.
+with Node, then a dependency-free Node server (Alpine, non-root, port **8080**)
+serves the static files with gzip, immutable caching for hashed assets, security
+headers, and a built-in health check.
+
+That same server can also hold your notes — the
+[server vault](#server-vault-fully-web-based). Two different defaults are worth
+keeping straight:
+
+- **The image** ships with the server vault **off** (`NIB_SERVER_VAULT` unset),
+  so `docker run` with no arguments behaves exactly as earlier versions did: a
+  static file server, notes on your device.
+- **The bundled `compose.yaml` turns it on** and mounts a volume for it, because
+  that's the setup most people deploying Nib to a server actually want.
+
+Either way the app still offers the local backends, and you pick on first load.
 
 ### Deploy with Compose (recommended)
 
@@ -128,18 +162,92 @@ automatically):
 
 ```bash
 curl -O https://raw.githubusercontent.com/authorTom/nib/main/.env.example
-mv .env.example .env          # then edit NIB_PORT / NIB_IMAGE
+mv .env.example .env          # then edit NIB_PORT / NIB_IMAGE / NIB_PASSWORD
 ```
 
-There are **no server-side secrets** to configure: Nib is a static SPA and your
-vault, tasks, and AI API keys all live in the browser, not on the server.
+Because the bundled `compose.yaml` enables the server vault, read the next
+section before putting this anywhere reachable — it starts with no password
+unless you set one.
+
+### Server vault (fully web based)
+
+The server vault stores your notes in the container as ordinary `.md` files in a
+Docker volume, instead of on the device you're using — so you can open Nib from
+a laptop, a phone, or Safari and get the same notes, with nothing kept locally.
+
+`compose.yaml` already enables it. **Set a password before exposing it**:
+
+```bash
+# in .env, next to compose.yaml
+NIB_SERVER_VAULT=true                           # already the compose default
+NIB_PASSWORD=a-long-passphrase                  # blank = no password at all
+NIB_SESSION_SECRET=$(openssl rand -base64 32)   # keeps sign-ins across restarts
+```
+
+```bash
+docker compose up -d          # → http://localhost:8080
+```
+
+On first load Nib asks where notes should live; pick **On this server** and enter
+the password. To switch away later, open the command palette (`Ctrl`/`Cmd`+`K`)
+→ *Sign out of the server vault* (or *Leave the server vault* when no password
+is set). The same palette entry reads *Switch to the server vault* when you're
+using a local one.
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `NIB_SERVER_VAULT` | *(off)* | `true` enables the server vault |
+| `NIB_PASSWORD` | *(none)* | Password for the vault. **Blank means no password at all** |
+| `NIB_VAULT_NAME` | `My Notes` | Name shown in the app |
+| `NIB_SESSION_SECRET` | *(random)* | Fixed cookie-signing key, so restarts don't sign everyone out |
+| `NIB_SESSION_TTL_DAYS` | `30` | How long a sign-in lasts |
+| `NIB_VAULT_DIR` | `/data` | Where the notes live inside the container |
+
+Things worth knowing:
+
+- **One vault, one password.** Nib has no user accounts, so everyone who signs
+  in shares the same notes.
+- **A blank `NIB_PASSWORD` means no protection.** Anyone who can reach the port
+  can read and write every note. That's only reasonable behind a VPN, Tailscale,
+  or a reverse proxy that authenticates — the server logs a warning at startup
+  when it happens.
+- **How signing in works.** The password is checked in constant time and
+  exchanged for a signed, `HttpOnly`, `SameSite=Strict` session cookie — it isn't
+  stored in the browser and isn't sent again after sign-in. Repeated failures
+  from one address are throttled (10 per 15 minutes). Sessions last
+  `NIB_SESSION_TTL_DAYS`; if one expires while the app is open, Nib returns to
+  the unlock screen rather than failing saves silently.
+- **Use HTTPS if it's reachable from anywhere but localhost.** The password
+  crosses the network once at sign-in, and the session cookie on every request
+  after that — both in the clear without TLS. The cookie is marked `Secure`
+  automatically when the request arrives over HTTPS.
+- **Your notes are just files.** Back the volume up with:
+
+  ```bash
+  docker run --rm -v nib-vault:/data -v "$PWD:/out" \
+    alpine tar czf /out/nib-backup.tar.gz -C /data .
+  ```
+
+  That includes the hidden `.nib` (tasks, bookmarks), `.history` and `.trash`
+  folders, so it's a complete vault. Or mount a host directory instead of the
+  named volume (`./notes:/data`, which must be writable by uid 1000) and point
+  Obsidian or your existing backup tool straight at it.
+- **AI keys stay in your browser.** The server never sees them and never proxies
+  AI requests.
 
 ### Run the published image directly
 
 Prefer `docker run`? Same image, no compose file:
 
 ```bash
+# Static app only — notes stay on your device (the previous behaviour):
 docker run -d --name nib -p 8080:8080 --restart unless-stopped \
+  ghcr.io/authortom/nib:latest
+
+# With a server vault:
+docker run -d --name nib -p 8080:8080 --restart unless-stopped \
+  -e NIB_SERVER_VAULT=true -e NIB_PASSWORD=a-long-passphrase \
+  -v nib-vault:/data \
   ghcr.io/authortom/nib:latest
 # → http://localhost:8080
 ```
@@ -166,10 +274,22 @@ Node install needed; run from a source checkout):
 docker compose --profile dev up dev   # → http://localhost:5173
 ```
 
+That profile runs Vite alone, so the server vault isn't reachable from it and
+Nib offers only the local backends. To develop against the server vault with hot
+reload, run the API server next to Vite instead — `npm run dev` proxies `/api`
+to `http://127.0.0.1:8080` (override with `NIB_API_TARGET`):
+
+```bash
+NIB_SERVER_VAULT=true NIB_VAULT_DIR=./vault node server/index.mjs &
+npm run dev                           # → http://localhost:5173
+```
+
 > **HTTPS matters in production.** The File System Access API and OPFS require
 > a secure context — `http://localhost` is fine for local use, but anything
 > served from another host must sit behind TLS (e.g. Caddy, Traefik, or nginx
-> with certificates), or the vault features won't be available.
+> with certificates), or the local vault features won't be available. The server
+> vault works without a secure context, but sends your password and session
+> cookie in the clear, so it needs TLS just as much.
 
 ### Where to store the image
 
@@ -208,16 +328,33 @@ Two good ways to make that automatic:
 
 React · TypeScript · Vite · TipTap + tiptap-markdown (editor) · lucide-react
 (icons) · @anthropic-ai/sdk (Claude; OpenAI-compatible providers via `fetch`).
-The vault on disk (or OPFS) is the source of truth for notes; IndexedDB only
-remembers your chosen folder and caches search embeddings.
+
+The vault — a folder on disk, OPFS, or the server — is the source of truth for
+notes; IndexedDB only remembers your chosen folder and caches search embeddings.
+All three backends sit behind the browser's `FileSystemDirectoryHandle`
+interface, so the rest of the app doesn't know or care which one is in use: the
+server vault is an adapter ([`src/fs/remote.ts`](src/fs/remote.ts)) that
+implements that same interface over HTTP.
+
+The container's server ([`server/`](server/)) is plain Node with **no
+dependencies** — only built-in modules — so there is nothing to audit or patch
+beyond Node itself.
 
 ## Project structure
 
 ```
+server/                    # Container runtime (Node built-ins only, no deps)
+  index.mjs                # HTTP entry: routing, config, graceful shutdown
+  vault-api.mjs            # Server vault file API (tree/read/write/mkdir/delete)
+  auth.mjs                 # Optional password gate + signed session cookies
+  paths.mjs                # Vault path validation (traversal + symlink escapes)
+  static.mjs               # Serves the built SPA: caching, gzip, security headers
+
 src/
-  App.tsx                  # Layout, vault gate, theme, focus mode, modals, palette
+  App.tsx                  # Layout, theme, focus mode, modals, command palette
   fs/
-    vault.ts               # Vault: tree, read/write/move/rename, trash (disk + OPFS)
+    vault.ts               # Vault: tree, read/write/move/rename, trash (all backends)
+    remote.ts              # Server vault: the same handle interface over HTTP
     history.ts             # Version history snapshots (.history folder)
     fs-access.d.ts         # Permission API type augmentation
   db/notes.ts              # IndexedDB store for the chosen folder handle
@@ -237,8 +374,10 @@ src/
     store.ts               # Load/save the bookmark store
   hooks/
     useTheme.ts            # Light/dark, persisted + system default
-    useNotes.ts            # Tree, active note, autosave, move, search, history
+    useNotes.ts            # Tree, active note, autosave, move, search, history,
+                           #   and which storage backend is in use
   components/
+    VaultGate.tsx          # First-run screen: pick a backend, unlock the server vault
     Sidebar.tsx            # Folder tree, drag-and-drop, search
     Editor.tsx             # Editor workspace: TipTap + TopBar + Toolbar + BubbleMenu
     TopBar.tsx             # Title, actions, command-palette launcher

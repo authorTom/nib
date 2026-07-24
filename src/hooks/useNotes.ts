@@ -7,17 +7,24 @@ import {
 } from '../db/notes'
 import * as vault from '../fs/vault'
 import * as history from '../fs/history'
+import * as remote from '../fs/remote'
 import type { TreeNode, TrashItem } from '../fs/vault'
 import type { HistoryItem } from '../fs/history'
+import type { ServerVaultInfo } from '../fs/remote'
 
 export type VaultStatus =
   | 'loading'
   | 'unsupported'
   | 'no-vault'
   | 'needs-permission'
+  | 'needs-login'
   | 'ready'
 
 const ACTIVE_KEY = 'notes-active-id'
+// Which backend the user chose last time: 'server' means the vault lives in the
+// container. Disk and OPFS vaults are already remembered by their own
+// mechanisms (a persisted handle / a flag), so only 'server' is recorded here.
+const BACKEND_KEY = 'notes-vault-backend'
 const SAVE_DEBOUNCE_MS = 500
 // While editing, snapshot the previous on-disk version at most this often.
 const SNAPSHOT_INTERVAL_MS = 5 * 60_000
@@ -33,13 +40,33 @@ export function useNotes() {
 
   const files = useMemo(() => vault.flattenFiles(tree), [tree])
 
+  // Server vault availability, discovered once at startup. null = this build
+  // isn't served by the Nib server, so the option isn't offered at all.
+  const [serverVault, setServerVault] = useState<ServerVaultInfo | null>(null)
+
   // ---- Startup: restore a previously chosen vault ----
   useEffect(() => {
     let cancelled = false
     void (async () => {
       try {
+        // Ask the server first: the server vault works in every browser, so it
+        // can rescue even a browser with no local storage backend at all.
+        const server = await remote.detectServerVault()
+        if (cancelled) return
+        setServerVault(server)
+
+        if (server && localStorage.getItem(BACKEND_KEY) === 'server') {
+          if (server.authRequired && !server.authenticated) {
+            setStatus('needs-login')
+            return
+          }
+          setDir(remote.openServerVault(server.name))
+          setStatus('ready')
+          return
+        }
+
         if (!vault.isVaultSupported()) {
-          setStatus('unsupported')
+          setStatus(server ? 'no-vault' : 'unsupported')
           return
         }
         // Chromium: a previously picked on-disk folder is restored from its
@@ -142,6 +169,12 @@ export function useNotes() {
     } catch {
       // Best effort — continue with the open vault even if it won't be remembered.
     }
+    // A local vault was chosen, so don't reopen the server vault next launch.
+    try {
+      localStorage.removeItem(BACKEND_KEY)
+    } catch {
+      // Storage disabled — the choice just won't be remembered.
+    }
     setTree([])
     setActiveId(null)
     setActiveContent(null)
@@ -154,6 +187,68 @@ export function useNotes() {
     const granted = await vault.ensurePermission(dir, true)
     if (granted) setStatus('ready')
   }, [dir])
+
+  // ---- Server vault ----
+  const openServer = useCallback((info: ServerVaultInfo) => {
+    try {
+      localStorage.setItem(BACKEND_KEY, 'server')
+    } catch {
+      // Storage disabled — the vault still works for this session.
+    }
+    setTree([])
+    setActiveId(null)
+    setActiveContent(null)
+    setDir(remote.openServerVault(info.name))
+    setStatus('ready')
+  }, [])
+
+  const connectServer = useCallback(() => {
+    if (!serverVault) return
+    if (serverVault.authRequired && !serverVault.authenticated) {
+      setStatus('needs-login')
+      return
+    }
+    openServer(serverVault)
+  }, [serverVault, openServer])
+
+  /** Submit the vault password. Returns null on success, or an error message. */
+  const loginServer = useCallback(
+    async (password: string) => {
+      if (!serverVault) return 'The server vault is unavailable.'
+      const error = await remote.loginServerVault(password)
+      if (error) return error
+      const info = { ...serverVault, authenticated: true }
+      setServerVault(info)
+      openServer(info)
+      return null
+    },
+    [serverVault, openServer],
+  )
+
+  const signOutServer = useCallback(async () => {
+    await remote.logoutServerVault()
+    try {
+      localStorage.removeItem(BACKEND_KEY)
+    } catch {
+      // Nothing to clean up.
+    }
+    setServerVault((info) => (info ? { ...info, authenticated: false } : info))
+    setTree([])
+    setActiveId(null)
+    setActiveContent(null)
+    setDir(null)
+    setStatus('no-vault')
+  }, [])
+
+  // A session can expire while the app is open. Bounce back to the login
+  // screen rather than letting every save fail silently.
+  useEffect(() => {
+    remote.setUnauthorizedHandler(() => {
+      setServerVault((info) => (info ? { ...info, authenticated: false } : info))
+      setStatus((current) => (current === 'ready' ? 'needs-login' : current))
+    })
+    return () => remote.setUnauthorizedHandler(null)
+  }, [])
 
   // ---- Debounced content persistence ----
   const pending = useRef<{ id: string; content: string } | null>(null)
@@ -511,6 +606,12 @@ export function useNotes() {
     setActiveId,
     connect,
     reconnect,
+    serverVault,
+    // Is the open vault the server one? Drives the "sign out" affordance.
+    usingServerVault: !!dir && remote.isRemoteHandle(dir),
+    connectServer,
+    loginServer,
+    signOutServer,
     createNote,
     createFolder,
     deleteFolder,
