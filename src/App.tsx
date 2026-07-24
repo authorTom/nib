@@ -11,6 +11,7 @@ import {
   Minimize2,
   Moon,
   Plus,
+  Server,
   Sparkles,
   Sun,
   Trash2,
@@ -23,6 +24,7 @@ import TrashModal from './components/TrashModal'
 import HistoryModal from './components/HistoryModal'
 import AssistantPanel from './components/AssistantPanel'
 import TaskPanel from './components/TaskPanel'
+import VaultGate from './components/VaultGate'
 import { useAssistant } from './ai/useAssistant'
 import { useTasks } from './tasks/useTasks'
 import { useBookmarks } from './bookmarks/useBookmarks'
@@ -52,6 +54,11 @@ export default function App() {
     setActiveId,
     connect,
     reconnect,
+    serverVault,
+    usingServerVault,
+    connectServer,
+    loginServer,
+    signOutServer,
     createNote,
     createFolder,
     deleteFolder,
@@ -321,9 +328,11 @@ export default function App() {
       },
       {
         id: 'open-folder',
-        label: 'Open a different folder',
+        label: supportsDiskPicker()
+          ? 'Open a different folder'
+          : 'Use the vault in this browser',
         icon: FolderOpen,
-        keywords: 'vault switch change',
+        keywords: 'vault switch change local folder',
         run: () => void connect(),
       },
       {
@@ -356,6 +365,23 @@ export default function App() {
         run: toggleBookmarks,
       },
     ]
+
+    // Only offered where a server vault actually exists (Docker deployments
+    // with a volume mounted).
+    if (serverVault) {
+      list.push({
+        id: 'server-vault',
+        label: usingServerVault
+          ? serverVault.authRequired
+            ? 'Sign out of the server vault'
+            : 'Leave the server vault'
+          : 'Switch to the server vault',
+        icon: Server,
+        keywords: 'server vault docker remote sign out log out switch hosted',
+        run: () => (usingServerVault ? void signOutServer() : connectServer()),
+      })
+    }
+
     if (activeNote) {
       list.push({
         id: 'history',
@@ -420,91 +446,20 @@ export default function App() {
     editor,
   ])
 
-  // ---- Vault gate: shown until a folder is connected ----
+  // ---- Vault gate: shown until a vault is connected ----
   if (status !== 'ready') {
     return (
-      <div className="app">
-        <div className="main">
-          <button
-            type="button"
-            className="icon-btn gate-theme"
-            onClick={toggleTheme}
-            aria-label="Toggle theme"
-          >
-            {theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
-          </button>
-          <div className="empty-state">
-            <img className="brand-mark" src="/nib.svg" alt="" width={44} height={44} />
-            <div className="brand">Nib</div>
-            {status === 'loading' && <p>Loading…</p>}
-
-            {status === 'unsupported' && (
-              <>
-                <h2>Browser not supported</h2>
-                <p>
-                  This app needs a browser with file-storage support. Please
-                  update to a recent version of Safari, Firefox, Chrome, or Edge.
-                </p>
-              </>
-            )}
-
-            {status === 'no-vault' && (
-              <>
-                <FolderOpen size={40} />
-                <h2>{supportsDiskPicker() ? 'Choose a notes folder' : 'Create your vault'}</h2>
-                <p>
-                  {supportsDiskPicker() ? (
-                    <>
-                      Pick a folder to use as your vault. Your notes are saved
-                      there as plain Markdown (.md) files — open them in Obsidian,
-                      sync them, or back them up however you like.
-                    </>
-                  ) : (
-                    <>
-                      Your notes are saved privately inside this browser as
-                      Markdown (.md) files. They stay on this device and aren&rsquo;t
-                      uploaded anywhere.
-                    </>
-                  )}
-                </p>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => void connect()}
-                >
-                  <FolderOpen size={18} />
-                  {supportsDiskPicker() ? 'Open folder' : 'Get started'}
-                </button>
-              </>
-            )}
-
-            {status === 'needs-permission' && (
-              <>
-                <FolderOpen size={40} />
-                <h2>Reconnect your vault</h2>
-                <p>
-                  Grant access to{' '}
-                  <strong>{vaultName ?? 'your folder'}</strong> to continue.
-                </p>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => void reconnect()}
-                >
-                  Reconnect
-                </button>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => void connect()}
-                >
-                  Choose a different folder
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+      <VaultGate
+        status={status}
+        theme={theme}
+        toggleTheme={toggleTheme}
+        vaultName={vaultName}
+        connect={() => void connect()}
+        reconnect={() => void reconnect()}
+        serverVault={serverVault}
+        connectServer={connectServer}
+        loginServer={loginServer}
+      />
     )
   }
 
