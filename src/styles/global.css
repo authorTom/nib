@@ -1478,6 +1478,91 @@ button {
   right: 12px;
 }
 
+/* ---------- Vault gate: backend choice & server login ---------- */
+.vault-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 640px;
+  margin-top: 8px;
+}
+
+.vault-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.vault-option:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.vault-option-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.vault-option-desc {
+  font-size: 0.83rem;
+  line-height: 1.45;
+}
+
+.vault-login {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.vault-login-input {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 0.9rem;
+  min-width: 220px;
+}
+
+.vault-login-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.vault-login .btn-primary:disabled {
+  opacity: 0.55;
+}
+
+.vault-login-error {
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 620px) {
+  .vault-options {
+    grid-template-columns: 1fr;
+  }
+
+  .vault-login {
+    flex-direction: column;
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .vault-login-input {
+    min-width: 0;
+  }
+}
+
 /* ---------- Task panel ---------- */
 .task-panel {
   width: 340px;
