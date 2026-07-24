@@ -8,12 +8,31 @@ COPY . .
 RUN npm run build
 
 # ---- Runtime stage -----------------------------------------------------------
-# nginx-unprivileged runs as a non-root user and listens on 8080 — a smaller
-# attack surface than stock nginx, on an Alpine base (~15 MB compressed).
-FROM nginxinc/nginx-unprivileged:stable-alpine
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+# A small Node server (see server/) replaces the previous nginx runtime. It
+# serves the same static bundle with the same cache and security headers, and
+# adds the optional server vault — notes stored as .md files inside the
+# container instead of on the user's device. The server uses only Node built-ins,
+# so there are no runtime dependencies to install.
+FROM node:22-alpine
+ENV NODE_ENV=production
+WORKDIR /app
+
+COPY server ./server
+COPY --from=build /app/dist ./dist
+
+# Where the server vault lives when NIB_SERVER_VAULT=true. Created here (owned
+# by the unprivileged "node" user the server runs as) so a named volume mounted
+# at this path inherits the right ownership. Bind mounts must be writable by
+# uid 1000.
+RUN mkdir -p /data && chown -R node:node /data
+USER node
+
+ENV PORT=8080 \
+    NIB_VAULT_DIR=/data
+VOLUME ["/data"]
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget -q --spider http://127.0.0.1:8080/ || exit 1
+
+CMD ["node", "server/index.mjs"]

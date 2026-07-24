@@ -3,7 +3,7 @@
 // walked recursively, so notes can be organised in nested folders. A note's
 // `id` is its path relative to the vault root (POSIX "/" separators).
 //
-// Two storage backends, sharing the same `FileSystemDirectoryHandle` API:
+// Three storage backends, sharing the same `FileSystemDirectoryHandle` API:
 //   • On-disk folder — Chromium's `showDirectoryPicker` lets the user pick a
 //     real folder, so notes are visible on disk (open them in Obsidian, sync,
 //     back up, etc).
@@ -11,6 +11,17 @@
 //     supported by Safari and Firefox, gives a sandboxed per-origin directory
 //     that exposes the identical handle interface. Notes live privately inside
 //     the browser. This is the fallback when the disk picker isn't available.
+//   • Server vault — when Nib is deployed with Docker and given a volume, the
+//     container holds the .md files and src/fs/remote.ts implements the same
+//     handle interface against its file API. Notes are then reachable from any
+//     device and nothing is stored locally.
+
+import {
+  fetchRemoteTree,
+  isRemoteHandle,
+  readRemoteFile,
+  writeRemoteFile,
+} from './remote'
 
 export interface NoteFile {
   kind: 'file'
@@ -146,6 +157,12 @@ export async function buildTree(
   dir: FileSystemDirectoryHandle,
   prefix = '',
 ): Promise<TreeNode[]> {
+  // Server vault: walking the handle interface would cost one HTTP request per
+  // file, so let the server do the walk and return the finished tree.
+  if (isRemoteHandle(dir)) {
+    return applyPrefix((await fetchRemoteTree(dir)) as TreeNode[], prefix)
+  }
+
   const folders: NoteFolder[] = []
   const files: NoteFile[] = []
 
@@ -173,6 +190,18 @@ export async function buildTree(
   return [...folders, ...files]
 }
 
+/** The server returns ids relative to the folder it walked; re-root them so a
+ *  subfolder walk (e.g. trashFolder) yields vault-relative ids like the
+ *  handle-based path does. */
+function applyPrefix(nodes: TreeNode[], prefix: string): TreeNode[] {
+  if (!prefix) return nodes
+  return nodes.map((node) =>
+    node.kind === 'folder'
+      ? { ...node, id: joinPath(prefix, node.id), children: applyPrefix(node.children, prefix) }
+      : { ...node, id: joinPath(prefix, node.id) },
+  )
+}
+
 export function flattenFiles(nodes: TreeNode[]): NoteFile[] {
   const out: NoteFile[] = []
   for (const node of nodes) {
@@ -186,6 +215,9 @@ export async function readNote(
   dir: FileSystemDirectoryHandle,
   id: string,
 ): Promise<string> {
+  // One request instead of a stat plus a download (see readRemoteFile).
+  if (isRemoteHandle(dir)) return await readRemoteFile(dir, id)
+
   const { parentPath, name } = splitPath(id)
   const parent = await getDirByPath(dir, parentPath)
   const handle = await parent.getFileHandle(name)
@@ -198,6 +230,10 @@ export async function writeNote(
   id: string,
   content: string,
 ): Promise<number> {
+  // The debounced save runs as you type, so it gets a single-request path
+  // rather than write + re-open + download (see writeRemoteFile).
+  if (isRemoteHandle(dir)) return await writeRemoteFile(dir, id, content)
+
   const { parentPath, name } = splitPath(id)
   const parent = await getDirByPath(dir, parentPath, true)
   await writeRaw(parent, name, content)
