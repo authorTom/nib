@@ -187,6 +187,50 @@ export function createVaultApi(root) {
       return { lastModified: Math.round(stat.mtimeMs), size: stat.size }
     },
 
+    /** Read a file as UTF-8. Used by the JSON stores and the search index. */
+    async readText(rel) {
+      const abs = await safePath(rel)
+      return await fs.readFile(abs, 'utf8')
+    },
+
+    /** Read a file's raw bytes — the export archive carries attachments too,
+     *  not just Markdown, so it can't go through readText. */
+    async readBuffer(rel) {
+      const abs = await safePath(rel)
+      return await fs.readFile(abs)
+    },
+
+    /** Write UTF-8 text, creating parent folders. Same atomic rename as
+     *  `writeFile`, so an interrupted write can't truncate an existing note. */
+    async writeText(rel, text) {
+      const abs = await safePath(rel)
+      await fs.mkdir(path.dirname(abs), { recursive: true })
+      const tmp = path.join(
+        path.dirname(abs),
+        `.nib-write-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      )
+      try {
+        await fs.writeFile(tmp, text, 'utf8')
+        await fs.rename(tmp, abs)
+      } catch (err) {
+        await fs.rm(tmp, { force: true })
+        throw err
+      }
+      const stat = await fs.stat(abs)
+      return { lastModified: Math.round(stat.mtimeMs), size: stat.size }
+    },
+
+    /** Does an entry exist? Returns 'file', 'directory', or null. */
+    async exists(rel) {
+      try {
+        const abs = await safePath(rel)
+        const stat = await fs.stat(abs)
+        return stat.isDirectory() ? 'directory' : 'file'
+      } catch {
+        return null
+      }
+    },
+
     async mkdir(rel) {
       const abs = await safePath(rel)
       await fs.mkdir(abs, { recursive: true })

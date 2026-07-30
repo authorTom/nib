@@ -19,14 +19,20 @@
 //   NIB_PASSWORD         password gating the server vault; unset = open access
 //   NIB_SESSION_SECRET   keeps sessions valid across restarts
 //   NIB_SESSION_TTL_DAYS session lifetime                     (default 30)
+//   NIB_API_TOKENS       bearer tokens enabling the /api/v1 machine API
+//   NIB_API_CORS_ORIGINS origins allowed to call /api/v1 from a browser
 
 import http from 'node:http'
 import path from 'node:path'
 import { createReadStream } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { createAuth } from './auth.mjs'
+import { createApiAuth } from './api-auth.mjs'
+import { createApi } from './api.mjs'
+import { createSearch } from './search.mjs'
 import { createStaticHandler, SECURITY_HEADERS } from './static.mjs'
 import { createVaultApi, TooLargeError } from './vault-api.mjs'
+import { createVaultStore } from './vault-store.mjs'
 import { BadPathError } from './paths.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -40,6 +46,23 @@ const VAULT_ENABLED = process.env.NIB_SERVER_VAULT === 'true'
 const auth = createAuth(process.env)
 const vault = createVaultApi(VAULT_DIR)
 const serveStatic = createStaticHandler(PUBLIC_DIR)
+
+// The machine API (/api/v1): off unless tokens are configured, and useless
+// without the server vault, since a local-folder vault never reaches this
+// process at all.
+const apiAuth = createApiAuth(process.env)
+const handleApi = createApi({
+  vault,
+  store: createVaultStore(vault),
+  search: createSearch(vault),
+  auth: apiAuth,
+  vaultEnabled: VAULT_ENABLED,
+  vaultName: VAULT_NAME,
+  corsOrigins: (process.env.NIB_API_CORS_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+})
 
 function sendJson(res, status, body, extraHeaders = {}) {
   const payload = JSON.stringify(body)
@@ -217,6 +240,9 @@ const server = http.createServer((req, res) => {
     }
 
     try {
+      // The machine API comes first: it authenticates by bearer token and must
+      // never be reachable with the app's session cookie.
+      if (await handleApi(req, res, url)) return
       if (await handleServerVaultRoutes(req, res, url)) return
       if (await handleVaultRoutes(req, res, url)) return
 
@@ -285,6 +311,16 @@ server.listen(PORT, () => {
     )
   } else {
     console.log('[nib] server vault disabled (set NIB_SERVER_VAULT=true to enable)')
+  }
+
+  if (!apiAuth.enabled) {
+    console.log('[nib] API disabled (set NIB_API_TOKENS to enable /api/v1)')
+  } else if (!VAULT_ENABLED) {
+    console.log(
+      '[nib] WARNING: API tokens are set but the server vault is off — /api/v1 has no vault to serve',
+    )
+  } else {
+    console.log(`[nib] API enabled at /api/v1 — tokens: ${apiAuth.describe().join(', ')}`)
   }
 })
 

@@ -10,17 +10,20 @@ import {
   Maximize2,
   Minimize2,
   Moon,
+  Package,
   Plus,
   Server,
   Sparkles,
   Sun,
   Trash2,
+  Upload,
 } from 'lucide-react'
 import type { Editor as TiptapEditor } from '@tiptap/react'
 import Sidebar from './components/Sidebar'
 import Editor from './components/Editor'
 import CommandPalette, { type Command } from './components/CommandPalette'
 import TrashModal from './components/TrashModal'
+import ExportModal from './components/ExportModal'
 import HistoryModal from './components/HistoryModal'
 import AssistantPanel from './components/AssistantPanel'
 import TaskPanel from './components/TaskPanel'
@@ -35,9 +38,19 @@ import {
   listActions,
 } from './components/formatActions'
 import { exportToPdf } from './lib/exportPdf'
+import {
+  selectionFromDataTransfer,
+  selectionFromFiles,
+  type ImportSelection,
+} from './lib/importMarkdown'
 import { useTheme } from './hooks/useTheme'
 import { useNotes } from './hooks/useNotes'
 import { supportsDiskPicker } from './fs/vault'
+
+/** `webkitdirectory` is how every browser exposes folder picking, but it isn't
+ *  in React's typed attribute list — assert it once here rather than at each use. */
+const DIRECTORY_PROPS = { webkitdirectory: '', directory: '' } as unknown as
+  React.InputHTMLAttributes<HTMLInputElement>
 
 export default function App() {
   const { theme, toggleTheme } = useTheme()
@@ -67,6 +80,7 @@ export default function App() {
     deleteNote,
     saveContent,
     renameActive,
+    importNotes,
     trashItems,
     loadTrash,
     restoreFromTrash,
@@ -196,6 +210,65 @@ export default function App() {
     })
     showToast('Bookmark saved')
   }, [editor, bookmarks, activeId, showToast])
+
+  // ---- Import / export ----
+  // The file inputs live here rather than in the sidebar so the command palette
+  // can open the same pickers.
+  const fileInput = useRef<HTMLInputElement>(null)
+  const folderInput = useRef<HTMLInputElement>(null)
+  const [exportOpen, setExportOpen] = useState(false)
+
+  const openPicker = useCallback((input: HTMLInputElement | null) => {
+    if (!input) return
+    // Clear first, so picking the same file twice in a row still fires change.
+    input.value = ''
+    input.click()
+  }, [])
+
+  const openImport = useCallback(() => openPicker(fileInput.current), [openPicker])
+  const openFolderImport = useCallback(
+    () => openPicker(folderInput.current),
+    [openPicker],
+  )
+
+  const runImport = useCallback(
+    async (selection: ImportSelection, targetFolder: string) => {
+      if (!selection.items.length) {
+        showToast(
+          selection.skipped.length
+            ? 'No Markdown files in that selection'
+            : 'Nothing to import',
+        )
+        return
+      }
+      const imported = await importNotes(selection.items, targetFolder)
+      const skipped = selection.skipped.length
+      showToast(
+        `Imported ${imported.length} note${imported.length === 1 ? '' : 's'}` +
+          (skipped ? ` · ${skipped} skipped` : ''),
+      )
+      closeSidebar()
+    },
+    [importNotes, showToast, closeSidebar],
+  )
+
+  const handleImportFiles = useCallback(
+    (files: FileList | File[]) => {
+      void (async () => runImport(await selectionFromFiles(files), ''))()
+    },
+    [runImport],
+  )
+
+  // `webkitGetAsEntry` is only valid while the drop event is being dispatched,
+  // so selectionFromDataTransfer reads the entries synchronously before its
+  // first await — don't defer this call.
+  const handleDropFiles = useCallback(
+    (transfer: DataTransfer, targetFolder: string) => {
+      const pending = selectionFromDataTransfer(transfer)
+      void (async () => runImport(await pending, targetFolder))()
+    },
+    [runImport],
+  )
 
   // AI assistant (right-side panel)
   const getDir = useCallback(() => vaultDir, [vaultDir])
@@ -343,6 +416,27 @@ export default function App() {
         run: () => void openTrash(),
       },
       {
+        id: 'import-md',
+        label: 'Import Markdown files',
+        icon: Upload,
+        keywords: 'import upload md markdown add files obsidian migrate',
+        run: openImport,
+      },
+      {
+        id: 'import-folder',
+        label: 'Import a folder of notes',
+        icon: FolderOpen,
+        keywords: 'import upload folder directory bulk obsidian migrate restore',
+        run: openFolderImport,
+      },
+      {
+        id: 'export-zip',
+        label: 'Export knowledge base as ZIP',
+        icon: Package,
+        keywords: 'export download backup zip archive everything vault',
+        run: () => setExportOpen(true),
+      },
+      {
         id: 'toggle-assistant',
         label: 'Toggle AI assistant',
         icon: Sparkles,
@@ -436,6 +530,8 @@ export default function App() {
     toggleTheme,
     connect,
     openTrash,
+    openImport,
+    openFolderImport,
     openHistory,
     toggleAssistant,
     toggleTasks,
@@ -489,6 +585,10 @@ export default function App() {
         onOpenTrash={() => void openTrash()}
         onOpenTasks={toggleTasks}
         onOpenBookmarks={toggleBookmarks}
+        onOpenImport={openImport}
+        onOpenFolderImport={openFolderImport}
+        onDropFiles={handleDropFiles}
+        onOpenExport={() => setExportOpen(true)}
       />
 
       <TaskPanel
@@ -576,6 +676,37 @@ export default function App() {
         onRestore={(name) => void restoreFromTrash(name)}
         onDeleteForever={(name) => void deleteFromTrash(name)}
         onEmpty={() => void emptyTrash()}
+      />
+
+      <ExportModal
+        open={exportOpen}
+        dir={vaultDir}
+        vaultName={vaultName}
+        noteCount={notes.length}
+        onClose={() => setExportOpen(false)}
+      />
+
+      {/* Import pickers: one for loose files, one for a whole folder. Owned
+          here so both the sidebar and the command palette can open them. */}
+      <input
+        ref={fileInput}
+        type="file"
+        multiple
+        accept=".md,.markdown,.txt,.text,text/markdown,text/plain"
+        className="visually-hidden"
+        onChange={(e) => {
+          if (e.target.files?.length) handleImportFiles(e.target.files)
+        }}
+      />
+      <input
+        ref={folderInput}
+        type="file"
+        multiple
+        className="visually-hidden"
+        {...DIRECTORY_PROPS}
+        onChange={(e) => {
+          if (e.target.files?.length) handleImportFiles(e.target.files)
+        }}
       />
 
       <HistoryModal

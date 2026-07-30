@@ -9,16 +9,20 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  FolderUp,
   ListTodo,
+  Package,
   Pencil,
   Plus,
   Search,
   Trash,
   Trash2,
+  Upload,
   X,
 } from 'lucide-react'
 import type { TreeNode } from '../fs/vault'
 import type { SearchResult } from '../hooks/useNotes'
+import { dragHasFiles } from '../lib/importMarkdown'
 
 interface SidebarProps {
   tree: TreeNode[]
@@ -40,6 +44,12 @@ interface SidebarProps {
   onOpenTrash: () => void
   onOpenTasks: () => void
   onOpenBookmarks: () => void
+  /** Open the file picker (App owns the inputs, so the palette can use them too). */
+  onOpenImport: () => void
+  onOpenFolderImport: () => void
+  /** A drop carrying files or folders, destined for `targetFolder`. */
+  onDropFiles: (transfer: DataTransfer, targetFolder: string) => void
+  onOpenExport: () => void
 }
 
 const ROOT = '__root__'
@@ -86,6 +96,10 @@ export default function Sidebar({
   onOpenTrash,
   onOpenTasks,
   onOpenBookmarks,
+  onOpenImport,
+  onOpenFolderImport,
+  onDropFiles,
+  onOpenExport,
 }: SidebarProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverId, setDragOverId] = useState<string | null>(null)
@@ -119,10 +133,19 @@ export default function Sidebar({
     }
   }
 
+  /** A drop is either a note being dragged within the tree, or files from
+   *  outside the browser — the same target folder receives both. */
   const handleDrop = (e: DragEvent, targetFolderPath: string) => {
     e.preventDefault()
     e.stopPropagation()
     setDragOverId(null)
+
+    if (dragHasFiles(e.dataTransfer)) {
+      onDropFiles(e.dataTransfer, targetFolderPath)
+      if (targetFolderPath) expand(targetFolderPath)
+      return
+    }
+
     const id = e.dataTransfer.getData('text/plain')
     if (!id) return
     onMoveNote(id, targetFolderPath)
@@ -380,8 +403,6 @@ export default function Sidebar({
 
       {searchResults !== null ? (
         renderResults(searchResults)
-      ) : tree.length === 0 ? (
-        <div className="sidebar-empty">No notes in this folder yet</div>
       ) : (
         <div
           className={`note-tree${dragOverId === ROOT ? ' drop-target-root' : ''}`}
@@ -389,11 +410,51 @@ export default function Sidebar({
             e.preventDefault()
             setDragOverId(ROOT)
           }}
+          onDragLeave={() => setDragOverId((cur) => (cur === ROOT ? null : cur))}
           onDrop={(e) => handleDrop(e, '')}
         >
-          {renderNodes(tree, 0)}
+          {tree.length === 0 ? (
+            <div className="sidebar-empty">
+              No notes in this folder yet
+              <span className="sidebar-empty-hint">
+                Drop <code>.md</code> files here to import them.
+              </span>
+            </div>
+          ) : (
+            renderNodes(tree, 0)
+          )}
         </div>
       )}
+
+      <div className="sidebar-footer">
+        <button
+          type="button"
+          className="sidebar-footer-btn"
+          onClick={onOpenImport}
+          title="Import Markdown files into this vault"
+        >
+          <Upload size={15} />
+          Import
+        </button>
+        <button
+          type="button"
+          className="sidebar-footer-btn icon-only"
+          onClick={onOpenFolderImport}
+          title="Import a whole folder of notes"
+          aria-label="Import a folder of notes"
+        >
+          <FolderUp size={15} />
+        </button>
+        <button
+          type="button"
+          className="sidebar-footer-btn"
+          onClick={onOpenExport}
+          title="Export the whole knowledge base as a ZIP"
+        >
+          <Package size={15} />
+          Export
+        </button>
+      </div>
     </aside>
   )
 }

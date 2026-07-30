@@ -48,6 +48,12 @@ services:
       # Optional: keeps sign-ins valid across restarts. Without it, a restart
       # generates a new signing key and everyone signs in again.
       NIB_SESSION_SECRET: "${NIB_SESSION_SECRET:-}"
+      # Bearer tokens for the /api/v1 REST API, so an agent or script can read
+      # and write the vault. Blank (the default) keeps the API switched off.
+      # Format: "name:scope:secret" (scope "r" or "rw"), comma-separated.
+      NIB_API_TOKENS: "${NIB_API_TOKENS:-}"
+      # Origins allowed to call /api/v1 from a browser. Rarely needed.
+      NIB_API_CORS_ORIGINS: "${NIB_API_CORS_ORIGINS:-}"
 
     volumes:
       # Your notes. A named volume survives `docker compose down` and image

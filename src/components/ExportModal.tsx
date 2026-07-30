@@ -1,0 +1,144 @@
+import { useState } from 'react'
+import { Archive, Check, Download, X } from 'lucide-react'
+import {
+  exportVaultZip,
+  formatBytes,
+  type ExportProgress,
+} from '../lib/exportVault'
+
+interface ExportModalProps {
+  open: boolean
+  dir: FileSystemDirectoryHandle | null
+  vaultName: string | null
+  noteCount: number
+  onClose: () => void
+}
+
+export default function ExportModal({
+  open,
+  dir,
+  vaultName,
+  noteCount,
+  onClose,
+}: ExportModalProps) {
+  const [includeHidden, setIncludeHidden] = useState(false)
+  const [progress, setProgress] = useState<ExportProgress | null>(null)
+  const [done, setDone] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  if (!open) return null
+
+  const running = progress !== null && done === null && error === null
+
+  const close = () => {
+    if (running) return // don't leave a half-built archive behind
+    setProgress(null)
+    setDone(null)
+    setError(null)
+    onClose()
+  }
+
+  const run = async () => {
+    if (!dir) return
+    setDone(null)
+    setError(null)
+    setProgress({ phase: 'reading', done: 0, total: 0 })
+    try {
+      const result = await exportVaultZip(
+        dir,
+        vaultName ?? 'vault',
+        { includeHidden },
+        setProgress,
+      )
+      setDone(
+        `${result.fileName} — ${result.fileCount} file${
+          result.fileCount === 1 ? '' : 's'
+        }, ${formatBytes(result.bytes)}`,
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The export failed.')
+    } finally {
+      setProgress(null)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={close}>
+      <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <span className="modal-title">Export knowledge base</span>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={close}
+            disabled={running}
+            title="Close"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <p className="modal-note">
+            Downloads everything in <strong>{vaultName ?? 'this vault'}</strong> as a
+            single ZIP — {noteCount} note{noteCount === 1 ? '' : 's'} with their folder
+            structure intact, plus your tasks and bookmarks. Unzip it anywhere, or open
+            it in Obsidian; it's just Markdown.
+          </p>
+
+          <label className="export-option">
+            <input
+              type="checkbox"
+              checked={includeHidden}
+              onChange={(e) => setIncludeHidden(e.target.checked)}
+              disabled={running}
+            />
+            <span>
+              Include the recycle bin and version history
+              <span className="export-option-hint">
+                Makes it a full backup rather than a clean copy. Much larger.
+              </span>
+            </span>
+          </label>
+
+          {running && (
+            <div className="export-status" role="status">
+              {progress.phase === 'reading'
+                ? `Reading notes… (${progress.done})`
+                : `Compressing… (${progress.done} of ${progress.total})`}
+            </div>
+          )}
+
+          {done && (
+            <div className="export-status export-status-done" role="status">
+              <Check size={15} />
+              Saved {done}
+            </div>
+          )}
+
+          {error && (
+            <div className="export-status export-status-error" role="alert">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="modal-footer">
+          <button type="button" className="btn-secondary" onClick={close} disabled={running}>
+            {done ? 'Done' : 'Cancel'}
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => void run()}
+            disabled={running || !dir}
+          >
+            {running ? <Archive size={15} /> : <Download size={15} />}
+            {running ? 'Exporting…' : 'Export ZIP'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -483,6 +483,130 @@ export async function moveNote(
   return joinPath(targetFolderPath, targetName)
 }
 
+// ---- Import ----------------------------------------------------------------
+
+/** One file to bring into the vault, with a path relative to the import root. */
+export interface ImportItem {
+  /** e.g. "Archive/Projects/idea.md" — folders are created as needed. */
+  path: string
+  content: string
+}
+
+export interface ImportedNote {
+  id: string
+  title: string
+  /** True when a name collision meant the note landed under a different name. */
+  renamed: boolean
+}
+
+/**
+ * Sanitize an imported path: drop empty/traversal segments, strip characters
+ * that aren't legal in a file name, and force a `.md` extension on the leaf.
+ * Returns null if nothing usable is left.
+ */
+function sanitizeImportPath(rawPath: string): { folder: string; name: string } | null {
+  const segments = rawPath
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter((s) => s && s !== '.' && s !== '..')
+    // A dotfile segment would land the note somewhere buildTree skips.
+    .map((s) => sanitizeName(s.replace(/^\.+/, ''), ''))
+    .filter(Boolean)
+  if (!segments.length) return null
+
+  const leaf = segments.pop() as string
+  const name = MD_EXT.test(leaf) ? leaf : `${leaf.replace(/\.(markdown|txt|text)$/i, '')}.md`
+  return { folder: segments.join('/'), name }
+}
+
+/**
+ * Write imported files into the vault under `targetFolder`, preserving their
+ * folder structure. Existing notes are never overwritten — a collision gets a
+ * " 1", " 2", … suffix, the same rule note creation uses.
+ */
+export async function importNotes(
+  dir: FileSystemDirectoryHandle,
+  items: ImportItem[],
+  targetFolder = '',
+  onProgress?: (done: number, total: number) => void,
+): Promise<ImportedNote[]> {
+  const imported: ImportedNote[] = []
+  for (const [index, item] of items.entries()) {
+    const parts = sanitizeImportPath(item.path)
+    if (!parts) continue
+
+    const folderPath = joinPath(targetFolder, parts.folder)
+    const parent = await getDirByPath(dir, folderPath, true)
+    const target = await uniqueName(parent, parts.name)
+    await writeRaw(parent, target, item.content)
+
+    imported.push({
+      id: joinPath(folderPath, target),
+      title: baseName(target),
+      renamed: target !== parts.name,
+    })
+    onProgress?.(index + 1, items.length)
+  }
+  return imported
+}
+
+// ---- Export ----------------------------------------------------------------
+
+/** Folder holding Nib's own metadata (tasks, bookmarks) inside the vault. */
+const NIB_DIR = '.nib'
+
+/** A file collected for export, with its vault-relative path. */
+export interface ExportedFile {
+  path: string
+  content: Uint8Array
+  modified: Date
+}
+
+/**
+ * Walk the whole vault collecting file contents for an archive.
+ *
+ * Unlike `buildTree` this keeps everything, not just `.md` files, because an
+ * export is a backup: attachments sitting beside notes should come along.
+ * `includeHidden` decides whether the dot-folders (`.trash`, `.history`) come
+ * too; `.nib` (tasks and bookmarks) is always kept, since without it a restored
+ * vault silently loses the planner.
+ */
+export async function collectFiles(
+  dir: FileSystemDirectoryHandle,
+  options: { includeHidden?: boolean } = {},
+  onFile?: (path: string) => void,
+  prefix = '',
+): Promise<ExportedFile[]> {
+  const out: ExportedFile[] = []
+
+  for await (const entry of asAsyncEntries(dir)) {
+    const isHidden = entry.name.startsWith('.')
+    if (isHidden && !options.includeHidden && entry.name !== NIB_DIR) continue
+    const path = joinPath(prefix, entry.name)
+
+    if (entry.kind === 'directory') {
+      out.push(
+        ...(await collectFiles(
+          entry as FileSystemDirectoryHandle,
+          options,
+          onFile,
+          path,
+        )),
+      )
+    } else {
+      const file = await (entry as FileSystemFileHandle).getFile()
+      out.push({
+        path,
+        content: new Uint8Array(await file.arrayBuffer()),
+        modified: new Date(file.lastModified),
+      })
+      onFile?.(path)
+    }
+  }
+
+  return out
+}
+
 // ---- Recycle bin -----------------------------------------------------------
 // Deleted notes are moved into a hidden ".trash" folder at the vault root
 // (skipped by buildTree). A JSON index records each item's original location
