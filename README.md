@@ -90,8 +90,16 @@ never leave your browser.
   (`Ctrl`/`Cmd`+`Shift`+`F`, or `Esc` to exit).
 - **Light and dark mode** — defaults to your system preference; choice persists.
 - **Responsive** — desktop, tablet and mobile (collapsible note drawer).
-- **Export** — download a note as `.md`, or export to PDF via a clean print
-  layout.
+- **Import** — drop `.md` files, or a whole folder of them, anywhere on the note
+  tree; nested folders keep their structure and nothing is ever overwritten.
+- **Export** — download a note as `.md`, export it to PDF via a clean print
+  layout, or take the whole knowledge base as a ZIP: every note in its folder
+  structure plus your tasks and bookmarks, optionally with the recycle bin and
+  version history for a full backup.
+- **REST API (optional)** — a token-authenticated API at `/api/v1` so an agent
+  or script can search, read, write and organise your knowledge base, described
+  by an OpenAPI 3.1 document the server publishes itself. See
+  [API](#api).
 
 ## Where your notes are stored
 
@@ -216,6 +224,8 @@ Only relevant when the server vault is enabled.
 | `NIB_SESSION_SECRET` | *(random)* | Fixed cookie-signing key, so restarts don't sign everyone out |
 | `NIB_SESSION_TTL_DAYS` | `30` | How long a sign-in lasts |
 | `NIB_VAULT_DIR` | `/data` | Where the notes live inside the container |
+| `NIB_API_TOKENS` | *(none)* | Bearer tokens for the [API](#api). Blank leaves it switched off |
+| `NIB_API_CORS_ORIGINS` | *(none)* | Origins allowed to call `/api/v1` from a browser |
 | `NIB_PORT` | `8080` | Host port (compose only) |
 
 Everything else — theme, AI provider, embeddings — is set in the app itself.
@@ -224,6 +234,97 @@ On first load with a server vault available, pick **On this server** and enter
 the password. To switch away later, open the command palette → *Sign out of the
 server vault* (or *Leave the server vault* when no password is set). The same
 entry reads *Switch to the server vault* when you're using a local one.
+
+## API
+
+Nib can expose the whole knowledge base over HTTP at `/api/v1`, so an agent can
+search your notes, answer from them, write new ones, and file tasks and
+bookmarks — everything the app can do, without a browser.
+
+It is off until you configure a token, and it needs the **server vault**: a
+local folder or in-browser vault lives on your device, where nothing outside
+that browser can reach it.
+
+```bash
+# in .env, next to compose.yaml
+NIB_SERVER_VAULT=true
+NIB_API_TOKENS=hermes:rw:$(openssl rand -base64 32)
+```
+
+```bash
+docker compose up -d
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/v1/health
+```
+
+Tokens are comma-separated. Each is either a bare secret (read-write) or
+`name:scope:secret`, where scope is `r` or `rw`. Give every consumer its own, so
+one can be revoked without disturbing the rest, and use `r` for anything that
+only reads — a read-only token gets `403` on any write.
+
+```bash
+NIB_API_TOKENS=hermes:rw:SECRET_ONE,dashboard:r:SECRET_TWO
+```
+
+Every deployment publishes its own OpenAPI 3.1 description, so most agent
+frameworks can generate tools from it rather than having them written by hand:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/v1/openapi.json
+```
+
+The three calls that matter most for answering questions from a knowledge base:
+
+```bash
+# 1. Find the relevant notes (ranked, with snippets)
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/v1/search?q=latency+budget&limit=5"
+
+# 2. Read one in full
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/v1/notes/Projects/idea.md"
+
+# 3. Write what you learned back
+curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -X POST http://localhost:8080/api/v1/notes \
+  -d '{"title":"Latency review","folder":"Projects","content":"# Latency review\n\n…"}'
+```
+
+### Endpoints
+
+| Method | Path | What it does |
+| --- | --- | --- |
+| `GET` | `/health` | Liveness, and which vault is served |
+| `GET` | `/openapi.json` | This API's OpenAPI 3.1 description |
+| `GET` | `/notes` | List notes (`folder`, `limit`, `offset`, `sort`, `include_content`) |
+| `POST` | `/notes` | Create a note; collisions get a numbered name rather than overwriting |
+| `GET` | `/notes/{path}` | Read a note (`?format=markdown` for the raw file) |
+| `PUT` | `/notes/{path}` | Create or replace a note |
+| `PATCH` | `/notes/{path}` | `append` / `prepend` / `content`, or rename and move |
+| `DELETE` | `/notes/{path}` | To the recycle bin (`?permanent=true` to erase) |
+| `GET` | `/search` | BM25-ranked search with snippets (`q`, `limit`, `folder`) |
+| `GET` | `/folders` | The folder and note tree |
+| `POST` | `/folders` | Create a folder, including missing parents |
+| `DELETE` | `/folders/{path}` | Delete a folder; its notes go to the recycle bin |
+| `POST` | `/import` | Create up to 1000 notes in one call |
+| `GET` | `/export` | The whole vault as a ZIP (`?include_hidden=true` for a full backup) |
+| `GET` `POST` | `/tasks` | List (`filter=inbox\|today\|upcoming\|overdue\|completed`) or add |
+| `GET` `PATCH` `DELETE` | `/tasks/{id}` | Read, edit, complete or bin a task |
+| `GET` `POST` | `/projects` | Task projects |
+| `GET` `POST` | `/bookmarks` | List and save bookmarks |
+| `GET` `PATCH` `DELETE` | `/bookmarks/{id}` | Read, edit or delete a bookmark |
+| `GET` `POST` | `/collections` | Bookmark collections |
+| `GET` | `/history` | Version snapshots (`?path=` for one note) |
+| `GET` | `/history/{snapshot}` | Read a snapshot's content |
+| `POST` | `/history/{snapshot}/restore` | Restore a snapshot over its note |
+| `GET` | `/trash` | What is in the recycle bin |
+| `POST` | `/trash/{trashName}/restore` | Restore a deleted note |
+| `DELETE` | `/trash/{trashName}` | Erase one recycle-bin item |
+
+Paths are vault-relative with `/` separators — `Projects/idea.md` — and the
+`.md` is added if you leave it off. Hidden dot folders are reserved by Nib and
+rejected; `.trash`, `.history` and `.nib` have their own endpoints instead.
+Errors are always `{ "error": { "code": …, "message": … } }` with a matching
+HTTP status.
 
 ## How it's built
 
@@ -245,7 +346,13 @@ beyond Node itself.
 server/                    # Container runtime (Node built-ins only, no deps)
   index.mjs                # HTTP entry: routing, config, graceful shutdown
   vault-api.mjs            # Server vault file API (tree/read/write/mkdir/delete)
+  vault-store.mjs          # Vault semantics server-side: trash, history, tasks…
   auth.mjs                 # Optional password gate + signed session cookies
+  api.mjs                  # /api/v1 REST API for agents and scripts
+  api-auth.mjs             # Bearer tokens for the API, with read-only scopes
+  openapi.mjs              # The API's self-served OpenAPI 3.1 description
+  search.mjs               # BM25 ranking behind GET /api/v1/search
+  zip.mjs                  # Streaming ZIP writer behind GET /api/v1/export
   paths.mjs                # Vault path validation (traversal + symlink escapes)
   static.mjs               # Serves the built SPA: caching, gzip, security headers
 
@@ -258,7 +365,7 @@ src/
   bookmarks/               # Bookmark state and persistence (.nib/bookmarks.json)
   hooks/                   # Theme, notes tree, autosave, move, search, history
   components/              # Sidebar, editor, palette, assistant, panels, modals
-  lib/                     # Markdown and PDF export
+  lib/                     # Markdown, PDF and ZIP export; Markdown import
   styles/                  # theme / global / editor / print CSS
 ```
 
@@ -280,6 +387,19 @@ Relevant when you enable the server vault.
   the unlock screen rather than failing saves silently.
 - **AI keys stay in your browser.** The server never sees them and never proxies
   AI requests.
+- **API tokens are passwords.** A read-write token can read, rewrite and delete
+  every note. Give each consumer its own so one can be revoked alone, and start
+  anything new on a read-only (`r`) token until its behaviour looks sane.
+  Rotating means editing `NIB_API_TOKENS` and restarting; there is no token
+  store to clean up. Failed attempts are throttled (20 per 15 minutes).
+- **The API and the app share a vault, not a login.** `/api/v1` ignores the
+  session cookie and accepts only `Authorization: Bearer`. A browser never
+  attaches that header on its own, so there is no CSRF surface and a stolen
+  session cookie cannot reach the API.
+- **Agent edits are as recoverable as yours.** Deleting through the API moves
+  the note to the same recycle bin, and overwriting snapshots the replaced
+  version into the same history — so a bad agent run is undone from the app's
+  own dialogs rather than from a backup.
 
 > **HTTPS matters in production.** The File System Access API and OPFS require a
 > secure context — `http://localhost` is fine for local use, but anything served
@@ -291,7 +411,18 @@ Relevant when you enable the server vault.
 
 ## Backing up
 
-Your notes are just files:
+The quickest route is in the app: **Export** at the bottom of the sidebar (or
+the command palette) downloads the whole knowledge base as a ZIP, with a tick
+box to include the recycle bin and version history. That works on every backend,
+including the in-browser vault that has no folder to copy. The API can do the
+same thing unattended:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" -OJ \
+  "http://localhost:8080/api/v1/export?include_hidden=true"
+```
+
+Otherwise your notes are just files:
 
 ```bash
 docker run --rm -v nib-vault:/data -v "$PWD:/out" \

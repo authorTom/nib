@@ -8,7 +8,7 @@ import {
 import * as vault from '../fs/vault'
 import * as history from '../fs/history'
 import * as remote from '../fs/remote'
-import type { TreeNode, TrashItem } from '../fs/vault'
+import type { ImportItem, ImportedNote, TreeNode, TrashItem } from '../fs/vault'
 import type { HistoryItem } from '../fs/history'
 import type { ServerVaultInfo } from '../fs/remote'
 
@@ -399,6 +399,27 @@ export function useNotes() {
     [dir, activeId, flush, refresh],
   )
 
+  // ---- Import ----
+  /**
+   * Bring uploaded Markdown files into the vault, preserving any folder
+   * structure they came with. Returns what actually landed, so the caller can
+   * report it — nothing is ever overwritten, so an import is always additive.
+   */
+  const importNotes = useCallback(
+    async (items: ImportItem[], targetFolder = ''): Promise<ImportedNote[]> => {
+      if (!dir || !items.length) return []
+      // Buffered edits first: the import rebuilds the tree, and a pending save
+      // landing afterwards would write against a stale view of it.
+      await flush()
+      const imported = await vault.importNotes(dir, items, targetFolder)
+      await refresh(dir)
+      // Open the first imported note so the upload visibly did something.
+      if (imported.length) setActiveId(imported[0].id)
+      return imported
+    },
+    [dir, flush, refresh],
+  )
+
   // ---- Recycle bin ----
   const [trashItems, setTrashItems] = useState<TrashItem[]>([])
 
@@ -620,6 +641,7 @@ export function useNotes() {
     deleteNote,
     saveContent,
     renameActive,
+    importNotes,
     trashItems,
     loadTrash,
     restoreFromTrash,
