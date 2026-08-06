@@ -1,16 +1,23 @@
 import { useEffect, useState } from 'react'
 import {
+  Columns2,
   FileDown,
   FileText,
   History,
   Maximize2,
   Menu,
   Moon,
+  Package,
   Plus,
   Search,
   Sparkles,
   Sun,
+  Trash,
+  Upload,
 } from 'lucide-react'
+import OverflowMenu, { type MenuItem } from './OverflowMenu'
+import SaveIndicator from './SaveIndicator'
+import type { SaveState } from '../hooks/useNotes'
 import type { Theme } from '../hooks/useTheme'
 
 const IS_MAC =
@@ -29,11 +36,25 @@ interface TopBarProps {
   onToggleFocus: () => void
   onOpenPalette: () => void
   onOpenAssistant: () => void
+  onOpenTrash: () => void
+  onOpenImport: () => void
+  onOpenExport: () => void
+  onToggleSplit: () => void
+  isSplit: boolean
+  saveState: SaveState
+  lastSavedAt: number | null
   theme: Theme
-  onToggleTheme: () => void
+  onToggleTheme: (e: React.MouseEvent) => void
   hasNote: boolean
 }
 
+/**
+ * The chrome above the editor.
+ *
+ * Only the four controls people reach for constantly stay as buttons; the rest
+ * fold into a named menu, which is both less to scan and more discoverable than
+ * a row of unlabelled icons.
+ */
 export default function TopBar({
   title,
   onTitleCommit,
@@ -45,6 +66,13 @@ export default function TopBar({
   onToggleFocus,
   onOpenPalette,
   onOpenAssistant,
+  onOpenTrash,
+  onOpenImport,
+  onOpenExport,
+  onToggleSplit,
+  isSplit,
+  saveState,
+  lastSavedAt,
   theme,
   onToggleTheme,
   hasNote,
@@ -61,6 +89,75 @@ export default function TopBar({
   const commit = () => {
     if (localTitle !== title) onTitleCommit(localTitle)
   }
+
+  const menuItems: MenuItem[] = [
+    {
+      id: 'split',
+      label: isSplit ? 'Close split view' : 'Split editor',
+      Icon: Columns2,
+      hint: `${MOD_KEY} \\`,
+      run: onToggleSplit,
+    },
+    {
+      id: 'focus',
+      label: 'Focus mode',
+      Icon: Maximize2,
+      hint: `${MOD_KEY} ⇧ F`,
+      run: onToggleFocus,
+    },
+    {
+      id: 'theme',
+      label: theme === 'dark' ? 'Light mode' : 'Dark mode',
+      Icon: theme === 'dark' ? Sun : Moon,
+      run: () =>
+        onToggleTheme({
+          clientX: window.innerWidth - 40,
+          clientY: 40,
+        } as React.MouseEvent),
+    },
+    {
+      id: 'history',
+      label: 'Version history',
+      Icon: History,
+      disabled: !hasNote,
+      separated: true,
+      run: onOpenHistory,
+    },
+    {
+      id: 'download-md',
+      label: 'Download a copy (.md)',
+      Icon: FileText,
+      disabled: !hasNote,
+      run: onSaveMarkdown,
+    },
+    {
+      id: 'export-pdf',
+      label: 'Export to PDF',
+      Icon: FileDown,
+      disabled: !hasNote,
+      run: onExportPdf,
+    },
+    {
+      id: 'import',
+      label: 'Import Markdown…',
+      Icon: Upload,
+      separated: true,
+      run: onOpenImport,
+    },
+    {
+      id: 'export-zip',
+      label: 'Export vault as ZIP…',
+      Icon: Package,
+      run: onOpenExport,
+    },
+    {
+      id: 'trash',
+      label: 'Recycle Bin',
+      Icon: Trash,
+      separated: true,
+      run: onOpenTrash,
+    },
+  ]
 
   return (
     <div className="topbar">
@@ -89,6 +186,8 @@ export default function TopBar({
         aria-label="Note title"
       />
 
+      <SaveIndicator state={saveState} lastSavedAt={lastSavedAt} />
+
       <button
         type="button"
         className="palette-trigger"
@@ -97,7 +196,7 @@ export default function TopBar({
         aria-label="Open command palette"
       >
         <Search size={15} />
-        <span className="palette-trigger-label">Search & commands</span>
+        <span className="palette-trigger-label">Search &amp; commands</span>
         <kbd className="palette-trigger-kbd">{MOD_KEY} K</kbd>
       </button>
 
@@ -114,36 +213,6 @@ export default function TopBar({
         <button
           type="button"
           className="icon-btn"
-          onClick={onOpenHistory}
-          disabled={!hasNote}
-          title="Version history"
-          aria-label="Version history"
-        >
-          <History size={19} />
-        </button>
-        <button
-          type="button"
-          className="icon-btn"
-          onClick={onSaveMarkdown}
-          disabled={!hasNote}
-          title="Download a copy (.md)"
-          aria-label="Download a copy as Markdown"
-        >
-          <FileText size={19} />
-        </button>
-        <button
-          type="button"
-          className="icon-btn"
-          onClick={onExportPdf}
-          disabled={!hasNote}
-          title="Export to PDF"
-          aria-label="Export to PDF"
-        >
-          <FileDown size={19} />
-        </button>
-        <button
-          type="button"
-          className="icon-btn"
           onClick={onOpenAssistant}
           title="AI assistant"
           aria-label="AI assistant"
@@ -152,22 +221,14 @@ export default function TopBar({
         </button>
         <button
           type="button"
-          className="icon-btn"
-          onClick={onToggleFocus}
-          title="Focus mode (Ctrl/Cmd+Shift+F)"
-          aria-label="Focus mode"
-        >
-          <Maximize2 size={18} />
-        </button>
-        <button
-          type="button"
-          className="icon-btn"
+          className="icon-btn theme-toggle"
           onClick={onToggleTheme}
           title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
           aria-label="Toggle theme"
         >
           {theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
         </button>
+        <OverflowMenu items={menuItems} />
       </div>
     </div>
   )

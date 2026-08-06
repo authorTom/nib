@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bookmark,
+  Columns2,
   FileDown,
   FilePlus,
   FolderOpen,
@@ -20,11 +21,12 @@ import {
 } from 'lucide-react'
 import type { Editor as TiptapEditor } from '@tiptap/react'
 import Sidebar from './components/Sidebar'
-import Editor from './components/Editor'
+import Workspace from './components/Workspace'
 import CommandPalette, { type Command } from './components/CommandPalette'
 import TrashModal from './components/TrashModal'
 import ExportModal from './components/ExportModal'
 import HistoryModal from './components/HistoryModal'
+import ConfirmDialog, { type ConfirmRequest } from './components/ConfirmDialog'
 import AssistantPanel from './components/AssistantPanel'
 import TaskPanel from './components/TaskPanel'
 import VaultGate from './components/VaultGate'
@@ -33,11 +35,14 @@ import { useTasks } from './tasks/useTasks'
 import { useBookmarks } from './bookmarks/useBookmarks'
 import { domainOf, findUrl, normalizeUrl } from './bookmarks/url'
 import {
+  blockActions,
   formatActions,
   headingActions,
   listActions,
 } from './components/formatActions'
 import { exportToPdf } from './lib/exportPdf'
+import { downloadMarkdown } from './lib/exportMarkdown'
+import { serialize } from './editor/markdown'
 import {
   selectionFromDataTransfer,
   selectionFromFiles,
@@ -45,6 +50,10 @@ import {
 } from './lib/importMarkdown'
 import { useTheme } from './hooks/useTheme'
 import { useNotes } from './hooks/useNotes'
+import { useBacklinks } from './hooks/useBacklinks'
+import { useResizable } from './hooks/useResizable'
+import { useDeferredUnmount } from './hooks/useDeferredUnmount'
+import { useEnterExit } from './hooks/useEnterExit'
 import { supportsDiskPicker } from './fs/vault'
 
 /** `webkitdirectory` is how every browser exposes folder picking, but it isn't
@@ -64,7 +73,22 @@ export default function App() {
     activeNote,
     activeId,
     activeContent,
-    setActiveId,
+    openNotes,
+    openNote,
+    openNoteInPane,
+    closeTab,
+    closeOtherTabs,
+    moveTab,
+    splitId,
+    splitNote,
+    splitContent,
+    setSplitId,
+    toggleSplit,
+    focusedPane,
+    setFocusedPane,
+    saveState,
+    lastSavedAt,
+    dirtyIds,
     connect,
     reconnect,
     serverVault,
@@ -79,7 +103,7 @@ export default function App() {
     moveNote,
     deleteNote,
     saveContent,
-    renameActive,
+    renameNote,
     importNotes,
     trashItems,
     loadTrash,
@@ -117,6 +141,10 @@ export default function App() {
     setHistoryOpen(true)
   }, [loadHistory])
 
+  // A single confirmation slot: any caller raises one by describing it, rather
+  // than reaching for window.confirm.
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null)
+
   // Tasks & bookmarks share a tabbed panel docked on the left (beside the
   // note list); the assistant stays on the right.
   const [assistantOpen, setAssistantOpen] = useState(false)
@@ -141,11 +169,44 @@ export default function App() {
     [openPanelTab],
   )
 
+  // Docked panels stay mounted for the length of their slide-out, so closing
+  // one animates instead of vanishing. Matches --dur-slow.
+  const PANEL_EXIT_MS = 260
+  const renderTasks = useDeferredUnmount(tasksOpen, PANEL_EXIT_MS)
+  const renderAssistant = useDeferredUnmount(assistantOpen, PANEL_EXIT_MS)
+
+  // ---- Resizable docked panels ----
+  const sidebarResize = useResizable({
+    storageKey: 'nib-width-sidebar',
+    defaultWidth: 280,
+    min: 200,
+    max: 520,
+    edge: 'right',
+  })
+  const taskResize = useResizable({
+    storageKey: 'nib-width-tasks',
+    defaultWidth: 340,
+    min: 260,
+    max: 560,
+    edge: 'right',
+  })
+  const assistantResize = useResizable({
+    storageKey: 'nib-width-assistant',
+    defaultWidth: 380,
+    min: 300,
+    max: 640,
+    edge: 'left',
+  })
+
   // Tasks (Todoist-style planner, stored in the vault's .nib/tasks.json)
   const tasks = useTasks(vaultDir)
 
   // Bookmarks (stored in the vault's .nib/bookmarks.json)
   const bookmarks = useBookmarks(vaultDir)
+
+  // Wikilink backlinks, one index per pane.
+  const backlinks = useBacklinks(vaultDir, notes, activeId)
+  const splitBacklinks = useBacklinks(vaultDir, notes, splitId)
 
   // Transient confirmation toast (e.g. after capturing a task).
   const [toast, setToast] = useState<string | null>(null)
@@ -155,6 +216,12 @@ export default function App() {
     if (toastTimer.current) clearTimeout(toastTimer.current)
     toastTimer.current = setTimeout(() => setToast(null), 2200)
   }, [])
+  // Held past the dismissal so the toast can animate back down.
+  const toastAnim = useEnterExit(toast !== null, 180)
+  const [toastText, setToastText] = useState('')
+  useEffect(() => {
+    if (toast) setToastText(toast)
+  }, [toast])
 
   const addTaskFromText = useCallback(
     (text: string) => {
@@ -281,30 +348,30 @@ export default function App() {
   })
 
   // Keyboard shortcuts: Ctrl/Cmd+K opens the palette,
-  // Ctrl/Cmd+Shift+F toggles focus, Escape exits focus.
+  // Ctrl/Cmd+Shift+F toggles focus, Ctrl/Cmd+\ splits, Escape exits focus.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      const mod = e.ctrlKey || e.metaKey
+      if (mod && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setPaletteOpen((o) => !o)
-      } else if (
-        (e.ctrlKey || e.metaKey) &&
-        e.shiftKey &&
-        e.key.toLowerCase() === 'f'
-      ) {
+      } else if (mod && e.key === '\\') {
+        e.preventDefault()
+        toggleSplit()
+      } else if (mod && e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault()
         toggleFocus()
-      } else if (
-        (e.ctrlKey || e.metaKey) &&
-        e.shiftKey &&
-        e.key.toLowerCase() === 'a'
-      ) {
+      } else if (mod && e.shiftKey && e.key.toLowerCase() === 'a') {
         // Capture the selection as a task; with no selection, toggle the panel.
         e.preventDefault()
         if (!captureSelectionTask()) toggleTasks()
+      } else if (mod && e.key.toLowerCase() === 'w') {
+        // Close the focused tab, as in a browser.
+        e.preventDefault()
+        if (activeId) closeTab(activeId)
       } else if (e.key === 'Escape') {
         // Close the topmost layer first; only exit focus mode if nothing is open.
-        // (The command palette handles its own Escape and stops propagation.)
+        // (The command palette and confirm dialog handle their own Escape.)
         if (historyOpen) setHistoryOpen(false)
         else if (trashOpen) setTrashOpen(false)
         else setFocusMode(false)
@@ -312,14 +379,30 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [toggleFocus, trashOpen, historyOpen, captureSelectionTask, toggleTasks])
+  }, [
+    toggleFocus,
+    toggleSplit,
+    trashOpen,
+    historyOpen,
+    captureSelectionTask,
+    toggleTasks,
+    closeTab,
+    activeId,
+  ])
 
+  /** Open a note from the sidebar, palette, or a wikilink. */
   const handleSelect = useCallback(
     (id: string) => {
-      setActiveId(id)
+      openNote(id)
       closeSidebar()
     },
-    [setActiveId, closeSidebar],
+    [openNote, closeSidebar],
+  )
+
+  /** A wikilink click lands in whichever pane the reader was already in. */
+  const handleOpenInPane = useCallback(
+    (id: string) => openNoteInPane(id, focusedPane),
+    [openNoteInPane, focusedPane],
   )
 
   // Deleting moves the note to the recycle bin (recoverable), so no confirm.
@@ -331,10 +414,8 @@ export default function App() {
   )
 
   const handleCreateFolder = useCallback(
-    async (parentPath: string) => {
-      const name = window.prompt('New folder name', 'New Folder')
-      if (!name) return undefined
-      return await createFolder(parentPath, name)
+    (parentPath: string, name: string) => {
+      void createFolder(parentPath, name)
     },
     [createFolder],
   )
@@ -344,28 +425,35 @@ export default function App() {
       const name = folderPath.includes('/')
         ? folderPath.slice(folderPath.lastIndexOf('/') + 1)
         : folderPath
-      if (
-        window.confirm(
-          `Delete the folder "${name}"? Its notes will be moved to the Recycle Bin.`,
-        )
-      ) {
-        void deleteFolder(folderPath)
-      }
+      setConfirmRequest({
+        title: `Delete “${name}”?`,
+        body: 'Its notes move to the Recycle Bin, where you can restore them.',
+        confirmLabel: 'Delete folder',
+        danger: true,
+        onConfirm: () => void deleteFolder(folderPath),
+      })
     },
     [deleteFolder],
   )
 
   const handleRenameFolder = useCallback(
-    (folderPath: string) => {
-      const current = folderPath.includes('/')
-        ? folderPath.slice(folderPath.lastIndexOf('/') + 1)
-        : folderPath
-      const name = window.prompt('Rename folder', current)
-      if (!name || name === current) return
-      void renameFolder(folderPath, name)
+    (folderPath: string, newName: string) => {
+      void renameFolder(folderPath, newName)
     },
     [renameFolder],
   )
+
+  const handleRenameNote = useCallback(
+    (id: string, newTitle: string) => {
+      void renameNote(id, newTitle)
+    },
+    [renameNote],
+  )
+
+  const handleSaveMarkdown = useCallback(() => {
+    if (!editor || !activeNote) return
+    downloadMarkdown(activeNote.title, serialize(editor))
+  }, [editor, activeNote])
 
   // ---- Command palette actions ----
   const commands = useMemo<Command[]>(() => {
@@ -382,7 +470,16 @@ export default function App() {
         label: 'New folder',
         icon: FolderPlus,
         keywords: 'create directory',
-        run: () => void handleCreateFolder(''),
+        // Naming happens inline in the tree, so open the sidebar to show it.
+        run: () => setSidebarOpen(true),
+      },
+      {
+        id: 'split',
+        label: splitId ? 'Close split view' : 'Split editor',
+        icon: Columns2,
+        hint: 'Ctrl/Cmd+\\',
+        keywords: 'split pane side by side compare two',
+        run: toggleSplit,
       },
       {
         id: 'focus',
@@ -397,7 +494,7 @@ export default function App() {
         label: theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode',
         icon: theme === 'dark' ? Sun : Moon,
         keywords: 'theme appearance dark light',
-        run: toggleTheme,
+        run: () => toggleTheme(),
       },
       {
         id: 'open-folder',
@@ -509,7 +606,12 @@ export default function App() {
         keywords: 'bookmark link url save page product',
         run: captureSelectionBookmark,
       })
-      for (const action of [...headingActions, ...formatActions, ...listActions]) {
+      for (const action of [
+        ...headingActions,
+        ...formatActions,
+        ...listActions,
+        ...blockActions,
+      ]) {
         list.push({
           id: `fmt-${action.name}`,
           label: action.label,
@@ -524,7 +626,8 @@ export default function App() {
     return list
   }, [
     createNote,
-    handleCreateFolder,
+    toggleSplit,
+    splitId,
     toggleFocus,
     theme,
     toggleTheme,
@@ -540,6 +643,10 @@ export default function App() {
     activeNote,
     handleDelete,
     editor,
+    serverVault,
+    usingServerVault,
+    connectServer,
+    signOutServer,
   ])
 
   // ---- Vault gate: shown until a vault is connected ----
@@ -548,7 +655,7 @@ export default function App() {
       <VaultGate
         status={status}
         theme={theme}
-        toggleTheme={toggleTheme}
+        toggleTheme={() => toggleTheme()}
         vaultName={vaultName}
         connect={() => void connect()}
         reconnect={() => void reconnect()}
@@ -562,92 +669,149 @@ export default function App() {
   // ---- Ready: full app ----
   return (
     <div className={`app${focusMode ? ' focus-mode' : ''}`}>
-      <Sidebar
-        tree={tree}
-        activeId={activeId}
-        open={sidebarOpen}
-        vaultName={vaultName}
-        query={query}
-        searchResults={searchResults}
-        onQueryChange={setQuery}
-        onSelect={handleSelect}
-        onCreate={() => {
-          void createNote()
-          closeSidebar()
-        }}
-        onCreateInFolder={(folderPath) => void createNote(folderPath)}
-        onCreateFolder={handleCreateFolder}
-        onDeleteFolder={handleDeleteFolder}
-        onRenameFolder={handleRenameFolder}
-        onMoveNote={(id, target) => void moveNote(id, target)}
-        onDelete={handleDelete}
-        onSwitchVault={() => void connect()}
-        onOpenTrash={() => void openTrash()}
-        onOpenTasks={toggleTasks}
-        onOpenBookmarks={toggleBookmarks}
-        onOpenImport={openImport}
-        onOpenFolderImport={openFolderImport}
-        onDropFiles={handleDropFiles}
-        onOpenExport={() => setExportOpen(true)}
-      />
+      <div
+        className="sidebar-dock"
+        style={{ width: sidebarResize.width }}
+      >
+        <Sidebar
+          tree={tree}
+          activeId={activeId}
+          open={sidebarOpen}
+          vaultName={vaultName}
+          query={query}
+          searchResults={searchResults}
+          onQueryChange={setQuery}
+          onSelect={handleSelect}
+          onCreate={() => {
+            void createNote()
+            closeSidebar()
+          }}
+          onCreateInFolder={(folderPath) => void createNote(folderPath)}
+          onCreateFolder={handleCreateFolder}
+          onDeleteFolder={handleDeleteFolder}
+          onRenameFolder={handleRenameFolder}
+          onRenameNote={handleRenameNote}
+          onMoveNote={(id, target) => void moveNote(id, target)}
+          onDelete={handleDelete}
+          onSwitchVault={() => void connect()}
+          onOpenTrash={() => void openTrash()}
+          onOpenTasks={toggleTasks}
+          onOpenBookmarks={toggleBookmarks}
+          onOpenImport={openImport}
+          onOpenFolderImport={openFolderImport}
+          onDropFiles={handleDropFiles}
+          onOpenExport={() => setExportOpen(true)}
+        />
+        <div {...sidebarResize.handleProps} aria-label="Resize note list" />
+      </div>
 
-      <TaskPanel
-        open={tasksOpen}
-        tab={panelTab}
-        onTabChange={setPanelTab}
-        onClose={() => setTasksOpen(false)}
-        tasks={tasks}
-        bookmarks={bookmarks}
-        onOpenNote={handleSelect}
-      />
+      <div
+        className={`task-dock${tasksOpen ? ' open' : ''}`}
+        style={{ width: tasksOpen ? taskResize.width : 0 }}
+      >
+        <TaskPanel
+          open={renderTasks}
+          tab={panelTab}
+          onTabChange={setPanelTab}
+          onClose={() => setTasksOpen(false)}
+          tasks={tasks}
+          bookmarks={bookmarks}
+          onOpenNote={handleSelect}
+        />
+        {tasksOpen && (
+          <div {...taskResize.handleProps} aria-label="Resize tasks panel" />
+        )}
+      </div>
 
       <div
         className={`scrim${sidebarOpen ? ' show' : ''}`}
         onClick={closeSidebar}
       />
 
-      {activeNote && activeContent !== null ? (
-        <Editor
-          key={activeNote.id}
-          title={activeNote.title}
-          content={activeContent}
-          onContentChange={saveContent}
-          onTitleCommit={(title) => void renameActive(title)}
-          onNew={() => void createNote()}
-          onOpenHistory={() => void openHistory()}
-          onToggleSidebar={() => setSidebarOpen((o) => !o)}
-          onToggleFocus={toggleFocus}
-          onOpenPalette={() => setPaletteOpen(true)}
-          onOpenAssistant={toggleAssistant}
-          onInlineAsk={assistant.complete}
-          onAddTask={addTaskFromText}
-          onAddBookmark={captureSelectionBookmark}
-          onEditorReady={setEditor}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-        />
-      ) : (
-        <div className="main">
+      <Workspace
+        notes={notes}
+        openNotes={openNotes}
+        activeNote={activeNote}
+        activeContent={activeContent}
+        splitNote={splitNote}
+        splitContent={splitContent}
+        focusedPane={focusedPane}
+        onFocusPane={setFocusedPane}
+        backlinks={backlinks}
+        splitBacklinks={splitBacklinks}
+        saveState={saveState}
+        lastSavedAt={lastSavedAt}
+        isDirty={(id) => dirtyIds.includes(id)}
+        onSelectTab={openNote}
+        onCloseTab={closeTab}
+        onCloseOtherTabs={closeOtherTabs}
+        onReorderTabs={moveTab}
+        onToggleSplit={toggleSplit}
+        onCloseSplit={() => setSplitId(null)}
+        onContentChange={saveContent}
+        onOpenNote={handleOpenInPane}
+        onTitleCommit={handleRenameNote}
+        onNew={() => void createNote()}
+        onSaveMarkdown={handleSaveMarkdown}
+        onExportPdf={() => activeNote && exportToPdf(activeNote.title)}
+        onOpenHistory={() => void openHistory()}
+        onToggleSidebar={() => setSidebarOpen((o) => !o)}
+        onToggleFocus={toggleFocus}
+        onOpenPalette={() => setPaletteOpen(true)}
+        onOpenAssistant={toggleAssistant}
+        onOpenTrash={() => void openTrash()}
+        onOpenImport={openImport}
+        onOpenExport={() => setExportOpen(true)}
+        onInlineAsk={assistant.complete}
+        onAddTask={addTaskFromText}
+        onAddBookmark={captureSelectionBookmark}
+        onFocusedEditorChange={setEditor}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
+
+      {notes.length === 0 && (
+        <div className="empty-overlay">
           <div className="empty-state">
-            {activeNote ? (
-              <p>Loading…</p>
-            ) : (
-              <>
-                <h2>No note selected</h2>
-                <p>Create a note to start writing.</p>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => void createNote()}
-                >
-                  <FilePlus size={18} />
-                  New note
-                </button>
-              </>
-            )}
+            <h2>No notes yet</h2>
+            <p>Create one to start writing, or drop Markdown files in the list.</p>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => void createNote()}
+            >
+              <FilePlus size={18} />
+              New note
+            </button>
           </div>
         </div>
       )}
+
+      <div
+        className={`assistant-dock${assistantOpen ? ' open' : ''}`}
+        style={{ width: assistantOpen ? assistantResize.width : 0 }}
+      >
+        {assistantOpen && (
+          <div {...assistantResize.handleProps} aria-label="Resize assistant panel" />
+        )}
+        <AssistantPanel
+          open={renderAssistant}
+          onClose={() => setAssistantOpen(false)}
+          filePaths={notes.map((n) => n.id)}
+          activePath={activeNote?.id ?? null}
+          settings={assistant.settings}
+          onUpdateSettings={assistant.updateSettings}
+          messages={assistant.messages}
+          status={assistant.status}
+          pending={assistant.pending}
+          onSend={assistant.send}
+          onApprove={assistant.approve}
+          onReject={assistant.reject}
+          onApproveAll={assistant.approveAll}
+          onStop={assistant.stop}
+          onClear={assistant.clear}
+        />
+      </div>
 
       {focusMode && (
         <button
@@ -719,27 +883,17 @@ export default function App() {
         loadContent={previewVersion}
       />
 
-      <AssistantPanel
-        open={assistantOpen}
-        onClose={() => setAssistantOpen(false)}
-        filePaths={notes.map((n) => n.id)}
-        activePath={activeNote?.id ?? null}
-        settings={assistant.settings}
-        onUpdateSettings={assistant.updateSettings}
-        messages={assistant.messages}
-        status={assistant.status}
-        pending={assistant.pending}
-        onSend={assistant.send}
-        onApprove={assistant.approve}
-        onReject={assistant.reject}
-        onApproveAll={assistant.approveAll}
-        onStop={assistant.stop}
-        onClear={assistant.clear}
+      <ConfirmDialog
+        request={confirmRequest}
+        onClose={() => setConfirmRequest(null)}
       />
 
-      {toast && (
-        <div className="toast" role="status">
-          {toast}
+      {toastAnim.render && (
+        <div
+          className={`toast${toastAnim.entered ? ' entered' : ''}`}
+          role="status"
+        >
+          {toastText}
         </div>
       )}
     </div>

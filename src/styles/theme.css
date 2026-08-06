@@ -1,4 +1,15 @@
 :root {
+  /* ---- Motion ----
+   * One easing family, three durations. Anything that moves in Nib picks from
+   * these so the whole app decelerates the same way. Keep animations to
+   * transform and opacity — those don't hit layout. */
+  --dur-fast: 120ms; /* hover, press, icon state */
+  --dur-base: 180ms; /* popovers, cross-fades, note switches */
+  --dur-slow: 260ms; /* panels opening, layout shifts */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* the house curve */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* confirmations only */
+
   /* Light theme (default) */
   --bg: #ffffff;
   --bg-elevated: #f7f7f8;

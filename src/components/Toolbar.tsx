@@ -1,5 +1,6 @@
 import type { Editor } from '@tiptap/react'
 import {
+  blockActions,
   formatActions,
   headingActions,
   listActions,
@@ -40,6 +41,10 @@ export default function Toolbar({ editor }: { editor: Editor }) {
       ))}
       <span className="toolbar-divider" />
       {listActions.map((a) => (
+        <ActionButton key={a.name} editor={editor} action={a} />
+      ))}
+      <span className="toolbar-divider" />
+      {blockActions.map((a) => (
         <ActionButton key={a.name} editor={editor} action={a} />
       ))}
     </div>

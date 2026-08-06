@@ -7,9 +7,12 @@ import {
   Heading2,
   Heading3,
   List,
+  ListChecks,
   ListOrdered,
   Quote,
   Code,
+  SquareCode,
+  Table as TableIcon,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -92,10 +95,45 @@ export const listActions: FormatAction[] = [
     isActive: (e) => e.isActive('orderedList'),
   },
   {
+    name: 'taskList',
+    label: 'Checklist',
+    Icon: ListChecks,
+    run: (e) => e.chain().focus().toggleTaskList().run(),
+    isActive: (e) => e.isActive('taskList'),
+  },
+  {
     name: 'blockquote',
     label: 'Quote',
     Icon: Quote,
     run: (e) => e.chain().focus().toggleBlockquote().run(),
     isActive: (e) => e.isActive('blockquote'),
+  },
+]
+
+/**
+ * Blocks with no markdown shorthand to type.
+ *
+ * A checklist has `[] `, a heading has `# ` — a table has nothing, so without a
+ * control there is no way to reach one at all.
+ */
+export const blockActions: FormatAction[] = [
+  {
+    name: 'codeBlock',
+    label: 'Code block',
+    Icon: SquareCode,
+    run: (e) => e.chain().focus().toggleCodeBlock().run(),
+    isActive: (e) => e.isActive('codeBlock'),
+  },
+  {
+    name: 'table',
+    label: 'Insert table',
+    Icon: TableIcon,
+    run: (e) =>
+      e
+        .chain()
+        .focus()
+        .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+        .run(),
+    isActive: (e) => e.isActive('table'),
   },
 ]
