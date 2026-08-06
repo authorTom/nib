@@ -8,9 +8,16 @@ import {
 import * as vault from '../fs/vault'
 import * as history from '../fs/history'
 import * as remote from '../fs/remote'
-import type { ImportItem, ImportedNote, TreeNode, TrashItem } from '../fs/vault'
+import type {
+  ImportItem,
+  ImportedNote,
+  NoteFile,
+  TreeNode,
+  TrashItem,
+} from '../fs/vault'
 import type { HistoryItem } from '../fs/history'
 import type { ServerVaultInfo } from '../fs/remote'
+import { clearContentCache, invalidateCached, readCached } from '../lib/contentCache'
 
 export type VaultStatus =
   | 'loading'
@@ -21,6 +28,9 @@ export type VaultStatus =
   | 'ready'
 
 const ACTIVE_KEY = 'notes-active-id'
+// Open tabs and the split pane, so a reload restores the same workspace.
+const TABS_KEY = 'notes-open-tabs'
+const SPLIT_KEY = 'notes-split-id'
 // Which backend the user chose last time: 'server' means the vault lives in the
 // container. Disk and OPFS vaults are already remembered by their own
 // mechanisms (a persisted handle / a flag), so only 'server' is recorded here.
@@ -28,8 +38,39 @@ const BACKEND_KEY = 'notes-vault-backend'
 const SAVE_DEBOUNCE_MS = 500
 // While editing, snapshot the previous on-disk version at most this often.
 const SNAPSHOT_INTERVAL_MS = 5 * 60_000
-// Cap the search content cache so a large vault can't grow it without bound.
-const CONTENT_CACHE_MAX = 300
+/** How the topbar reports the debounced writer's progress. */
+export type SaveState = 'idle' | 'unsaved' | 'saving' | 'saved'
+
+/** Which of the two editor panes has the user's attention. */
+export type Pane = 'primary' | 'split'
+
+function readStoredList(key: string): string[] {
+  try {
+    const raw = localStorage.getItem(key)
+    const parsed = raw ? (JSON.parse(raw) as unknown) : null
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function readStoredString(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function store(key: string, value: string | string[] | null) {
+  try {
+    if (value === null) localStorage.removeItem(key)
+    else if (Array.isArray(value)) localStorage.setItem(key, JSON.stringify(value))
+    else localStorage.setItem(key, value)
+  } catch {
+    // Storage disabled — the workspace just won't be restored next launch.
+  }
+}
 
 export function useNotes() {
   const [status, setStatus] = useState<VaultStatus>('loading')
@@ -37,6 +78,12 @@ export function useNotes() {
   const [tree, setTree] = useState<TreeNode[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [activeContent, setActiveContent] = useState<string | null>(null)
+  // The optional second pane, shown to the right of the primary one.
+  const [splitId, setSplitId] = useState<string | null>(null)
+  const [splitContent, setSplitContent] = useState<string | null>(null)
+  const [focusedPane, setFocusedPane] = useState<Pane>('primary')
+  // Open tabs, in strip order. The active note is always a member.
+  const [openIds, setOpenIds] = useState<string[]>(() => readStoredList(TABS_KEY))
 
   const files = useMemo(() => vault.flattenFiles(tree), [tree])
 
@@ -113,9 +160,13 @@ export function useNotes() {
     void (async () => {
       const list = await refresh(dir)
       if (cancelled) return
-      const saved = localStorage.getItem(ACTIVE_KEY)
-      const pick =
-        saved && list.some((n) => n.id === saved) ? saved : list[0]?.id ?? null
+      const exists = (id: string | null) => !!id && list.some((n) => n.id === id)
+      const saved = readStoredString(ACTIVE_KEY)
+      const pick = exists(saved) ? saved : list[0]?.id ?? null
+      // Restore the workspace, minus any tabs whose notes are gone.
+      setOpenIds(readStoredList(TABS_KEY).filter(exists))
+      const savedSplit = readStoredString(SPLIT_KEY)
+      setSplitId(exists(savedSplit) ? savedSplit : null)
       setActiveId(pick)
     })()
     return () => {
@@ -123,7 +174,7 @@ export function useNotes() {
     }
   }, [status, dir, refresh])
 
-  // ---- Load the active note's content from disk ----
+  // ---- Load each pane's content from disk ----
   useEffect(() => {
     if (!dir || !activeId) {
       setActiveContent(null)
@@ -131,7 +182,7 @@ export function useNotes() {
     }
     let cancelled = false
     setActiveContent(null)
-    localStorage.setItem(ACTIVE_KEY, activeId)
+    store(ACTIVE_KEY, activeId)
     void (async () => {
       try {
         const text = await vault.readNote(dir, activeId)
@@ -144,6 +195,113 @@ export function useNotes() {
       cancelled = true
     }
   }, [dir, activeId])
+
+  useEffect(() => {
+    if (!dir || !splitId) {
+      setSplitContent(null)
+      return
+    }
+    let cancelled = false
+    setSplitContent(null)
+    void (async () => {
+      try {
+        const text = await vault.readNote(dir, splitId)
+        if (!cancelled) setSplitContent(text)
+      } catch {
+        if (!cancelled) setSplitContent('')
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [dir, splitId])
+
+  // ---- Tabs ----
+  // Whatever makes a note active — the tree, the palette, a wikilink, a fresh
+  // note — it earns a tab. Centralising that here means callers never have to
+  // remember to open one.
+  useEffect(() => {
+    if (!activeId) return
+    setOpenIds((prev) => (prev.includes(activeId) ? prev : [...prev, activeId]))
+  }, [activeId])
+
+  // Drop tabs whose notes no longer exist (deleted, renamed, or moved).
+  useEffect(() => {
+    if (!files.length) return
+    setOpenIds((prev) => {
+      const next = prev.filter((id) => files.some((f) => f.id === id))
+      return next.length === prev.length ? prev : next
+    })
+  }, [files])
+
+  useEffect(() => store(TABS_KEY, openIds), [openIds])
+  useEffect(() => store(SPLIT_KEY, splitId), [splitId])
+
+  const openNote = useCallback((id: string) => {
+    setOpenIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
+    setActiveId(id)
+    setFocusedPane('primary')
+  }, [])
+
+  /** Open a note in whichever pane currently has focus. */
+  const openNoteInPane = useCallback(
+    (id: string, pane: Pane) => {
+      if (pane === 'split' && splitId !== null) {
+        setOpenIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
+        setSplitId(id)
+        setFocusedPane('split')
+        return
+      }
+      openNote(id)
+    },
+    [openNote, splitId],
+  )
+
+  const closeTab = useCallback(
+    (id: string) => {
+      const idx = openIds.indexOf(id)
+      if (idx === -1) return
+      const next = openIds.filter((t) => t !== id)
+      setOpenIds(next)
+      setSplitId((cur) => (cur === id ? null : cur))
+      // Closing the active tab hands focus to its right-hand neighbour,
+      // falling back to the left one at the end of the strip.
+      if (activeId === id) setActiveId(next[idx] ?? next[idx - 1] ?? null)
+    },
+    [openIds, activeId],
+  )
+
+  const closeOtherTabs = useCallback((id: string) => {
+    setOpenIds([id])
+    setActiveId(id)
+    setSplitId(null)
+  }, [])
+
+  /** Reorder tabs by drag, moving `id` to sit at `toIndex`. */
+  const moveTab = useCallback((id: string, toIndex: number) => {
+    setOpenIds((prev) => {
+      const from = prev.indexOf(id)
+      if (from === -1 || from === toIndex) return prev
+      const next = [...prev]
+      next.splice(from, 1)
+      next.splice(Math.max(0, Math.min(toIndex, next.length)), 0, id)
+      return next
+    })
+  }, [])
+
+  /** Show the focused note in a second pane, or close the split if one is open. */
+  const toggleSplit = useCallback(() => {
+    setSplitId((cur) => {
+      if (cur !== null) {
+        setFocusedPane('primary')
+        return null
+      }
+      // Open the *next* tab beside the current one where there is one, so a
+      // split immediately shows two different notes.
+      const idx = activeId ? openIds.indexOf(activeId) : -1
+      return openIds[idx + 1] ?? openIds[idx - 1] ?? activeId
+    })
+  }, [activeId, openIds])
 
   // ---- Connect / reconnect ----
   const connect = useCallback(async () => {
@@ -178,6 +336,12 @@ export function useNotes() {
     setTree([])
     setActiveId(null)
     setActiveContent(null)
+    // A different vault means different notes at the same paths.
+    clearContentCache()
+    setOpenIds([])
+    setSplitId(null)
+    setSplitContent(null)
+    setFocusedPane('primary')
     setDir(handle)
     setStatus('ready')
   }, [])
@@ -198,6 +362,12 @@ export function useNotes() {
     setTree([])
     setActiveId(null)
     setActiveContent(null)
+    // A different vault means different notes at the same paths.
+    clearContentCache()
+    setOpenIds([])
+    setSplitId(null)
+    setSplitContent(null)
+    setFocusedPane('primary')
     setDir(remote.openServerVault(info.name))
     setStatus('ready')
   }, [])
@@ -236,6 +406,12 @@ export function useNotes() {
     setTree([])
     setActiveId(null)
     setActiveContent(null)
+    // A different vault means different notes at the same paths.
+    clearContentCache()
+    setOpenIds([])
+    setSplitId(null)
+    setSplitContent(null)
+    setFocusedPane('primary')
     setDir(null)
     setStatus('no-vault')
   }, [])
@@ -251,50 +427,74 @@ export function useNotes() {
   }, [])
 
   // ---- Debounced content persistence ----
-  const pending = useRef<{ id: string; content: string } | null>(null)
+  // Buffered edits are keyed by note id: with tabs and a split pane, more than
+  // one note can be dirty at a time, and each has to survive until it's written.
+  const pending = useRef<Map<string, string>>(new Map())
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   // Per-note timestamp of the last history snapshot (throttles edit snapshots).
   const lastSnapshotAt = useRef<Map<string, number>>(new Map())
+  const [saveState, setSaveState] = useState<SaveState>('idle')
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
+  // Mirrors `pending`'s keys into state, so tabs can mark themselves unsaved.
+  // The ref is the source of truth; this exists only to trigger a render.
+  const [dirtyIds, setDirtyIds] = useState<string[]>([])
+  const syncDirty = useCallback(
+    () => setDirtyIds([...pending.current.keys()]),
+    [],
+  )
 
   const flush = useCallback(async () => {
     if (timer.current) {
       clearTimeout(timer.current)
       timer.current = undefined
     }
-    const p = pending.current
-    if (!p || !dir) return
-    pending.current = null
-    // Periodically keep the version being overwritten, so an editing session
-    // leaves a trail of restore points (at most one per SNAPSHOT_INTERVAL_MS).
-    const last = lastSnapshotAt.current.get(p.id) ?? 0
-    if (Date.now() - last > SNAPSHOT_INTERVAL_MS) {
-      lastSnapshotAt.current.set(p.id, Date.now())
-      try {
-        const prev = await vault.readNote(dir, p.id)
-        if (prev.trim() && prev !== p.content) {
-          await history.snapshotNote(dir, p.id, prev, 'edit')
+    if (!dir || pending.current.size === 0) return
+    const batch = [...pending.current]
+    pending.current.clear()
+    syncDirty()
+    setSaveState('saving')
+    try {
+      for (const [id, content] of batch) {
+        // Periodically keep the version being overwritten, so an editing session
+        // leaves a trail of restore points (at most one per SNAPSHOT_INTERVAL_MS).
+        const last = lastSnapshotAt.current.get(id) ?? 0
+        if (Date.now() - last > SNAPSHOT_INTERVAL_MS) {
+          lastSnapshotAt.current.set(id, Date.now())
+          try {
+            const prev = await vault.readNote(dir, id)
+            if (prev.trim() && prev !== content) {
+              await history.snapshotNote(dir, id, prev, 'edit')
+            }
+          } catch {
+            // New note — nothing to snapshot.
+          }
         }
-      } catch {
-        // New note — nothing to snapshot.
+        await vault.writeNote(dir, id, content)
+        invalidateCached(id)
       }
+      setLastSavedAt(Date.now())
+      // Another keystroke may have landed mid-write; don't claim "saved" then.
+      setSaveState(pending.current.size ? 'unsaved' : 'saved')
+    } catch {
+      // Put the batch back so the next flush retries rather than losing edits.
+      for (const [id, content] of batch) {
+        if (!pending.current.has(id)) pending.current.set(id, content)
+      }
+      syncDirty()
+      setSaveState('unsaved')
     }
-    await vault.writeNote(dir, p.id, p.content)
-  }, [dir])
+  }, [dir, syncDirty])
 
   const saveContent = useCallback(
-    (content: string) => {
-      if (!dir || !activeId) return
-      // If a *different* note still has buffered edits, persist them now before
-      // we reuse the single pending slot — otherwise those edits are lost.
-      const prev = pending.current
-      if (prev && prev.id !== activeId) {
-        void vault.writeNote(dir, prev.id, prev.content)
-      }
-      pending.current = { id: activeId, content }
+    (id: string, content: string) => {
+      if (!dir || !id) return
+      pending.current.set(id, content)
+      syncDirty()
+      setSaveState('unsaved')
       if (timer.current) clearTimeout(timer.current)
       timer.current = setTimeout(() => void flush(), SAVE_DEBOUNCE_MS)
     },
-    [dir, activeId, flush],
+    [dir, flush, syncDirty],
   )
 
   // Best-effort: persist buffered edits when the tab is hidden or closed.
@@ -326,24 +526,43 @@ export function useNotes() {
       // Flush buffered edits first so the trashed copy is current, and so the
       // pending timer can't recreate the note after it's moved to the bin.
       await flush()
+      pending.current.delete(id) // don't let a buffered edit recreate the file
       await vault.trashNote(dir, id)
       const list = await refresh(dir)
-      if (id === activeId) setActiveId(list[0]?.id ?? null)
+      closeTab(id)
+      // closeTab only reassigns the active note when there's a tab to fall back
+      // on; with the strip empty, land on whatever the vault still has.
+      setActiveId((cur) =>
+        cur === null || cur === id ? list[0]?.id ?? null : cur,
+      )
     },
-    [dir, flush, refresh, activeId],
+    [dir, flush, refresh, closeTab],
   )
 
-  // Rename the active note's file to match a new title (commit on blur/Enter).
-  const renameActive = useCallback(
-    async (newTitle: string) => {
-      if (!dir || !activeId) return
+  /** Point tabs, panes and buffers at a note's new path after it moves. */
+  const remapId = useCallback((oldId: string, newId: string) => {
+    if (oldId === newId) return
+    setOpenIds((prev) => prev.map((t) => (t === oldId ? newId : t)))
+    setActiveId((cur) => (cur === oldId ? newId : cur))
+    setSplitId((cur) => (cur === oldId ? newId : cur))
+    const buffered = pending.current.get(oldId)
+    if (buffered !== undefined) {
+      pending.current.delete(oldId)
+      pending.current.set(newId, buffered)
+    }
+  }, [])
+
+  // Rename a note's file to match a new title (commit on blur/Enter).
+  const renameNote = useCallback(
+    async (id: string, newTitle: string) => {
+      if (!dir || !id) return
       await flush() // ensure latest content is on disk before moving the file
-      const newId = await vault.renameNote(dir, activeId, newTitle)
-      if (newId !== activeId) await history.retargetHistory(dir, activeId, newId)
+      const newId = await vault.renameNote(dir, id, newTitle)
+      if (newId !== id) await history.retargetHistory(dir, id, newId)
       await refresh(dir)
-      if (newId !== activeId) setActiveId(newId)
+      remapId(id, newId)
     },
-    [dir, activeId, flush, refresh],
+    [dir, flush, refresh, remapId],
   )
 
   const createFolder = useCallback(
@@ -362,12 +581,16 @@ export function useNotes() {
       await flush() // persist any buffered edits to a note inside the folder
       await vault.trashFolder(dir, folderPath)
       const list = await refresh(dir)
-      // If the open note lived in the deleted folder, pick another.
-      if (activeId && !list.some((n) => n.id === activeId)) {
-        setActiveId(list[0]?.id ?? null)
+      const survives = (id: string) => list.some((n) => n.id === id)
+      // Tabs and panes showing notes from the deleted folder close with it.
+      setOpenIds((prev) => prev.filter(survives))
+      setSplitId((cur) => (cur && survives(cur) ? cur : null))
+      setActiveId((cur) => (cur && survives(cur) ? cur : list[0]?.id ?? null))
+      for (const id of [...pending.current.keys()]) {
+        if (!survives(id)) pending.current.delete(id)
       }
     },
-    [dir, flush, refresh, activeId],
+    [dir, flush, refresh],
   )
 
   const renameFolder = useCallback(
@@ -376,15 +599,23 @@ export function useNotes() {
       await flush() // persist any buffered edits before moving files
       const newPath = await vault.renameFolder(dir, folderPath, newName)
       await refresh(dir)
-      // If the open note lived inside the folder, its path changed too.
-      if (
-        activeId &&
-        (activeId === folderPath || activeId.startsWith(`${folderPath}/`))
-      ) {
-        setActiveId(newPath + activeId.slice(folderPath.length))
+      // Every note that lived inside the folder just changed path — rewrite the
+      // prefix wherever an id is held: tabs, both panes, and unwritten buffers.
+      const rewrite = (id: string) =>
+        id.startsWith(`${folderPath}/`)
+          ? newPath + id.slice(folderPath.length)
+          : id
+      setOpenIds((prev) => prev.map(rewrite))
+      setActiveId((cur) => (cur ? rewrite(cur) : cur))
+      setSplitId((cur) => (cur ? rewrite(cur) : cur))
+      for (const [id, content] of [...pending.current]) {
+        const next = rewrite(id)
+        if (next === id) continue
+        pending.current.delete(id)
+        pending.current.set(next, content)
       }
     },
-    [dir, flush, refresh, activeId],
+    [dir, flush, refresh],
   )
 
   const moveNote = useCallback(
@@ -394,9 +625,9 @@ export function useNotes() {
       const newId = await vault.moveNote(dir, id, targetFolderPath)
       if (newId !== id) await history.retargetHistory(dir, id, newId)
       await refresh(dir)
-      if (id === activeId && newId !== id) setActiveId(newId)
+      remapId(id, newId)
     },
-    [dir, activeId, flush, refresh],
+    [dir, activeId, flush, refresh, remapId],
   )
 
   // ---- Import ----
@@ -498,10 +729,12 @@ export function useNotes() {
       lastSnapshotAt.current.set(activeId, Date.now())
       await vault.writeNote(dir, activeId, snapContent)
       setActiveContent(snapContent)
+      // The same note may also be open in the split pane; keep them in step.
+      if (splitId === activeId) setSplitContent(snapContent)
       await refresh(dir)
       setHistoryItems(await history.listHistory(dir, activeId))
     },
-    [dir, activeId, flush, refresh],
+    [dir, activeId, splitId, flush, refresh],
   )
 
   const deleteVersion = useCallback(
@@ -516,8 +749,6 @@ export function useNotes() {
   // ---- Search across the whole tree (title, path, and file contents) ----
   const [query, setQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null)
-  // Cache file contents keyed by id + mtime so re-querying is cheap.
-  const contentCache = useRef<Map<string, string>>(new Map())
 
   useEffect(() => {
     const q = query.trim().toLowerCase()
@@ -536,25 +767,7 @@ export function useNotes() {
         const titleMatch =
           file.title.toLowerCase().includes(q) || folderPath.toLowerCase().includes(q)
 
-        const key = `${file.id}::${file.updatedAt}`
-        const cache = contentCache.current
-        let content = cache.get(key)
-        if (content === undefined) {
-          try {
-            content = await vault.readNote(dir, file.id)
-          } catch {
-            content = ''
-          }
-        } else {
-          // Refresh recency (Map keeps insertion order → LRU eviction below).
-          cache.delete(key)
-        }
-        cache.set(key, content)
-        while (cache.size > CONTENT_CACHE_MAX) {
-          const oldest = cache.keys().next().value
-          if (oldest === undefined) break
-          cache.delete(oldest)
-        }
+        const content = await readCached(dir, file)
 
         let snippet = ''
         let contentMatch = false
@@ -579,6 +792,15 @@ export function useNotes() {
   }, [query, dir, files])
 
   const activeNote = files.find((n) => n.id === activeId) ?? null
+  const splitNote = files.find((n) => n.id === splitId) ?? null
+  /** Tabs resolved to notes, in strip order, skipping anything already gone. */
+  const openNotes = useMemo(
+    () =>
+      openIds
+        .map((id) => files.find((f) => f.id === id))
+        .filter((f): f is NoteFile => !!f),
+    [openIds, files],
+  )
 
   // Reload after the AI assistant changes files on disk: rebuild the tree and
   // re-read the open note's content, so an edit to the currently-open note shows
@@ -586,21 +808,20 @@ export function useNotes() {
   const reload = useCallback(async () => {
     if (!dir) return
     const list = await refresh(dir)
-    if (!activeId) return
+    const survives = (id: string) => list.some((n) => n.id === id)
 
-    if (!list.some((n) => n.id === activeId)) {
-      // The open note was deleted or moved by the change. Drop any buffered
-      // edits so the debounced save can't recreate the file, then move on.
-      if (pending.current?.id === activeId) {
-        pending.current = null
-        if (timer.current) {
-          clearTimeout(timer.current)
-          timer.current = undefined
-        }
-      }
+    // Notes the change deleted or moved: drop their buffered edits so the
+    // debounced save can't recreate them, then close their tabs and panes.
+    for (const id of [...pending.current.keys()]) {
+      if (!survives(id)) pending.current.delete(id)
+    }
+    setOpenIds((prev) => prev.filter(survives))
+    setSplitId((cur) => (cur && survives(cur) ? cur : null))
+    if (activeId && !survives(activeId)) {
       setActiveId(list[0]?.id ?? null)
       return
     }
+    if (!activeId) return
 
     // Persist buffered edits before re-reading, so a keystroke made moments
     // before the AI change isn't clobbered by stale disk content. In the rare
@@ -609,10 +830,13 @@ export function useNotes() {
     await flush()
     try {
       setActiveContent(await vault.readNote(dir, activeId))
+      if (splitId && survives(splitId)) {
+        setSplitContent(await vault.readNote(dir, splitId))
+      }
     } catch {
       // Transient read failure — keep showing the current content.
     }
-  }, [dir, refresh, activeId, flush])
+  }, [dir, refresh, activeId, splitId, flush])
 
   return {
     status,
@@ -625,6 +849,26 @@ export function useNotes() {
     activeId,
     activeContent,
     setActiveId,
+    // Tabs
+    openNotes,
+    openNote,
+    openNoteInPane,
+    closeTab,
+    closeOtherTabs,
+    moveTab,
+    // Split pane
+    splitId,
+    splitNote,
+    splitContent,
+    setSplitId,
+    toggleSplit,
+    focusedPane,
+    setFocusedPane,
+    // Save status
+    saveState,
+    lastSavedAt,
+    /** Notes with edits not yet written to disk. */
+    dirtyIds,
     connect,
     reconnect,
     serverVault,
@@ -640,7 +884,7 @@ export function useNotes() {
     moveNote,
     deleteNote,
     saveContent,
-    renameActive,
+    renameNote,
     importNotes,
     trashItems,
     loadTrash,

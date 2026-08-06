@@ -1,8 +1,7 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent, KeyboardEvent } from 'react'
 import {
   Bookmark,
-  ChevronDown,
   ChevronRight,
   FilePlus,
   FileText,
@@ -20,6 +19,7 @@ import {
   Upload,
   X,
 } from 'lucide-react'
+import OverflowMenu, { type MenuItem } from './OverflowMenu'
 import type { TreeNode } from '../fs/vault'
 import type { SearchResult } from '../hooks/useNotes'
 import { dragHasFiles } from '../lib/importMarkdown'
@@ -35,9 +35,11 @@ interface SidebarProps {
   onSelect: (id: string) => void
   onCreate: () => void
   onCreateInFolder: (folderPath: string) => void
-  onCreateFolder: (parentPath: string) => Promise<string | undefined>
+  /** Create a folder with a name the user typed inline. */
+  onCreateFolder: (parentPath: string, name: string) => void
   onDeleteFolder: (folderPath: string) => void
-  onRenameFolder: (folderPath: string) => void
+  onRenameFolder: (folderPath: string, newName: string) => void
+  onRenameNote: (id: string, newTitle: string) => void
   onMoveNote: (id: string, targetFolderPath: string) => void
   onDelete: (id: string) => void
   onSwitchVault: () => void
@@ -53,14 +55,16 @@ interface SidebarProps {
 }
 
 const ROOT = '__root__'
+/** How long consecutive keystrokes count as one type-ahead search. */
+const TYPEAHEAD_MS = 700
 
-/** Activate a role="button" span with Enter/Space (they're spans because a
- *  real <button> can't nest inside the tree-row <button>). */
-function onActionKey(e: KeyboardEvent<HTMLSpanElement>, action: () => void) {
-  if (e.key !== 'Enter' && e.key !== ' ') return
-  e.preventDefault()
-  e.stopPropagation()
-  action()
+/** A row as actually drawn: the tree flattened down to what's currently visible. */
+interface Row {
+  id: string
+  kind: 'folder' | 'file'
+  /** Folder name, or note title. */
+  label: string
+  depth: number
 }
 
 /** Folder ids that are ancestors of a note path, e.g. "a/b/n.md" → ["a","a/b"]. */
@@ -74,6 +78,55 @@ function ancestorFolderIds(id: string): string[] {
     result.push(acc)
   }
   return result
+}
+
+function parentOf(id: string): string {
+  return id.includes('/') ? id.slice(0, id.lastIndexOf('/')) : ''
+}
+
+/**
+ * Inline text field used for both renaming a row and naming a new folder.
+ *
+ * Declared at module scope on purpose: nested inside Sidebar it would be a new
+ * component type on every render, so React would remount it — and a half-typed
+ * name would vanish the moment anything else in the sidebar changed.
+ */
+function NameInput({
+  defaultValue,
+  depth,
+  onCommit,
+  onCancel,
+  label,
+}: {
+  defaultValue: string
+  depth: number
+  onCommit: (value: string) => void
+  onCancel: () => void
+  label: string
+}) {
+  return (
+    <div className="tree-row tree-row-editing" style={{ paddingLeft: 8 + depth * 14 }}>
+      <span className="tree-chevron" />
+      <input
+        className="tree-input"
+        defaultValue={defaultValue}
+        aria-label={label}
+        autoFocus
+        onFocus={(e) => e.target.select()}
+        onBlur={(e) => onCommit(e.target.value)}
+        onKeyDown={(e) => {
+          e.stopPropagation()
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            onCommit((e.target as HTMLInputElement).value)
+          } else if (e.key === 'Escape') {
+            e.preventDefault()
+            onCancel()
+          }
+        }}
+      />
+    </div>
+  )
 }
 
 export default function Sidebar({
@@ -90,6 +143,7 @@ export default function Sidebar({
   onCreateFolder,
   onDeleteFolder,
   onRenameFolder,
+  onRenameNote,
   onMoveNote,
   onDelete,
   onSwitchVault,
@@ -103,6 +157,15 @@ export default function Sidebar({
 }: SidebarProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  /** Row currently being renamed in place. */
+  const [renaming, setRenaming] = useState<string | null>(null)
+  /** Parent folder awaiting a name for a new subfolder ("" = vault root). */
+  const [creatingIn, setCreatingIn] = useState<string | null>(null)
+  /** Roving tabindex: the one row that's reachable with Tab. */
+  const [focusedId, setFocusedId] = useState<string | null>(null)
+  const treeRef = useRef<HTMLDivElement>(null)
+  const typeahead = useRef({ buffer: '', at: 0 })
 
   // Auto-expand the folders leading to the active note.
   useEffect(() => {
@@ -114,24 +177,83 @@ export default function Sidebar({
     })
   }, [activeId])
 
-  const toggle = (id: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  const toggle = useCallback(
+    (id: string) =>
+      setExpanded((prev) => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      }),
+    [],
+  )
 
-  const expand = (id: string) =>
-    setExpanded((prev) => new Set(prev).add(id))
+  const expand = useCallback(
+    (id: string) => setExpanded((prev) => new Set(prev).add(id)),
+    [],
+  )
 
-  const handleNewFolder = async (parentPath: string) => {
-    const newId = await onCreateFolder(parentPath)
-    if (newId) {
-      if (parentPath) expand(parentPath)
-      expand(newId)
+  /** Visible rows, in draw order — the basis for all keyboard movement. */
+  const rows = useMemo(() => {
+    const out: Row[] = []
+    const walk = (nodes: TreeNode[], depth: number) => {
+      for (const node of nodes) {
+        if (node.kind === 'folder') {
+          out.push({ id: node.id, kind: 'folder', label: node.name, depth })
+          if (expanded.has(node.id)) walk(node.children, depth + 1)
+        } else {
+          out.push({ id: node.id, kind: 'file', label: node.title, depth })
+        }
+      }
     }
-  }
+    walk(tree, 0)
+    return out
+  }, [tree, expanded])
+
+  const focusRow = useCallback((id: string) => {
+    setFocusedId(id)
+    requestAnimationFrame(() => {
+      treeRef.current
+        ?.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(id)}"]`)
+        ?.focus()
+    })
+  }, [])
+
+  // Keep the roving tabstop pointing at something that still exists.
+  useEffect(() => {
+    if (focusedId && rows.some((r) => r.id === focusedId)) return
+    setFocusedId(activeId ?? rows[0]?.id ?? null)
+  }, [rows, focusedId, activeId])
+
+  const startCreateFolder = useCallback(
+    (parentPath: string) => {
+      if (parentPath) expand(parentPath)
+      setCreatingIn(parentPath)
+    },
+    [expand],
+  )
+
+  const commitCreateFolder = useCallback(
+    (name: string) => {
+      const parent = creatingIn
+      setCreatingIn(null)
+      const trimmed = name.trim()
+      if (parent === null || !trimmed) return
+      onCreateFolder(parent, trimmed)
+    },
+    [creatingIn, onCreateFolder],
+  )
+
+  const commitRename = useCallback(
+    (row: Row, name: string) => {
+      setRenaming(null)
+      const trimmed = name.trim()
+      if (!trimmed || trimmed === row.label) return
+      if (row.kind === 'folder') onRenameFolder(row.id, trimmed)
+      else onRenameNote(row.id, trimmed)
+    },
+    [onRenameFolder, onRenameNote],
+  )
 
   /** A drop is either a note being dragged within the tree, or files from
    *  outside the browser — the same target folder receives both. */
@@ -139,6 +261,7 @@ export default function Sidebar({
     e.preventDefault()
     e.stopPropagation()
     setDragOverId(null)
+    setDraggingId(null)
 
     if (dragHasFiles(e.dataTransfer)) {
       onDropFiles(e.dataTransfer, targetFolderPath)
@@ -146,142 +269,249 @@ export default function Sidebar({
       return
     }
 
+    // A tab being dragged along the strip isn't a request to move the file.
+    if (e.dataTransfer.types.includes('application/x-nib-tab')) return
+
     const id = e.dataTransfer.getData('text/plain')
     if (!id) return
     onMoveNote(id, targetFolderPath)
     if (targetFolderPath) expand(targetFolderPath)
   }
 
-  const renderNodes = (nodes: TreeNode[], depth: number): React.ReactNode =>
-    nodes.map((node) => {
-      const indent = { paddingLeft: 8 + depth * 14 }
+  const onTreeKeyDown = (e: KeyboardEvent, row: Row) => {
+    const index = rows.findIndex((r) => r.id === row.id)
+    const move = (to: number) => {
+      const next = rows[Math.max(0, Math.min(to, rows.length - 1))]
+      if (next) focusRow(next.id)
+    }
 
-      if (node.kind === 'folder') {
-        const isOpen = expanded.has(node.id)
-        return (
-          <Fragment key={node.id}>
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        move(index + 1)
+        return
+      case 'ArrowUp':
+        e.preventDefault()
+        move(index - 1)
+        return
+      case 'Home':
+        e.preventDefault()
+        move(0)
+        return
+      case 'End':
+        e.preventDefault()
+        move(rows.length - 1)
+        return
+      case 'ArrowRight':
+        e.preventDefault()
+        // Open a closed folder; step into an open one.
+        if (row.kind === 'folder' && !expanded.has(row.id)) expand(row.id)
+        else move(index + 1)
+        return
+      case 'ArrowLeft': {
+        e.preventDefault()
+        if (row.kind === 'folder' && expanded.has(row.id)) {
+          toggle(row.id)
+          return
+        }
+        const parent = parentOf(row.id)
+        if (parent) focusRow(parent)
+        return
+      }
+      case 'Enter':
+      case ' ':
+        e.preventDefault()
+        if (row.kind === 'folder') toggle(row.id)
+        else onSelect(row.id)
+        return
+      case 'F2':
+        e.preventDefault()
+        setRenaming(row.id)
+        return
+      case 'Delete':
+      case 'Backspace':
+        e.preventDefault()
+        if (row.kind === 'folder') onDeleteFolder(row.id)
+        else onDelete(row.id)
+        return
+    }
+
+    // Type-ahead: jump to the next row starting with what's been typed.
+    if (e.key.length !== 1 || e.metaKey || e.ctrlKey || e.altKey) return
+    const now = Date.now()
+    const ta = typeahead.current
+    ta.buffer = now - ta.at > TYPEAHEAD_MS ? e.key : ta.buffer + e.key
+    ta.at = now
+    const needle = ta.buffer.toLowerCase()
+    const ordered = [...rows.slice(index + 1), ...rows.slice(0, index + 1)]
+    const hit = ordered.find((r) => r.label.toLowerCase().startsWith(needle))
+    if (hit) {
+      e.preventDefault()
+      focusRow(hit.id)
+    }
+  }
+
+  const renderRow = (row: Row) => {
+    const indent = { paddingLeft: 8 + row.depth * 14 }
+    const isFolder = row.kind === 'folder'
+    const isOpen = isFolder && expanded.has(row.id)
+
+    if (renaming === row.id) {
+      return (
+        <NameInput
+          key={`edit-${row.id}`}
+          defaultValue={row.label}
+          depth={row.depth}
+          label={isFolder ? 'Folder name' : 'Note title'}
+          onCommit={(value) => commitRename(row, value)}
+          onCancel={() => setRenaming(null)}
+        />
+      )
+    }
+
+    return (
+      <Fragment key={row.id}>
+        <div
+          data-row-id={row.id}
+          role="treeitem"
+          tabIndex={focusedId === row.id ? 0 : -1}
+          aria-expanded={isFolder ? isOpen : undefined}
+          aria-selected={row.id === activeId}
+          aria-level={row.depth + 1}
+          draggable={!isFolder}
+          style={indent}
+          className={[
+            'tree-row',
+            isFolder ? 'folder-row' : 'file-row',
+            row.id === activeId ? 'active' : '',
+            dragOverId === row.id ? 'drop-target' : '',
+            draggingId === row.id ? 'dragging' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          onClick={() => (isFolder ? toggle(row.id) : onSelect(row.id))}
+          onDoubleClick={() => setRenaming(row.id)}
+          onFocus={() => setFocusedId(row.id)}
+          onKeyDown={(e) => onTreeKeyDown(e, row)}
+          onDragStart={
+            isFolder
+              ? undefined
+              : (e) => {
+                  e.dataTransfer.setData('text/plain', row.id)
+                  e.dataTransfer.effectAllowed = 'move'
+                  setDraggingId(row.id)
+                }
+          }
+          onDragEnd={() => {
+            setDragOverId(null)
+            setDraggingId(null)
+          }}
+          onDragOver={
+            isFolder
+              ? (e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setDragOverId(row.id)
+                }
+              : undefined
+          }
+          onDragLeave={
+            isFolder
+              ? () => setDragOverId((cur) => (cur === row.id ? null : cur))
+              : undefined
+          }
+          onDrop={isFolder ? (e) => handleDrop(e, row.id) : undefined}
+        >
+          <span className="tree-chevron">
+            {isFolder && <ChevronRight size={15} className="chevron-icon" />}
+          </span>
+          <span className="tree-icon">
+            {isFolder ? (
+              isOpen ? (
+                <FolderOpen size={16} />
+              ) : (
+                <Folder size={16} />
+              )
+            ) : (
+              <FileText size={15} />
+            )}
+          </span>
+          <span className="tree-label">{row.label}</span>
+
+          <span className="tree-actions">
+            {isFolder && (
+              <>
+                <button
+                  type="button"
+                  className="tree-action"
+                  tabIndex={-1}
+                  title="New subfolder"
+                  aria-label={`New subfolder in ${row.label}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    startCreateFolder(row.id)
+                  }}
+                >
+                  <FolderPlus size={15} />
+                </button>
+                <button
+                  type="button"
+                  className="tree-action"
+                  tabIndex={-1}
+                  title="New note in this folder"
+                  aria-label={`New note in ${row.label}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onCreateInFolder(row.id)
+                  }}
+                >
+                  <FilePlus size={15} />
+                </button>
+              </>
+            )}
             <button
               type="button"
-              className={`tree-row folder-row${
-                dragOverId === node.id ? ' drop-target' : ''
-              }`}
-              style={indent}
-              onClick={() => toggle(node.id)}
-              onDragOver={(e) => {
-                e.preventDefault()
+              className="tree-action"
+              tabIndex={-1}
+              title={isFolder ? 'Rename folder' : 'Rename note'}
+              aria-label={`Rename ${row.label}`}
+              onClick={(e) => {
                 e.stopPropagation()
-                setDragOverId(node.id)
+                setRenaming(row.id)
               }}
-              onDragLeave={() =>
-                setDragOverId((cur) => (cur === node.id ? null : cur))
-              }
-              onDrop={(e) => handleDrop(e, node.id)}
             >
-              <span className="tree-chevron">
-                {isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-              </span>
-              <span className="tree-icon">
-                {isOpen ? <FolderOpen size={16} /> : <Folder size={16} />}
-              </span>
-              <span className="tree-label">{node.name}</span>
-              <span
-                className="tree-action"
-                role="button"
-                tabIndex={0}
-                title="New subfolder"
-                aria-label="New subfolder"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  void handleNewFolder(node.id)
-                }}
-                onKeyDown={(e) => onActionKey(e, () => void handleNewFolder(node.id))}
-              >
-                <FolderPlus size={15} />
-              </span>
-              <span
-                className="tree-action"
-                role="button"
-                tabIndex={0}
-                title="New note in this folder"
-                aria-label="New note in this folder"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onCreateInFolder(node.id)
-                }}
-                onKeyDown={(e) => onActionKey(e, () => onCreateInFolder(node.id))}
-              >
-                <FilePlus size={15} />
-              </span>
-              <span
-                className="tree-action"
-                role="button"
-                tabIndex={0}
-                title="Rename folder"
-                aria-label="Rename folder"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onRenameFolder(node.id)
-                }}
-                onKeyDown={(e) => onActionKey(e, () => onRenameFolder(node.id))}
-              >
-                <Pencil size={14} />
-              </span>
-              <span
-                className="tree-action"
-                role="button"
-                tabIndex={0}
-                title="Delete folder"
-                aria-label="Delete folder"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onDeleteFolder(node.id)
-                }}
-                onKeyDown={(e) => onActionKey(e, () => onDeleteFolder(node.id))}
-              >
-                <Trash2 size={15} />
-              </span>
+              <Pencil size={14} />
             </button>
-            {isOpen && renderNodes(node.children, depth + 1)}
-          </Fragment>
-        )
-      }
+            <button
+              type="button"
+              className="tree-action danger"
+              tabIndex={-1}
+              title={isFolder ? 'Delete folder' : 'Delete note'}
+              aria-label={`Delete ${row.label}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (isFolder) onDeleteFolder(row.id)
+                else onDelete(row.id)
+              }}
+            >
+              <Trash2 size={isFolder ? 15 : 14} />
+            </button>
+          </span>
+        </div>
 
-      return (
-        <button
-          key={node.id}
-          type="button"
-          draggable
-          className={`tree-row file-row${node.id === activeId ? ' active' : ''}`}
-          style={indent}
-          onClick={() => onSelect(node.id)}
-          onDragStart={(e) => {
-            e.dataTransfer.setData('text/plain', node.id)
-            e.dataTransfer.effectAllowed = 'move'
-          }}
-          onDragEnd={() => setDragOverId(null)}
-        >
-          <span className="tree-chevron" />
-          <span className="tree-icon">
-            <FileText size={15} />
-          </span>
-          <span className="tree-label">{node.title}</span>
-          <span
-            className="tree-action"
-            role="button"
-            tabIndex={0}
-            title="Delete note"
-            aria-label="Delete note"
-            onClick={(e) => {
-              e.stopPropagation()
-              onDelete(node.id)
-            }}
-            onKeyDown={(e) => onActionKey(e, () => onDelete(node.id))}
-          >
-            <Trash2 size={14} />
-          </span>
-        </button>
-      )
-    })
+        {/* A new subfolder is named in place, directly under its parent. */}
+        {creatingIn === row.id && (
+          <NameInput
+            defaultValue="New Folder"
+            depth={row.depth + 1}
+            label="New folder name"
+            onCommit={commitCreateFolder}
+            onCancel={() => setCreatingIn(null)}
+          />
+        )}
+      </Fragment>
+    )
+  }
 
   const renderResults = (results: SearchResult[]) => {
     if (results.length === 0) {
@@ -316,6 +546,48 @@ export default function Sidebar({
     )
   }
 
+  const vaultMenu: MenuItem[] = [
+    {
+      id: 'new-folder',
+      label: 'New folder',
+      Icon: FolderPlus,
+      run: () => startCreateFolder(''),
+    },
+    {
+      id: 'trash',
+      label: 'Recycle Bin',
+      Icon: Trash,
+      separated: true,
+      run: onOpenTrash,
+    },
+    {
+      id: 'import',
+      label: 'Import Markdown files…',
+      Icon: Upload,
+      separated: true,
+      run: onOpenImport,
+    },
+    {
+      id: 'import-folder',
+      label: 'Import a folder…',
+      Icon: FolderUp,
+      run: onOpenFolderImport,
+    },
+    {
+      id: 'export',
+      label: 'Export vault as ZIP…',
+      Icon: Package,
+      run: onOpenExport,
+    },
+    {
+      id: 'switch',
+      label: 'Open a different folder…',
+      Icon: FolderOpen,
+      separated: true,
+      run: onSwitchVault,
+    },
+  ]
+
   return (
     <aside className={`sidebar${open ? ' open' : ''}`}>
       <div className="sidebar-header">
@@ -344,39 +616,13 @@ export default function Sidebar({
           <button
             type="button"
             className="icon-btn"
-            onClick={onOpenTrash}
-            title="Recycle bin"
-            aria-label="Recycle bin"
-          >
-            <Trash size={18} />
-          </button>
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={onSwitchVault}
-            title="Open a different folder"
-            aria-label="Open a different folder"
-          >
-            <FolderOpen size={18} />
-          </button>
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={() => void handleNewFolder('')}
-            title="New folder"
-            aria-label="New folder"
-          >
-            <FolderPlus size={18} />
-          </button>
-          <button
-            type="button"
-            className="icon-btn"
             onClick={onCreate}
             title="New note"
             aria-label="New note"
           >
             <Plus size={20} />
           </button>
+          <OverflowMenu items={vaultMenu} label="Vault actions" align="right" />
         </div>
       </div>
 
@@ -405,6 +651,9 @@ export default function Sidebar({
         renderResults(searchResults)
       ) : (
         <div
+          ref={treeRef}
+          role="tree"
+          aria-label="Notes"
           className={`note-tree${dragOverId === ROOT ? ' drop-target-root' : ''}`}
           onDragOver={(e) => {
             e.preventDefault()
@@ -413,7 +662,7 @@ export default function Sidebar({
           onDragLeave={() => setDragOverId((cur) => (cur === ROOT ? null : cur))}
           onDrop={(e) => handleDrop(e, '')}
         >
-          {tree.length === 0 ? (
+          {rows.length === 0 && creatingIn === null ? (
             <div className="sidebar-empty">
               No notes in this folder yet
               <span className="sidebar-empty-hint">
@@ -421,7 +670,17 @@ export default function Sidebar({
               </span>
             </div>
           ) : (
-            renderNodes(tree, 0)
+            rows.map(renderRow)
+          )}
+
+          {creatingIn === '' && (
+            <NameInput
+              defaultValue="New Folder"
+              depth={0}
+              label="New folder name"
+              onCommit={commitCreateFolder}
+              onCancel={() => setCreatingIn(null)}
+            />
           )}
         </div>
       )}

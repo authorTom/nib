@@ -3,6 +3,10 @@ import type { KeyboardEvent } from 'react'
 import { CornerDownLeft, FileText, Search, type LucideIcon } from 'lucide-react'
 import type { NoteFile } from '../fs/vault'
 import { folderOf } from '../lib/format'
+import { useEnterExit } from '../hooks/useEnterExit'
+
+/** Keep in step with --dur-base in theme.css. */
+const TRANSITION_MS = 180
 
 export interface Command {
   id: string
@@ -39,14 +43,30 @@ export default function CommandPalette({
   const [index, setIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const { render, entered } = useEnterExit(open, TRANSITION_MS)
 
-  // Reset and focus whenever the palette opens.
+  // Reset whenever the palette opens. Focus is handled by autoFocus on the
+  // input: the element doesn't exist on the render where `open` flips, so
+  // focusing from here would fire against a null ref.
   useEffect(() => {
     if (!open) return
     setQuery('')
     setIndex(0)
-    requestAnimationFrame(() => inputRef.current?.focus())
   }, [open])
+
+  // Escape closes the palette wherever focus happens to be — the input keeps
+  // it in the common case, but a click on a row or the footer moves it off.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopPropagation() // don't also drop the app out of focus mode
+      onClose()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [open, onClose])
 
   const { items, commandCount } = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -84,7 +104,7 @@ export default function CommandPalette({
     el?.scrollIntoView({ block: 'nearest' })
   }, [index])
 
-  if (!open) return null
+  if (!render) return null
 
   const run = (item: Item) => {
     onClose()
@@ -111,12 +131,19 @@ export default function CommandPalette({
   }
 
   return (
-    <div className="palette-overlay" onMouseDown={onClose}>
-      <div className="palette" onMouseDown={(e) => e.stopPropagation()}>
+    <div
+      className={`palette-overlay${entered ? ' entered' : ''}`}
+      onMouseDown={onClose}
+    >
+      <div
+        className={`palette${entered ? ' entered' : ''}`}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="palette-input">
           <Search size={18} />
           <input
             ref={inputRef}
+            autoFocus
             value={query}
             onChange={(e) => {
               setQuery(e.target.value)

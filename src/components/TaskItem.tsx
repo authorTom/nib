@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Check, FileText, Repeat, Trash2 } from 'lucide-react'
 import { dueChipLabel, todayStr } from '../tasks/dates'
 import type { Priority, Project, RecurrenceFreq, Task } from '../tasks/types'
@@ -31,6 +31,13 @@ export default function TaskItem({
   onOpenNote,
 }: TaskItemProps) {
   const [expanded, setExpanded] = useState(false)
+  // Ticking a task usually removes it from the list it's in. Hold it in place
+  // for the length of the animation so the check has time to draw and the row
+  // has time to collapse, rather than the item just blinking out.
+  const [completing, setCompleting] = useState(false)
+  const completeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(completeTimer.current), [])
+
   const project = task.projectId
     ? projects.find((p) => p.id === task.projectId)
     : undefined
@@ -38,13 +45,24 @@ export default function TaskItem({
   const done = !!task.completedAt
   const overdue = !!task.due && !done && task.due < today
 
+  const handleToggle = () => {
+    if (done || completing) {
+      onToggle()
+      return
+    }
+    setCompleting(true)
+    completeTimer.current = setTimeout(onToggle, 320)
+  }
+
   return (
-    <div className={`task-item${done ? ' done' : ''}`}>
+    <div
+      className={`task-item${done ? ' done' : ''}${completing ? ' completing' : ''}`}
+    >
       <div className="task-row">
         <button
           type="button"
           className={`task-check p${task.priority}`}
-          onClick={onToggle}
+          onClick={handleToggle}
           title={
             done ? 'Reopen' : task.recurrence ? 'Complete (repeats)' : 'Complete'
           }
