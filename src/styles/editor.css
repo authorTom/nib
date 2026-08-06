@@ -44,6 +44,9 @@
 }
 
 .ProseMirror blockquote {
+  /* A rule beside a blockquote is centuries of typographic convention, not a
+     card accent, and --border is the palette's faintest colour. */
+  /* impeccable-disable-next-line side-tab */
   border-left: 3px solid var(--border);
   margin-left: 0;
   padding-left: 1em;
