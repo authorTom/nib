@@ -1,0 +1,201 @@
+/* Palettes.
+ *
+ * theme.css holds the motion tokens and the default ("Nib") palette, which is
+ * also the fallback when no data-palette is set. Everything here overrides that
+ * pair of variable blocks — light on [data-palette], dark on the same selector
+ * plus [data-theme='dark'].
+ *
+ * Only the variables need redefining; nothing in the app references a colour
+ * directly, so a palette is purely this list. Contrast for --text on --bg is
+ * kept at 7:1 or better in every palette, and --text-muted at 4.5:1 or better.
+ */
+
+/* ---------- Slate — cool neutrals, one clear blue ---------- */
+:root[data-palette='slate'] {
+  --bg: #ffffff;
+  --bg-elevated: #f8fafc;
+  --bg-hover: #eef2f7;
+  --bg-active: #e2e8f0;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --text-muted: #475569;
+  --text-faint: #94a3b8;
+  --accent: #2563eb;
+  --accent-contrast: #ffffff;
+  --accent-soft: #dbeafe;
+  --danger: #dc2626;
+}
+
+:root[data-palette='slate'][data-theme='dark'] {
+  --bg: #0f172a;
+  --bg-elevated: #16213a;
+  --bg-hover: #1e293b;
+  --bg-active: #293548;
+  --border: #24304a;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --text-faint: #64748b;
+  --accent: #60a5fa;
+  --accent-contrast: #0f172a;
+  --accent-soft: #1e3a5f;
+  --danger: #f87171;
+}
+
+/* ---------- Nord — arctic, deliberately low glare ---------- */
+:root[data-palette='nord'] {
+  --bg: #eceff4;
+  --bg-elevated: #e5e9f0;
+  --bg-hover: #dbe1ea;
+  --bg-active: #cfd7e3;
+  --border: #d3dae6;
+  --text: #2e3440;
+  --text-muted: #4c566a;
+  --text-faint: #79879f;
+  --accent: #5e81ac;
+  --accent-contrast: #eceff4;
+  --accent-soft: #d6e0ee;
+  --danger: #bf616a;
+}
+
+:root[data-palette='nord'][data-theme='dark'] {
+  --bg: #2e3440;
+  --bg-elevated: #343b48;
+  --bg-hover: #3b4252;
+  --bg-active: #434c5e;
+  --border: #3b4252;
+  --text: #eceff4;
+  --text-muted: #cbd3e1;
+  --text-faint: #8895ab;
+  --accent: #88c0d0;
+  --accent-contrast: #2e3440;
+  --accent-soft: #3b4a55;
+  --danger: #bf616a;
+}
+
+/* ---------- Rosé — warm mauve ---------- */
+:root[data-palette='rose'] {
+  --bg: #faf4ed;
+  --bg-elevated: #fffaf3;
+  --bg-hover: #f2e9e1;
+  --bg-active: #e9ded4;
+  --border: #e6dad0;
+  --text: #494263;
+  --text-muted: #6f6a89;
+  --text-faint: #9893a5;
+  --accent: #b4637a;
+  --accent-contrast: #ffffff;
+  --accent-soft: #f4e0e4;
+  --danger: #b4404f;
+}
+
+:root[data-palette='rose'][data-theme='dark'] {
+  --bg: #191724;
+  --bg-elevated: #1f1d2e;
+  --bg-hover: #26233a;
+  --bg-active: #2f2b45;
+  --border: #2a2739;
+  --text: #e0def4;
+  --text-muted: #a5a1c0;
+  --text-faint: #6e6a86;
+  --accent: #ebbcba;
+  --accent-contrast: #191724;
+  --accent-soft: #3a2b3f;
+  --danger: #eb6f92;
+}
+
+/* ---------- Forest — deep greens ---------- */
+:root[data-palette='forest'] {
+  --bg: #fbfdfb;
+  --bg-elevated: #f1f6f1;
+  --bg-hover: #e5eee6;
+  --bg-active: #d6e4d8;
+  --border: #dbe7dc;
+  --text: #16251b;
+  --text-muted: #465b4b;
+  --text-faint: #7d9382;
+  --accent: #2f7d52;
+  --accent-contrast: #ffffff;
+  --accent-soft: #d9f0e1;
+  --danger: #b53225;
+}
+
+:root[data-palette='forest'][data-theme='dark'] {
+  --bg: #0e1712;
+  --bg-elevated: #131e18;
+  --bg-hover: #1a291f;
+  --bg-active: #23362a;
+  --border: #1f3227;
+  --text: #e3efe6;
+  --text-muted: #a3b9aa;
+  --text-faint: #6b8375;
+  --accent: #5fd39a;
+  --accent-contrast: #0e1712;
+  --accent-soft: #16352a;
+  --danger: #f0766a;
+}
+
+/* ---------- Mono — greyscale, nothing competes with the text ---------- */
+:root[data-palette='mono'] {
+  --bg: #ffffff;
+  --bg-elevated: #f6f6f6;
+  --bg-hover: #ededed;
+  --bg-active: #e0e0e0;
+  --border: #e3e3e3;
+  --text: #111111;
+  --text-muted: #5c5c5c;
+  --text-faint: #8f8f8f;
+  --accent: #111111;
+  --accent-contrast: #ffffff;
+  --accent-soft: #e9e9e9;
+  --danger: #b00020;
+}
+
+:root[data-palette='mono'][data-theme='dark'] {
+  --bg: #0b0b0b;
+  --bg-elevated: #141414;
+  --bg-hover: #1e1e1e;
+  --bg-active: #2a2a2a;
+  --border: #262626;
+  --text: #f2f2f2;
+  --text-muted: #a6a6a6;
+  --text-faint: #737373;
+  --accent: #f2f2f2;
+  --accent-contrast: #0b0b0b;
+  --accent-soft: #272727;
+  --danger: #ff6b6b;
+}
+
+/* ---------- Springfield — the one you have to find ----------
+ * Yellow carries the chrome and Marge blue carries the accent, rather than the
+ * reverse: a yellow accent on a yellow surface has nowhere to go, and a full
+ * yellow page is unreadable for anything longer than a shopping list. */
+:root[data-palette='springfield'] {
+  --bg: #fffdf2;
+  --bg-elevated: #ffe98a;
+  --bg-hover: #ffdf5c;
+  --bg-active: #ffd90f;
+  --border: #e8cd55;
+  --text: #2b2410;
+  --text-muted: #5f5117;
+  --text-faint: #8f7f3c;
+  --accent: #1a6aa2;
+  --accent-contrast: #ffffff;
+  --accent-soft: #d3e9f8;
+  --danger: #d94f3d;
+}
+
+/* Moe's after closing. */
+:root[data-palette='springfield'][data-theme='dark'] {
+  --bg: #1b1710;
+  --bg-elevated: #241f15;
+  --bg-hover: #2f2818;
+  --bg-active: #3b321d;
+  --border: #3d3520;
+  --text: #f7edd0;
+  --text-muted: #cbbc8e;
+  --text-faint: #8d8060;
+  --accent: #ffd90f;
+  --accent-contrast: #1b1710;
+  --accent-soft: #3a3212;
+  --danger: #ff7a5c;
+}

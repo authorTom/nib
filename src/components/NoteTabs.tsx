@@ -1,18 +1,22 @@
 import { useRef, useState } from 'react'
 import { Columns2, FileText, X } from 'lucide-react'
 import type { NoteFile } from '../fs/vault'
+import { rectOf, type FlightOrigin } from '../lib/motion'
 
 interface NoteTabsProps {
   notes: NoteFile[]
   activeId: string | null
   splitId: string | null
-  onSelect: (id: string) => void
+  /** `origin` is the label's rect, which the incoming note's title flies from. */
+  onSelect: (id: string, origin: FlightOrigin | null) => void
   onClose: (id: string) => void
   onCloseOthers: (id: string) => void
   onReorder: (id: string, toIndex: number) => void
   onToggleSplit: () => void
   /** True when a note is dirty, so the tab can show an unsaved dot. */
   isDirty: (id: string) => boolean
+  /** Just-created note, whose tab shows as still-wet ink. */
+  justCreatedId: string | null
 }
 
 /**
@@ -31,6 +35,7 @@ export default function NoteTabs({
   onReorder,
   onToggleSplit,
   isDirty,
+  justCreatedId,
 }: NoteTabsProps) {
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
@@ -38,16 +43,21 @@ export default function NoteTabs({
 
   if (notes.length === 0) return null
 
+  /** Open a tab, handing over its label's rect for the title to fly out of. */
+  const select = (tab: HTMLElement | null, id: string) =>
+    onSelect(id, rectOf(tab?.querySelector('.tab-label') ?? null))
+
   const onTabKeyDown = (e: React.KeyboardEvent, index: number) => {
     // Left/right walk the strip; the tab under the cursor takes focus and opens.
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
     e.preventDefault()
     const next =
       (index + (e.key === 'ArrowRight' ? 1 : -1) + notes.length) % notes.length
-    onSelect(notes[next].id)
-    stripRef.current
-      ?.querySelector<HTMLElement>(`[data-tab-index="${next}"]`)
-      ?.focus()
+    const el = stripRef.current?.querySelector<HTMLElement>(
+      `[data-tab-index="${next}"]`,
+    )
+    select(el ?? null, notes[next].id)
+    el?.focus()
   }
 
   return (
@@ -70,14 +80,15 @@ export default function NoteTabs({
                 note.id === splitId ? 'in-split' : '',
                 dragId === note.id ? 'dragging' : '',
                 dropIndex === i ? 'drop-before' : '',
+                note.id === justCreatedId ? 'wet' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}
-              onClick={() => onSelect(note.id)}
+              onClick={(e) => select(e.currentTarget, note.id)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()
-                  onSelect(note.id)
+                  select(e.currentTarget, note.id)
                 } else {
                   onTabKeyDown(e, i)
                 }

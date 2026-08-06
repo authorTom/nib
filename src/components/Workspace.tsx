@@ -8,6 +8,7 @@ import EditorSkeleton from './EditorSkeleton'
 import type { NoteFile } from '../fs/vault'
 import type { Pane, SaveState } from '../hooks/useNotes'
 import type { Backlink } from '../lib/wikilinks'
+import type { EnterFrom, FlightOrigin } from '../lib/motion'
 import type { Theme } from '../hooks/useTheme'
 
 interface WorkspaceProps {
@@ -24,8 +25,13 @@ interface WorkspaceProps {
   saveState: SaveState
   lastSavedAt: number | null
   isDirty: (id: string) => boolean
+  /** Note created moments ago, for the ink bloom and the wet-ink tab. */
+  justCreatedId: string | null
+  /** Where the current switch was triggered from, for the title flight. */
+  flightFrom: FlightOrigin | null
+  enterFrom?: EnterFrom
 
-  onSelectTab: (id: string) => void
+  onSelectTab: (id: string, origin: FlightOrigin | null) => void
   onCloseTab: (id: string) => void
   onCloseOtherTabs: (id: string) => void
   onReorderTabs: (id: string, toIndex: number) => void
@@ -46,6 +52,7 @@ interface WorkspaceProps {
   onOpenTrash: () => void
   onOpenImport: () => void
   onOpenExport: () => void
+  onOpenAppearance: () => void
   onInlineAsk: (
     instruction: string,
     selectedText: string,
@@ -80,6 +87,9 @@ export default function Workspace({
   saveState,
   lastSavedAt,
   isDirty,
+  justCreatedId,
+  flightFrom,
+  enterFrom,
   onSelectTab,
   onCloseTab,
   onCloseOtherTabs,
@@ -100,6 +110,7 @@ export default function Workspace({
   onOpenTrash,
   onOpenImport,
   onOpenExport,
+  onOpenAppearance,
   onInlineAsk,
   onAddTask,
   onAddBookmark,
@@ -141,6 +152,7 @@ export default function Workspace({
         onOpenTrash={onOpenTrash}
         onOpenImport={onOpenImport}
         onOpenExport={onOpenExport}
+        onOpenAppearance={onOpenAppearance}
         onToggleSplit={onToggleSplit}
         isSplit={split}
         saveState={saveState}
@@ -160,6 +172,7 @@ export default function Workspace({
         onReorder={onReorderTabs}
         onToggleSplit={onToggleSplit}
         isDirty={isDirty}
+        justCreatedId={justCreatedId}
       />
 
       {focusedEditor && <Toolbar editor={focusedEditor} />}
@@ -173,6 +186,9 @@ export default function Workspace({
             notes={notes}
             backlinks={backlinks}
             focused={focusedPane === 'primary' || !split}
+            isNew={activeNote.id === justCreatedId}
+            flightFrom={flightFrom}
+            enterFrom={enterFrom}
             paneLabel={split ? activeNote.title : undefined}
             onFocusPane={focusPrimary}
             onContentChange={onContentChange}

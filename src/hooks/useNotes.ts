@@ -38,6 +38,10 @@ const BACKEND_KEY = 'notes-vault-backend'
 const SAVE_DEBOUNCE_MS = 500
 // While editing, snapshot the previous on-disk version at most this often.
 const SNAPSHOT_INTERVAL_MS = 5 * 60_000
+// How long a newly created note reads as "wet ink" in the tabs and the tree.
+// Matches the ink-dry animation in global.css.
+const INK_DRY_MS = 1400
+
 /** How the topbar reports the debounced writer's progress. */
 export type SaveState = 'idle' | 'unsaved' | 'saving' | 'saved'
 
@@ -509,12 +513,24 @@ export function useNotes() {
   }, [flush])
 
   // ---- CRUD ----
+  // The note that was just made, so the UI can mark it as freshly inked. Cleared
+  // on a timer rather than by the animation, so nothing depends on an event
+  // that never fires when motion is switched off.
+  const [justCreatedId, setJustCreatedId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!justCreatedId) return
+    const timer = setTimeout(() => setJustCreatedId(null), INK_DRY_MS)
+    return () => clearTimeout(timer)
+  }, [justCreatedId])
+
   const createNote = useCallback(
     async (folderPath = '') => {
       if (!dir) return
       const note = await vault.createNote(dir, folderPath)
       await refresh(dir)
       setActiveId(note.id)
+      setJustCreatedId(note.id)
     },
     [dir, refresh],
   )
@@ -864,6 +880,8 @@ export function useNotes() {
     toggleSplit,
     focusedPane,
     setFocusedPane,
+    /** Set briefly after createNote, for the ink-bloom and wet-ink treatments. */
+    justCreatedId,
     // Save status
     saveState,
     lastSavedAt,

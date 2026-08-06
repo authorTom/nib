@@ -17,6 +17,11 @@ export interface Command {
   section?: string
   /** Extra terms to match against (synonyms). */
   keywords?: string
+  /**
+   * Never listed, only found: shown when a search matches its keywords and
+   * never on the empty list. For things that should reward looking.
+   */
+  hidden?: boolean
   run: () => void
 }
 
@@ -70,12 +75,15 @@ export default function CommandPalette({
 
   const { items, commandCount } = useMemo(() => {
     const q = query.trim().toLowerCase()
-    const cmds = commands.filter(
-      (c) =>
-        !q ||
+    const cmds = commands.filter((c) => {
+      const matches =
         c.label.toLowerCase().includes(q) ||
-        (c.keywords ?? '').toLowerCase().includes(q),
-    )
+        (c.keywords ?? '').toLowerCase().includes(q)
+      // Hidden commands never pad the default list — they only turn up for
+      // someone who typed the right thing.
+      if (c.hidden) return q.length > 0 && matches
+      return !q || matches
+    })
     const ns = notes
       .filter(
         (n) =>

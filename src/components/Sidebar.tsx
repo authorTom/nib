@@ -23,6 +23,7 @@ import OverflowMenu, { type MenuItem } from './OverflowMenu'
 import type { TreeNode } from '../fs/vault'
 import type { SearchResult } from '../hooks/useNotes'
 import { dragHasFiles } from '../lib/importMarkdown'
+import { rectOf, type FlightOrigin } from '../lib/motion'
 
 interface SidebarProps {
   tree: TreeNode[]
@@ -32,7 +33,10 @@ interface SidebarProps {
   query: string
   searchResults: SearchResult[] | null
   onQueryChange: (q: string) => void
-  onSelect: (id: string) => void
+  /** `origin` is the row's rect, which the incoming note's title flies from. */
+  onSelect: (id: string, origin: FlightOrigin | null) => void
+  /** Just-created note, whose row shows as still-wet ink. */
+  justCreatedId: string | null
   onCreate: () => void
   onCreateInFolder: (folderPath: string) => void
   /** Create a folder with a name the user typed inline. */
@@ -138,6 +142,7 @@ export default function Sidebar({
   searchResults,
   onQueryChange,
   onSelect,
+  justCreatedId,
   onCreate,
   onCreateInFolder,
   onCreateFolder,
@@ -322,7 +327,11 @@ export default function Sidebar({
       case ' ':
         e.preventDefault()
         if (row.kind === 'folder') toggle(row.id)
-        else onSelect(row.id)
+        else
+          onSelect(
+            row.id,
+            rectOf((e.currentTarget as HTMLElement).querySelector('.tree-label')),
+          )
         return
       case 'F2':
         e.preventDefault()
@@ -386,10 +395,15 @@ export default function Sidebar({
             row.id === activeId ? 'active' : '',
             dragOverId === row.id ? 'drop-target' : '',
             draggingId === row.id ? 'dragging' : '',
+            row.id === justCreatedId ? 'wet' : '',
           ]
             .filter(Boolean)
             .join(' ')}
-          onClick={() => (isFolder ? toggle(row.id) : onSelect(row.id))}
+          onClick={(e) =>
+            isFolder
+              ? toggle(row.id)
+              : onSelect(row.id, rectOf(e.currentTarget.querySelector('.tree-label')))
+          }
           onDoubleClick={() => setRenaming(row.id)}
           onFocus={() => setFocusedId(row.id)}
           onKeyDown={(e) => onTreeKeyDown(e, row)}
@@ -526,7 +540,9 @@ export default function Sidebar({
             className={`tree-row file-row search-result${
               r.id === activeId ? ' active' : ''
             }`}
-            onClick={() => onSelect(r.id)}
+            onClick={(e) =>
+              onSelect(r.id, rectOf(e.currentTarget.querySelector('.tree-label')))
+            }
           >
             <span className="tree-icon">
               <FileText size={15} />
