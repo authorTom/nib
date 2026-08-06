@@ -28,6 +28,11 @@ import {
   MarkdownTableRow,
 } from '../editor/markdownTable'
 import { resolveWikilink, type Backlink } from '../lib/wikilinks'
+import {
+  prefersReducedMotion,
+  type EnterFrom,
+  type FlightOrigin,
+} from '../lib/motion'
 import type { NoteFile } from '../fs/vault'
 
 const lowlight = createLowlight(common)
@@ -40,6 +45,12 @@ interface EditorPaneProps {
   backlinks: Backlink[]
   /** True when this pane owns the toolbar and the topbar title. */
   focused: boolean
+  /** The note was created moments ago — play the ink bloom across the page. */
+  isNew?: boolean
+  /** Screen rect of whatever was clicked to open this note. */
+  flightFrom?: FlightOrigin | null
+  /** Side to slide in from, when the switch had a direction. */
+  enterFrom?: EnterFrom
   /** Rendered as a pane header when the editor is split. */
   paneLabel?: string
   onClosePane?: () => void
@@ -69,6 +80,9 @@ export default function EditorPane({
   notes,
   backlinks,
   focused,
+  isNew = false,
+  flightFrom,
+  enterFrom,
   paneLabel,
   onClosePane,
   onFocusPane,
@@ -141,6 +155,37 @@ export default function EditorPane({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, content])
 
+  // The note's heading flies out of whatever was clicked to open it — the tab,
+  // or the row in the tree. Declared after the effect that loads the content,
+  // and deliberately a passive effect rather than a layout one, so the heading
+  // exists in the DOM by the time this measures it.
+  const flown = useRef(false)
+  useEffect(() => {
+    if (!editor || !flightFrom || flown.current || prefersReducedMotion()) return
+    // Once per mount, and a mount is one note. Without the guard React's
+    // development double-invoke restarts the animation a frame in.
+    flown.current = true
+    const heading = editor.view.dom.querySelector('h1')
+    if (!heading) return // nothing to fly to; the pane's own slide carries it
+    const to = heading.getBoundingClientRect()
+    if (!to.width || !to.height) return
+    // Scale from the source's height, so the title appears to grow out of a
+    // label rather than being dropped in at full size.
+    const scale = Math.max(0.2, Math.min(1, flightFrom.height / to.height))
+    heading.animate(
+      [
+        {
+          transform: `translate(${flightFrom.x - to.x}px, ${
+            flightFrom.y - to.y
+          }px) scale(${scale})`,
+          opacity: 0.3,
+        },
+        { transform: 'none', opacity: 1 },
+      ],
+      { duration: 380, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' },
+    )
+  }, [editor, flightFrom])
+
   // Wikilink decorations are derived at render time from the note list. That
   // list changes independently of the document, so nudge the view when it does —
   // otherwise a link stays "broken" until the next keystroke.
@@ -210,8 +255,31 @@ export default function EditorPane({
         </div>
       )}
 
+      {/* Sits on the pane, not the text column: clipped to the column it would
+          have hard rectangular edges, which reads as a coloured box rather than
+          ink soaking outward. */}
+      {isNew && (
+        <div className="ink-bloom" aria-hidden="true">
+          <span />
+        </div>
+      )}
+
       <div className="content">
-        <div className="editor-wrap">
+        <div
+          className="editor-wrap"
+          // The page enters from the direction it was travelled to: pick a tab
+          // to the right and the note arrives from the right. Falls back to the
+          // neutral rise when the move had no direction (a click in the tree).
+          style={
+            enterFrom
+              ? ({
+                  '--enter-x': enterFrom === 'right' ? '28px' : '-28px',
+                  '--enter-y': '0px',
+                } as React.CSSProperties)
+              : undefined
+          }
+        >
+
           {editor && (
             <BubbleMenu
               editor={editor}

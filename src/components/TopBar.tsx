@@ -8,6 +8,7 @@ import {
   Menu,
   Moon,
   Package,
+  Palette,
   Plus,
   Search,
   Sparkles,
@@ -39,6 +40,7 @@ interface TopBarProps {
   onOpenTrash: () => void
   onOpenImport: () => void
   onOpenExport: () => void
+  onOpenAppearance: () => void
   onToggleSplit: () => void
   isSplit: boolean
   saveState: SaveState
@@ -69,6 +71,7 @@ export default function TopBar({
   onOpenTrash,
   onOpenImport,
   onOpenExport,
+  onOpenAppearance,
   onToggleSplit,
   isSplit,
   saveState,
@@ -114,6 +117,12 @@ export default function TopBar({
           clientX: window.innerWidth - 40,
           clientY: 40,
         } as React.MouseEvent),
+    },
+    {
+      id: 'appearance',
+      label: 'Appearance & themes…',
+      Icon: Palette,
+      run: onOpenAppearance,
     },
     {
       id: 'history',

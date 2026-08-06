@@ -12,6 +12,7 @@ import {
   Minimize2,
   Moon,
   Package,
+  Palette,
   Plus,
   Server,
   Sparkles,
@@ -27,6 +28,9 @@ import TrashModal from './components/TrashModal'
 import ExportModal from './components/ExportModal'
 import HistoryModal from './components/HistoryModal'
 import ConfirmDialog, { type ConfirmRequest } from './components/ConfirmDialog'
+import ThemePicker from './components/ThemePicker'
+import ResizeCrew from './components/ResizeCrew'
+import { EASTER_EGG_KEYWORDS } from './themes/themes'
 import AssistantPanel from './components/AssistantPanel'
 import TaskPanel from './components/TaskPanel'
 import VaultGate from './components/VaultGate'
@@ -50,6 +54,7 @@ import {
 } from './lib/importMarkdown'
 import { useTheme } from './hooks/useTheme'
 import { useNotes } from './hooks/useNotes'
+import type { EnterFrom, FlightOrigin } from './lib/motion'
 import { useBacklinks } from './hooks/useBacklinks'
 import { useResizable } from './hooks/useResizable'
 import { useDeferredUnmount } from './hooks/useDeferredUnmount'
@@ -62,7 +67,14 @@ const DIRECTORY_PROPS = { webkitdirectory: '', directory: '' } as unknown as
   React.InputHTMLAttributes<HTMLInputElement>
 
 export default function App() {
-  const { theme, toggleTheme } = useTheme()
+  const {
+    theme,
+    toggleTheme,
+    palette,
+    setPalette,
+    availableThemes,
+    unlockTheme,
+  } = useTheme()
   const {
     status,
     vaultName,
@@ -89,6 +101,7 @@ export default function App() {
     saveState,
     lastSavedAt,
     dirtyIds,
+    justCreatedId,
     connect,
     reconnect,
     serverVault,
@@ -144,6 +157,8 @@ export default function App() {
   // A single confirmation slot: any caller raises one by describing it, rather
   // than reaching for window.confirm.
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null)
+
+  const [themePickerOpen, setThemePickerOpen] = useState(false)
 
   // Tasks & bookmarks share a tabbed panel docked on the left (beside the
   // note list); the assistant stays on the right.
@@ -390,13 +405,42 @@ export default function App() {
     activeId,
   ])
 
+  // ---- Note-switch choreography ----
+  // Both are set at the click, not in an effect afterwards: the pane remounts in
+  // the same commit as the id change, so anything computed later would arrive a
+  // switch too late and animate the wrong way.
+  const [flightFrom, setFlightFrom] = useState<FlightOrigin | null>(null)
+  const [enterFrom, setEnterFrom] = useState<EnterFrom | undefined>()
+
+  /** Which way along the tab strip this switch travels, if it's on the strip. */
+  const directionTo = useCallback(
+    (id: string): EnterFrom | undefined => {
+      const from = openNotes.findIndex((n) => n.id === activeId)
+      const to = openNotes.findIndex((n) => n.id === id)
+      if (from === -1 || to === -1 || from === to) return undefined
+      return to > from ? 'right' : 'left'
+    },
+    [openNotes, activeId],
+  )
+
   /** Open a note from the sidebar, palette, or a wikilink. */
   const handleSelect = useCallback(
-    (id: string) => {
+    (id: string, origin: FlightOrigin | null = null) => {
+      setFlightFrom(origin)
+      setEnterFrom(undefined) // a jump from outside the strip has no direction
       openNote(id)
       closeSidebar()
     },
     [openNote, closeSidebar],
+  )
+
+  const handleSelectTab = useCallback(
+    (id: string, origin: FlightOrigin | null) => {
+      setFlightFrom(origin)
+      setEnterFrom(directionTo(id))
+      openNote(id)
+    },
+    [openNote, directionTo],
   )
 
   /** A wikilink click lands in whichever pane the reader was already in. */
@@ -493,8 +537,15 @@ export default function App() {
         id: 'theme',
         label: theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode',
         icon: theme === 'dark' ? Sun : Moon,
-        keywords: 'theme appearance dark light',
+        keywords: 'theme appearance dark light mode',
         run: () => toggleTheme(),
+      },
+      {
+        id: 'appearance',
+        label: 'Appearance & themes…',
+        icon: Palette,
+        keywords: 'theme colour color palette appearance skin style look',
+        run: () => setThemePickerOpen(true),
       },
       {
         id: 'open-folder',
@@ -556,6 +607,37 @@ export default function App() {
         run: toggleBookmarks,
       },
     ]
+
+    // Every unlocked theme is reachable by name, but hidden so six extra rows
+    // don't pad the palette's default list.
+    for (const t of availableThemes) {
+      list.push({
+        id: `theme-${t.id}`,
+        label: `Theme: ${t.name}`,
+        icon: Palette,
+        section: 'Appearance',
+        keywords: `theme colour color palette appearance ${t.name}`,
+        hidden: true,
+        run: () => setPalette(t.id),
+      })
+    }
+
+    // The one you have to go looking for. Once found it joins the picker and
+    // the list above, so this only exists while it's still a secret.
+    if (!availableThemes.some((t) => t.id === 'springfield')) {
+      list.push({
+        id: 'unlock-springfield',
+        label: '🍩 Mmm… a theme you were not supposed to find',
+        icon: Palette,
+        section: 'Appearance',
+        keywords: EASTER_EGG_KEYWORDS,
+        hidden: true,
+        run: () => {
+          unlockTheme('springfield')
+          showToast('Woo-hoo! Springfield theme unlocked')
+        },
+      })
+    }
 
     // Only offered where a server vault actually exists (Docker deployments
     // with a volume mounted).
@@ -631,6 +713,10 @@ export default function App() {
     toggleFocus,
     theme,
     toggleTheme,
+    availableThemes,
+    setPalette,
+    unlockTheme,
+    showToast,
     connect,
     openTrash,
     openImport,
@@ -682,6 +768,7 @@ export default function App() {
           searchResults={searchResults}
           onQueryChange={setQuery}
           onSelect={handleSelect}
+          justCreatedId={justCreatedId}
           onCreate={() => {
             void createNote()
             closeSidebar()
@@ -742,7 +829,10 @@ export default function App() {
         saveState={saveState}
         lastSavedAt={lastSavedAt}
         isDirty={(id) => dirtyIds.includes(id)}
-        onSelectTab={openNote}
+        justCreatedId={justCreatedId}
+        flightFrom={flightFrom}
+        enterFrom={enterFrom}
+        onSelectTab={handleSelectTab}
         onCloseTab={closeTab}
         onCloseOtherTabs={closeOtherTabs}
         onReorderTabs={moveTab}
@@ -762,6 +852,7 @@ export default function App() {
         onOpenTrash={() => void openTrash()}
         onOpenImport={openImport}
         onOpenExport={() => setExportOpen(true)}
+        onOpenAppearance={() => setThemePickerOpen(true)}
         onInlineAsk={assistant.complete}
         onAddTask={addTaskFromText}
         onAddBookmark={captureSelectionBookmark}
@@ -887,6 +978,56 @@ export default function App() {
         request={confirmRequest}
         onClose={() => setConfirmRequest(null)}
       />
+
+      {/* Whichever divider is being dragged gets the crew. Only one can be
+          active at a time, so they never collide. */}
+      <ResizeCrew
+        dragging={sidebarResize.dragging}
+        drag={sidebarResize.drag}
+        handleRef={sidebarResize.handleRef}
+      />
+      <ResizeCrew
+        dragging={taskResize.dragging}
+        drag={taskResize.drag}
+        handleRef={taskResize.handleRef}
+      />
+      <ResizeCrew
+        dragging={assistantResize.dragging}
+        drag={assistantResize.drag}
+        handleRef={assistantResize.handleRef}
+      />
+
+      <ThemePicker
+        open={themePickerOpen}
+        onClose={() => setThemePickerOpen(false)}
+        themes={availableThemes}
+        palette={palette}
+        onPickPalette={(id, e) => setPalette(id, e)}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
+
+      {/* Ragged edges for the ink bloom that opens a new note. Defined once
+          here rather than per pane: an SVG filter is referenced by id, and two
+          copies would be two elements claiming the same one. */}
+      <svg className="visually-hidden" aria-hidden="true" focusable="false">
+        <filter id="nib-ink">
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.018"
+            numOctaves="3"
+            seed="7"
+            result="noise"
+          />
+          <feDisplacementMap
+            in="SourceGraphic"
+            in2="noise"
+            scale="34"
+            xChannelSelector="R"
+            yChannelSelector="G"
+          />
+        </filter>
+      </svg>
 
       {toastAnim.render && (
         <div
