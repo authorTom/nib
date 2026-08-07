@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowUp,
   Brain,
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import type { AssistantStatus, PendingAction } from '../ai/useAssistant'
 import type { AssistantSettings, ChatMessage, Provider } from '../ai/types'
+import { diffLines, type DiffLine } from '../lib/diff'
 
 interface AssistantPanelProps {
   open: boolean
@@ -41,6 +42,111 @@ const PROVIDER_LABEL: Record<Provider, string> = {
   openrouter: 'OpenRouter',
 }
 
+/** Longest diff we'll put in the DOM; past this the reader is scrolling, not reading. */
+const MAX_DIFF_LINES = 400
+
+/**
+ * The changed lines of a proposed edit, with enough context to place them.
+ *
+ * A new file has no "before", so it is shown whole and labelled as a creation
+ * rather than dressed up as a diff against nothing.
+ */
+function ApprovalDiff({
+  before,
+  after,
+}: {
+  before: string
+  after: string
+}) {
+  const diff = useMemo(() => diffLines(before, after), [before, after])
+
+  if (!before.trim()) {
+    const lines = after.replace(/\n$/, '').split('\n')
+    const shown = lines.slice(0, MAX_DIFF_LINES)
+    return (
+      <div className="approval-diff">
+        <div className="diff-stat">
+          <span className="diff-added">+{lines.length}</span> lines · new file
+        </div>
+        <pre className="diff-body">
+          {shown.map((text, i) => (
+            <span key={i} className="diff-line add">
+              <span className="diff-mark" aria-hidden="true">
+                +
+              </span>
+              <span className="diff-text">{text || ' '}</span>
+            </span>
+          ))}
+        </pre>
+        {lines.length > shown.length && (
+          <div className="diff-more">
+            {lines.length - shown.length} more lines not shown
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (diff.identical) {
+    return (
+      <div className="approval-diff">
+        <div className="diff-stat">No change — the file already reads this way.</div>
+      </div>
+    )
+  }
+
+  // Flatten hunks for rendering, keeping the "N unchanged lines" separators.
+  const rows: { key: string; line?: DiffLine; skipped?: number }[] = []
+  let budget = MAX_DIFF_LINES
+  let dropped = 0
+  diff.hunks.forEach((hunk, h) => {
+    if (hunk.skipped > 0) {
+      rows.push({ key: `s${h}`, skipped: hunk.skipped })
+    }
+    hunk.lines.forEach((line, i) => {
+      if (budget > 0) {
+        rows.push({ key: `${h}-${i}`, line })
+        budget--
+      } else {
+        dropped++
+      }
+    })
+  })
+
+  return (
+    <div className="approval-diff">
+      <div className="diff-stat">
+        <span className="diff-added">+{diff.added}</span>{' '}
+        <span className="diff-removed">−{diff.removed}</span> lines
+        {diff.coarse && ' · replaced wholesale'}
+      </div>
+      <pre className="diff-body">
+        {rows.map((row) =>
+          row.line ? (
+            <span key={row.key} className={`diff-line ${row.line.kind}`}>
+              <span className="diff-mark" aria-hidden="true">
+                {row.line.kind === 'add'
+                  ? '+'
+                  : row.line.kind === 'remove'
+                    ? '−'
+                    : ' '}
+              </span>
+              <span className="diff-text">{row.line.text || ' '}</span>
+            </span>
+          ) : (
+            <span key={row.key} className="diff-skip">
+              ⋯ {row.skipped} unchanged {row.skipped === 1 ? 'line' : 'lines'}
+            </span>
+          ),
+        )}
+      </pre>
+      {dropped > 0 && (
+        <div className="diff-more">{dropped} more changed lines not shown</div>
+      )}
+    </div>
+  )
+}
+
 function ApprovalCard({
   action,
   onApprove,
@@ -58,9 +164,10 @@ function ApprovalCard({
         <span className="approval-summary">{action.preview.summary}</span>
       </div>
       {action.preview.kind === 'write' && (
-        <pre className="approval-diff">
-          {action.preview.after}
-        </pre>
+        <ApprovalDiff
+          before={action.preview.before ?? ''}
+          after={action.preview.after ?? ''}
+        />
       )}
       {!decided ? (
         <div className="approval-actions">

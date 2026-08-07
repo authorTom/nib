@@ -65,6 +65,14 @@ interface EditorPaneProps {
   onAddTask: (text: string) => void
   onAddBookmark: () => void
   onEditorReady: (editor: TiptapEditor | null) => void
+  /** The user has left this note; a chance to name the file after its heading. */
+  onLeaveNote?: (noteId: string, markdown: string) => void
+  /**
+   * Asked once, at mount, before the pane takes the caret. Lets the app veto
+   * the claim when this mount is only a rename re-keying the pane — otherwise
+   * naming a file would snatch focus back from whatever the user just clicked.
+   */
+  shouldClaimFocus?: () => boolean
 }
 
 /**
@@ -92,6 +100,8 @@ export default function EditorPane({
   onAddTask,
   onAddBookmark,
   onEditorReady,
+  onLeaveNote,
+  shouldClaimFocus,
 }: EditorPaneProps) {
   const [aiOpen, setAiOpen] = useState(false)
   const [aiRange, setAiRange] = useState<{
@@ -141,6 +151,10 @@ export default function EditorPane({
       onContentChange(noteId, serialize(editor))
     },
     onFocus: onFocusPane,
+    // Leaving the note is the safe moment to let it take its name from its own
+    // first heading: doing it mid-keystroke would rename the file, change the
+    // note's id, and remount this pane under the user's hands.
+    onBlur: ({ editor }) => onLeaveNote?.(noteId, serialize(editor)),
   })
 
   // Load the note's markdown into the editor when it's ready, and re-sync if the
@@ -154,6 +168,24 @@ export default function EditorPane({
     editor.commands.setContent(content, false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, content])
+
+  // Take the caret as soon as the content is in, so the first keystroke after
+  // opening or creating a note lands in the document. Without this the ink
+  // bloom washes across the page announcing "write here" and the caret is on
+  // document.body — the whole opening moment ends in a dead keystroke.
+  //
+  // Captured at mount rather than read live: a pane claims the caret only if it
+  // owned focus when it appeared. Reading the prop would yank the selection to
+  // the top of the document the moment the user clicked into the other pane.
+  const ownedFocusAtMount = useRef(focused)
+  useEffect(() => {
+    if (!editor || !ownedFocusAtMount.current) return
+    if (shouldClaimFocus && !shouldClaimFocus()) return
+    // 'start', not 'end': the note has just flown its heading into place and
+    // the reader is looking at the top of it. Focusing the end would scroll a
+    // long note to its last line and throw that away.
+    editor.commands.focus('start')
+  }, [editor])
 
   // The note's heading flies out of whatever was clicked to open it — the tab,
   // or the row in the tree. Declared after the effect that loads the content,

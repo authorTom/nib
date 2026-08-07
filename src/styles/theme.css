@@ -12,6 +12,36 @@
    * keyframe says so (check-pop goes to 1.18 and back); layering an overshoot
    * easing on top of an overshoot keyframe just made things wobble twice. */
 
+  /* ---- Type ----
+   * Six chrome steps and four document steps, named for the job rather than
+   * the value. There were eighteen sizes before this, six of them inside a
+   * single pixel (0.82–0.88rem), which is not a hierarchy — it is a hierarchy's
+   * worth of maintenance with none of the legibility. Every step here is at
+   * least 0.8px from its neighbours, so each one can actually mean something.
+   *
+   * Chrome runs dense on purpose (13.6px default, under the 16px web body
+   * floor): this is a desktop writing tool for keyboard-fluent people, the
+   * same register as Obsidian or VS Code, and the document above it sits at
+   * 16.8px so the note always reads as content and the app as apparatus. */
+  --fs-label: 0.7rem; /* 11.2px — uppercase section labels */
+  --fs-meta: 0.75rem; /* 12.0px — timestamps, counts, paths, hints */
+  --fs-sm: 0.8rem; /*    12.8px — secondary and descriptive chrome */
+  --fs-ui: 0.85rem; /*   13.6px — default chrome */
+  --fs-md: 0.9rem; /*    14.4px — row titles, inputs, primary controls */
+  --fs-lg: 1rem; /*      16.0px — dialog titles, the palette's own field */
+
+  --fs-prose: 1.05rem; /*  16.8px — the note, ~68ch at a 760px column */
+  --fs-prose-h3: 1.2rem;
+  --fs-prose-h2: 1.5rem;
+  --fs-prose-h1: 1.9rem;
+  --fs-brand: 2.4rem; /* the wordmark, gate only */
+
+  /* Leading by job. Wrapping chrome text gets --lh-ui; without it those blocks
+   * inherit `normal` (~1.2), which is too tight for anything that wraps. */
+  --lh-tight: 1.25; /* headings */
+  --lh-ui: 1.5; /*    wrapping chrome copy */
+  --lh-prose: 1.7; /* the document */
+
   /* Light theme (default) */
   --bg: #ffffff;
   --bg-elevated: #f7f7f8;
@@ -20,13 +50,35 @@
   --border: #e4e4e7;
   --text: #1a1a1e;
   --text-muted: #6b7280;
-  --text-faint: #9ca3af;
+  --text-faint: #88919f;
   --accent: #4f46e5;
   --accent-contrast: #ffffff;
   --accent-soft: #eef2ff;
   --danger: #dc2626;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.12);
+
+  /* ---- Task priority ----
+   * The one place the app carries meaning a palette cannot: P1 is not "the
+   * accent", it is urgent, and a planner where urgency changes colour with the
+   * theme is a planner you have to re-learn. Named here so they are a
+   * deliberate part of the system rather than three hexes buried in a rule,
+   * and so a palette can still override them if it ever needs to. */
+  --priority-1: #ef4444;
+  --priority-2: #f59e0b;
+  --priority-3: #3b82f6;
+
+  /* ---- Syntax highlighting ----
+   * One Dark / One Light, as variables so a palette can replace them. Code is
+   * the one content type with its own established colour language, so it is
+   * allowed its own small palette — but it has to be overridable, or a
+   * greyscale theme gets a rainbow in the middle of it. */
+  --syn-keyword: #a626a4;
+  --syn-string: #50a14f;
+  --syn-number: #986801;
+  --syn-title: #4078f2;
+  --syn-name: #e45649;
+  --syn-comment: #a0a1a7;
 }
 
 :root[data-theme='dark'] {
@@ -40,8 +92,20 @@
   --text-faint: #71717a;
   --accent: #818cf8;
   --accent-contrast: #18181b;
-  --accent-soft: #25253a;
+  --accent-soft: #313450;
   --danger: #f87171;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.5);
+
+  /* Lifted for a dark page; the meaning of each is unchanged. */
+  --priority-1: #f87171;
+  --priority-2: #fbbf24;
+  --priority-3: #60a5fa;
+
+  --syn-keyword: #c678dd;
+  --syn-string: #98c379;
+  --syn-number: #d19a66;
+  --syn-title: #61afef;
+  --syn-name: #e06c75;
+  --syn-comment: #7f848e;
 }

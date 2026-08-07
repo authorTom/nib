@@ -148,7 +148,7 @@ export default function TaskPanel({
           </>
         )}
         {overdue.length === 0 && dueToday.length === 0 && (
-          <div className="task-empty">Nothing due today.</div>
+          <div className="task-empty">Nothing due today. That is allowed.</div>
         )}
       </>
     )
@@ -225,7 +225,9 @@ export default function TaskPanel({
         </button>
       </>
     ) : (
-      <div className="task-empty">No completed tasks yet.</div>
+      <div className="task-empty">
+        Nothing finished yet. Ticked tasks collect here rather than vanishing.
+      </div>
     )
   } else if (activeView === 'bin') {
     const binned = store.tasks
@@ -287,7 +289,9 @@ export default function TaskPanel({
         </div>
       </>
     ) : (
-      <div className="task-empty">The bin is empty.</div>
+      <div className="task-empty">
+            Empty. Binned tasks wait here for 30 days, then go for good.
+          </div>
     )
   } else if (project) {
     const list = sortTasks(openTasks.filter((t) => t.projectId === project.id))
@@ -333,7 +337,7 @@ export default function TaskPanel({
         {list.length ? (
           renderList(list, false)
         ) : (
-          <div className="task-empty">No tasks in this project.</div>
+          <div className="task-empty">Nothing filed under this one yet.</div>
         )}
       </>
     )

@@ -19,10 +19,10 @@
   --border: #e2e8f0;
   --text: #0f172a;
   --text-muted: #475569;
-  --text-faint: #94a3b8;
+  --text-faint: #8293ac;
   --accent: #2563eb;
   --accent-contrast: #ffffff;
-  --accent-soft: #dbeafe;
+  --accent-soft: #d8e3fb;
   --danger: #dc2626;
 }
 
@@ -41,7 +41,11 @@
   --danger: #f87171;
 }
 
-/* ---------- Nord — arctic, deliberately low glare ---------- */
+/* ---------- Nord — arctic, deliberately low glare ----------
+ * The accent is a shade below Nord's published #5e81ac. At the canonical value
+ * a white label on a filled button reads at 3.5:1, which is not a legible
+ * button, and this palette is offered as a working theme rather than as a
+ * colour-reference implementation. Same hue and saturation; lightness only. */
 :root[data-palette='nord'] {
   --bg: #eceff4;
   --bg-elevated: #e5e9f0;
@@ -51,10 +55,10 @@
   --text: #2e3440;
   --text-muted: #4c566a;
   --text-faint: #79879f;
-  --accent: #5e81ac;
+  --accent: #466387;
   --accent-contrast: #eceff4;
-  --accent-soft: #d6e0ee;
-  --danger: #bf616a;
+  --accent-soft: #c4cdda;
+  --danger: #b04751;
 }
 
 :root[data-palette='nord'][data-theme='dark'] {
@@ -68,11 +72,13 @@
   --text-faint: #8895ab;
   --accent: #88c0d0;
   --accent-contrast: #2e3440;
-  --accent-soft: #3b4a55;
-  --danger: #bf616a;
+  --accent-soft: #465a67;
+  --danger: #d18d93;
 }
 
-/* ---------- Rosé — warm mauve ---------- */
+/* ---------- Rosé — warm mauve ----------
+ * As with Nord, a shade below Rosé Pine's published #b4637a so that text on a
+ * filled accent surface is actually readable. */
 :root[data-palette='rose'] {
   --bg: #faf4ed;
   --bg-elevated: #fffaf3;
@@ -81,10 +87,10 @@
   --border: #e6dad0;
   --text: #494263;
   --text-muted: #6f6a89;
-  --text-faint: #9893a5;
-  --accent: #b4637a;
+  --text-faint: #8d889c;
+  --accent: #9a4a61;
   --accent-contrast: #ffffff;
-  --accent-soft: #f4e0e4;
+  --accent-soft: #e4cdcd;
   --danger: #b4404f;
 }
 
@@ -99,7 +105,7 @@
   --text-faint: #6e6a86;
   --accent: #ebbcba;
   --accent-contrast: #191724;
-  --accent-soft: #3a2b3f;
+  --accent-soft: #3b313c;
   --danger: #eb6f92;
 }
 
@@ -115,7 +121,7 @@
   --text-faint: #7d9382;
   --accent: #2f7d52;
   --accent-contrast: #ffffff;
-  --accent-soft: #d9f0e1;
+  --accent-soft: #c8ddd1;
   --danger: #b53225;
 }
 
@@ -130,11 +136,15 @@
   --text-faint: #6b8375;
   --accent: #5fd39a;
   --accent-contrast: #0e1712;
-  --accent-soft: #16352a;
+  --accent-soft: #224634;
   --danger: #f0766a;
 }
 
-/* ---------- Mono — greyscale, nothing competes with the text ---------- */
+/* ---------- Mono — greyscale, nothing competes with the text ----------
+ * The one palette with no hue to lean on, so position has to be carried by
+ * tone alone. That takes a real gap: the accent goes to pure black (against
+ * near-black text) and --accent-soft sits well clear of --bg-hover, or an
+ * active row and a hovered row are the same row. */
 :root[data-palette='mono'] {
   --bg: #ffffff;
   --bg-elevated: #f6f6f6;
@@ -143,11 +153,23 @@
   --border: #e3e3e3;
   --text: #111111;
   --text-muted: #5c5c5c;
-  --text-faint: #8f8f8f;
-  --accent: #111111;
+  --text-faint: #767676;
+  --accent: #000000;
   --accent-contrast: #ffffff;
-  --accent-soft: #e9e9e9;
+  --accent-soft: #d0d0d0;
   --danger: #b00020;
+
+  /* Greyscale means greyscale. A code block is the one place the app ships a
+     colour language of its own, and in this palette it was the one place
+     colour appeared at all — purple keywords and orange numbers in a theme
+     chosen to keep everything out of the text's way. Weight and tone carry
+     the structure here instead. */
+  --syn-keyword: #000000;
+  --syn-string: #4a4a4a;
+  --syn-number: #4a4a4a;
+  --syn-title: #222222;
+  --syn-name: #222222;
+  --syn-comment: #8a8a8a;
 }
 
 :root[data-palette='mono'][data-theme='dark'] {
@@ -158,11 +180,18 @@
   --border: #262626;
   --text: #f2f2f2;
   --text-muted: #a6a6a6;
-  --text-faint: #737373;
-  --accent: #f2f2f2;
+  --text-faint: #8a8a8a;
+  --accent: #ffffff;
   --accent-contrast: #0b0b0b;
-  --accent-soft: #272727;
+  --accent-soft: #3a3a3a;
   --danger: #ff6b6b;
+
+  --syn-keyword: #ffffff;
+  --syn-string: #c4c4c4;
+  --syn-number: #c4c4c4;
+  --syn-title: #e4e4e4;
+  --syn-name: #e4e4e4;
+  --syn-comment: #7a7a7a;
 }
 
 /* ---------- Springfield — the one you have to find ----------
@@ -181,7 +210,7 @@
   --accent: #1a6aa2;
   --accent-contrast: #ffffff;
   --accent-soft: #d3e9f8;
-  --danger: #d94f3d;
+  --danger: #d33d29;
 }
 
 /* Moe's after closing. */
@@ -196,6 +225,6 @@
   --text-faint: #8d8060;
   --accent: #ffd90f;
   --accent-contrast: #1b1710;
-  --accent-soft: #3a3212;
+  --accent-soft: #423810;
   --danger: #ff7a5c;
 }

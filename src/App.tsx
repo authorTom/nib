@@ -3,7 +3,6 @@ import {
   Bookmark,
   Columns2,
   FileDown,
-  FilePlus,
   FolderOpen,
   FolderPlus,
   History,
@@ -18,7 +17,9 @@ import {
   Sparkles,
   Sun,
   Trash2,
+  Keyboard,
   Upload,
+  X,
 } from 'lucide-react'
 import type { Editor as TiptapEditor } from '@tiptap/react'
 import Sidebar from './components/Sidebar'
@@ -34,6 +35,8 @@ import { EASTER_EGG_KEYWORDS } from './themes/themes'
 import AssistantPanel from './components/AssistantPanel'
 import TaskPanel from './components/TaskPanel'
 import VaultGate from './components/VaultGate'
+import InkFilter from './components/InkFilter'
+import ShortcutsModal from './components/ShortcutsModal'
 import { useAssistant } from './ai/useAssistant'
 import { useTasks } from './tasks/useTasks'
 import { useBookmarks } from './bookmarks/useBookmarks'
@@ -44,6 +47,8 @@ import {
   headingActions,
   listActions,
 } from './components/formatActions'
+import { deriveTitleFromMarkdown, isGeneratedTitle } from './lib/format'
+import { MOD_KEY } from './lib/platform'
 import { exportToPdf } from './lib/exportPdf'
 import { downloadMarkdown } from './lib/exportMarkdown'
 import { serialize } from './editor/markdown'
@@ -60,6 +65,19 @@ import { useResizable } from './hooks/useResizable'
 import { useDeferredUnmount } from './hooks/useDeferredUnmount'
 import { useEnterExit } from './hooks/useEnterExit'
 import { supportsDiskPicker } from './fs/vault'
+
+/**
+ * True when the keystroke belongs to whatever the user is writing in.
+ *
+ * The editor is a contenteditable, so `isContentEditable` matters as much as
+ * the input tags — without it, typing "?" in a note would open a dialog.
+ */
+function isTypingTarget(): boolean {
+  const el = document.activeElement as HTMLElement | null
+  if (!el) return false
+  if (el.isContentEditable) return true
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)
+}
 
 /** `webkitdirectory` is how every browser exposes folder picking, but it isn't
  *  in React's typed attribute list — assert it once here rather than at each use. */
@@ -99,9 +117,11 @@ export default function App() {
     focusedPane,
     setFocusedPane,
     saveState,
+    saveError,
     lastSavedAt,
     dirtyIds,
     justCreatedId,
+    justPlacedId,
     connect,
     reconnect,
     serverVault,
@@ -159,6 +179,7 @@ export default function App() {
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null)
 
   const [themePickerOpen, setThemePickerOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
   // Tasks & bookmarks share a tabbed panel docked on the left (beside the
   // note list); the assistant stays on the right.
@@ -225,18 +246,57 @@ export default function App() {
 
   // Transient confirmation toast (e.g. after capturing a task).
   const [toast, setToast] = useState<string | null>(null)
+  const [toastTone, setToastTone] = useState<'default' | 'danger'>('default')
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const showToast = useCallback((msg: string) => {
-    setToast(msg)
-    if (toastTimer.current) clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setToast(null), 2200)
-  }, [])
+  const showToast = useCallback(
+    (msg: string, tone: 'default' | 'danger' = 'default') => {
+      setToast(msg)
+      setToastTone(tone)
+      if (toastTimer.current) clearTimeout(toastTimer.current)
+      // A confirmation can go as soon as it's been read; a failure is a whole
+      // sentence naming a thing to fix, and needs long enough to finish it.
+      toastTimer.current = setTimeout(
+        () => setToast(null),
+        tone === 'danger' ? 7000 : 2200,
+      )
+    },
+    [],
+  )
   // Held past the dismissal so the toast can animate back down.
   const toastAnim = useEnterExit(toast !== null, 180)
   const [toastText, setToastText] = useState('')
   useEffect(() => {
     if (toast) setToastText(toast)
   }, [toast])
+
+  // ---- Naming a note after its own heading ----
+  // Set for the length of a rename, so the pane that re-keys underneath it
+  // doesn't grab the caret back from whatever the user just clicked.
+  const renaming = useRef(false)
+  const shouldClaimFocus = useCallback(() => !renaming.current, [])
+
+  const nameNoteAfterHeading = useCallback(
+    (noteId: string, markdown: string) => {
+      const note = notes.find((n) => n.id === noteId)
+      // Only ever renames away from the name Nib invented. A title the user
+      // typed is theirs, even when the heading later says something else.
+      if (!note || !isGeneratedTitle(note.title)) return
+      const derived = deriveTitleFromMarkdown(markdown)
+      if (!derived || derived === note.title) return
+      renaming.current = true
+      void renameNote(noteId, derived).finally(() => {
+        renaming.current = false
+      })
+    },
+    [notes, renameNote],
+  )
+
+  // A failed write says its piece once, in full. The top bar keeps the
+  // persistent "Not saved" state after the toast has gone, so the message is
+  // the explanation and the chip is the reminder.
+  useEffect(() => {
+    if (saveError) showToast(saveError, 'danger')
+  }, [saveError, showToast])
 
   const addTaskFromText = useCallback(
     (text: string) => {
@@ -380,8 +440,15 @@ export default function App() {
         // Capture the selection as a task; with no selection, toggle the panel.
         e.preventDefault()
         if (!captureSelectionTask()) toggleTasks()
-      } else if (mod && e.key.toLowerCase() === 'w') {
-        // Close the focused tab, as in a browser.
+      } else if (e.key === '?' && !mod && !isTypingTarget()) {
+        // Guarded hard: a question mark is a character before it is a command,
+        // and the editor must never lose one to a dialog.
+        e.preventDefault()
+        setShortcutsOpen(true)
+      } else if (mod && e.shiftKey && e.key.toLowerCase() === 'w') {
+        // Close the focused tab. Deliberately NOT plain Ctrl/Cmd+W: browsers
+        // reserve that one and ignore preventDefault, so binding it closed the
+        // whole app — taking any buffered keystrokes with it.
         e.preventDefault()
         if (activeId) closeTab(activeId)
       } else if (e.key === 'Escape') {
@@ -606,6 +673,14 @@ export default function App() {
         keywords: 'bookmark url link page product saved collection',
         run: toggleBookmarks,
       },
+      {
+        id: 'shortcuts',
+        label: 'Keyboard shortcuts',
+        icon: Keyboard,
+        hint: '?',
+        keywords: 'keys keyboard shortcuts bindings help reference cheatsheet',
+        run: () => setShortcutsOpen(true),
+      },
     ]
 
     // Every unlocked theme is reachable by name, but hidden so six extra rows
@@ -656,6 +731,16 @@ export default function App() {
     }
 
     if (activeNote) {
+      list.push({
+        id: 'close-tab',
+        label: 'Close tab',
+        icon: X,
+        // Advertised here because the shortcut is deliberately not the browser's
+        // Ctrl/Cmd+W, so nobody will guess it.
+        hint: 'Ctrl/Cmd+Shift+W',
+        keywords: 'close tab hide note dismiss',
+        run: () => closeTab(activeNote.id),
+      })
       list.push({
         id: 'history',
         label: 'Version history',
@@ -769,6 +854,7 @@ export default function App() {
           onQueryChange={setQuery}
           onSelect={handleSelect}
           justCreatedId={justCreatedId}
+          justPlacedId={justPlacedId}
           onCreate={() => {
             void createNote()
             closeSidebar()
@@ -827,9 +913,12 @@ export default function App() {
         backlinks={backlinks}
         splitBacklinks={splitBacklinks}
         saveState={saveState}
+        saveError={saveError}
         lastSavedAt={lastSavedAt}
         isDirty={(id) => dirtyIds.includes(id)}
+        vaultEmpty={notes.length === 0}
         justCreatedId={justCreatedId}
+        justPlacedId={justPlacedId}
         flightFrom={flightFrom}
         enterFrom={enterFrom}
         onSelectTab={handleSelectTab}
@@ -839,6 +928,8 @@ export default function App() {
         onToggleSplit={toggleSplit}
         onCloseSplit={() => setSplitId(null)}
         onContentChange={saveContent}
+        onLeaveNote={nameNoteAfterHeading}
+        shouldClaimFocus={shouldClaimFocus}
         onOpenNote={handleOpenInPane}
         onTitleCommit={handleRenameNote}
         onNew={() => void createNote()}
@@ -860,23 +951,6 @@ export default function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
       />
-
-      {notes.length === 0 && (
-        <div className="empty-overlay">
-          <div className="empty-state">
-            <h2>No notes yet</h2>
-            <p>Create one to start writing, or drop Markdown files in the list.</p>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => void createNote()}
-            >
-              <FilePlus size={18} />
-              New note
-            </button>
-          </div>
-        </div>
-      )}
 
       <div
         className={`assistant-dock${assistantOpen ? ' open' : ''}`}
@@ -928,7 +1002,11 @@ export default function App() {
         open={trashOpen}
         items={trashItems}
         onClose={() => setTrashOpen(false)}
-        onRestore={(name) => void restoreFromTrash(name)}
+        onRestore={(name) => {
+          void restoreFromTrash(name).then(() =>
+            showToast('Back where it was, with its history intact'),
+          )
+        }}
         onDeleteForever={(name) => void deleteFromTrash(name)}
         onEmpty={() => void emptyTrash()}
       />
@@ -969,7 +1047,11 @@ export default function App() {
         noteTitle={activeNote?.title ?? ''}
         items={historyItems}
         onClose={() => setHistoryOpen(false)}
-        onRestore={(name) => void restoreVersion(name)}
+        onRestore={(name) => {
+          void restoreVersion(name).then(() =>
+            showToast('Restored — and the version you were on was saved first'),
+          )
+        }}
         onDelete={(name) => void deleteVersion(name)}
         loadContent={previewVersion}
       />
@@ -1007,32 +1089,20 @@ export default function App() {
         onToggleTheme={toggleTheme}
       />
 
-      {/* Ragged edges for the ink bloom that opens a new note. Defined once
-          here rather than per pane: an SVG filter is referenced by id, and two
-          copies would be two elements claiming the same one. */}
-      <svg className="visually-hidden" aria-hidden="true" focusable="false">
-        <filter id="nib-ink">
-          <feTurbulence
-            type="fractalNoise"
-            baseFrequency="0.018"
-            numOctaves="3"
-            seed="7"
-            result="noise"
-          />
-          <feDisplacementMap
-            in="SourceGraphic"
-            in2="noise"
-            scale="34"
-            xChannelSelector="R"
-            yChannelSelector="G"
-          />
-        </filter>
-      </svg>
+      <ShortcutsModal
+        open={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
+        mod={MOD_KEY}
+      />
+
+      <InkFilter />
 
       {toastAnim.render && (
         <div
-          className={`toast${toastAnim.entered ? ' entered' : ''}`}
-          role="status"
+          className={`toast${toastAnim.entered ? ' entered' : ''}${
+            toastTone === 'danger' ? ' danger' : ''
+          }`}
+          role={toastTone === 'danger' ? 'alert' : 'status'}
         >
           {toastText}
         </div>

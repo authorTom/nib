@@ -18,3 +18,11 @@ dist-ssr
 # committing it. Drop a negation here if a shared .claude/settings.json is ever
 # wanted in the repo.
 .claude/
+
+# The same rule for everything Impeccable writes: working state (.impeccable/
+# holds critique snapshots, hook config and a design-system sidecar) and the
+# documents it generates. Both are regenerated per checkout; the reasoning that
+# matters is in the source comments instead.
+.impeccable/
+DESIGN.md
+PRODUCT.md

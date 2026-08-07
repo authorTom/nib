@@ -37,6 +37,8 @@ interface SidebarProps {
   onSelect: (id: string, origin: FlightOrigin | null) => void
   /** Just-created note, whose row shows as still-wet ink. */
   justCreatedId: string | null
+  /** Just-restored note. Same wet ink: it was placed on the page. */
+  justPlacedId: string | null
   onCreate: () => void
   onCreateInFolder: (folderPath: string) => void
   /** Create a folder with a name the user typed inline. */
@@ -143,6 +145,7 @@ export default function Sidebar({
   onQueryChange,
   onSelect,
   justCreatedId,
+  justPlacedId,
   onCreate,
   onCreateInFolder,
   onCreateFolder,
@@ -395,7 +398,7 @@ export default function Sidebar({
             row.id === activeId ? 'active' : '',
             dragOverId === row.id ? 'drop-target' : '',
             draggingId === row.id ? 'dragging' : '',
-            row.id === justCreatedId ? 'wet' : '',
+            row.id === justCreatedId || row.id === justPlacedId ? 'wet' : '',
           ]
             .filter(Boolean)
             .join(' ')}
@@ -529,7 +532,11 @@ export default function Sidebar({
 
   const renderResults = (results: SearchResult[]) => {
     if (results.length === 0) {
-      return <div className="sidebar-empty">No matches</div>
+      return (
+        <div className="sidebar-empty">
+          No note contains that — titles, paths and contents were all checked.
+        </div>
+      )
     }
     return (
       <div className="note-tree">

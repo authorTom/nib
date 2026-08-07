@@ -25,3 +25,13 @@ export function prefersReducedMotion(): boolean {
     window.matchMedia('(prefers-reduced-motion: reduce)').matches
   )
 }
+
+/**
+ * How long a floating surface takes to leave.
+ *
+ * Deliberately shorter than its entrance: arriving is worth watching, leaving
+ * is just getting out of the way, and a slow exit reads as lag. Must match the
+ * exit duration on `.modal-overlay` / `.modal` in global.css — the unmount
+ * waits exactly this long for the transition to finish.
+ */
+export const OVERLAY_EXIT_MS = 120

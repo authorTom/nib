@@ -4,12 +4,20 @@
 // server vault only when this build is served by the Nib server with a volume
 // mounted, and the on-disk picker only on Chromium. When neither the server nor
 // the browser offers storage there is nothing to offer, and the gate says so.
+//
+// This is the one screen in Nib that is not the desk. Everywhere else the
+// chrome holds still so the writing can move; here there is no writing yet, and
+// the screen's whole job is the promise it makes about where your notes will
+// live. So it gets the system's strongest moves rather than opting out of them:
+// the ink, display type, and a real vertical rhythm — the same brand, more sure
+// of itself. It used to borrow `.empty-state`, a utility built to be ignored.
 
 import { useState, type FormEvent } from 'react'
 import { FolderOpen, Lock, Moon, Server, Sun } from 'lucide-react'
 import { isVaultSupported, supportsDiskPicker } from '../fs/vault'
 import type { ServerVaultInfo } from '../fs/remote'
 import type { VaultStatus } from '../hooks/useNotes'
+import InkFilter from './InkFilter'
 
 interface Props {
   status: VaultStatus
@@ -21,6 +29,29 @@ interface Props {
   serverVault: ServerVaultInfo | null
   connectServer: () => void
   loginServer: (password: string) => Promise<string | null>
+}
+
+/**
+ * The nib, inlined so it takes the palette's ink through `currentColor`.
+ * `public/nib.svg` stays as it is — it is the favicon, and a favicon has no
+ * document to inherit a colour from.
+ */
+function NibMark({ size = 40 }: { size?: number }) {
+  return (
+    <svg
+      className="gate-mark"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path
+        fillRule="evenodd"
+        d="M12 1.5 17.6 7.2 12.7 20.4 12 22.6 11.3 20.4 6.4 7.2Z M12 5a1.7 1.7 0 1 0 0 3.4 1.7 1.7 0 1 0 0-3.4Z M11.45 9.4 12.55 9.4 12.15 18.8 11.85 18.8Z"
+      />
+    </svg>
+  )
 }
 
 export default function VaultGate({
@@ -35,10 +66,19 @@ export default function VaultGate({
   loginServer,
 }: Props) {
   const disk = supportsDiskPicker()
+  const choosing = status === 'no-vault' && serverVault !== null
 
   return (
     <div className="app">
-      <div className="main">
+      <div className="main gate">
+        <InkFilter />
+        {/* The same drop of ink that lands on a new note, reused for the
+            moment the workspace itself is made. Not a fifth gesture: the
+            vocabulary is closed, and this is one of the four. */}
+        <div className="ink-bloom gate-bloom" aria-hidden="true">
+          <span />
+        </div>
+
         <button
           type="button"
           className="icon-btn gate-theme"
@@ -47,15 +87,19 @@ export default function VaultGate({
         >
           {theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
         </button>
-        <div className="empty-state">
-          <img className="brand-mark" src="/nib.svg" alt="" width={44} height={44} />
-          <div className="brand">Nib</div>
-          {status === 'loading' && <p>Loading…</p>}
+
+        <div className={`gate-inner${choosing ? ' wide' : ''}`}>
+          <div className="gate-masthead">
+            <NibMark />
+            <span className="gate-wordmark">Nib</span>
+          </div>
+
+          {status === 'loading' && <p className="gate-lede">Loading…</p>}
 
           {status === 'unsupported' && (
             <>
-              <h2>Browser not supported</h2>
-              <p>
+              <h1 className="gate-title">Browser not supported</h1>
+              <p className="gate-lede">
                 This app needs a browser with file-storage support. Please update
                 to a recent version of Safari, Firefox, Chrome, or Edge.
               </p>
@@ -76,9 +120,10 @@ export default function VaultGate({
 
           {status === 'no-vault' && !serverVault && (
             <>
-              <FolderOpen size={40} />
-              <h2>{disk ? 'Choose a notes folder' : 'Create your vault'}</h2>
-              <p>
+              <h1 className="gate-title">
+                {disk ? 'Choose a notes folder' : 'Create your vault'}
+              </h1>
+              <p className="gate-lede">
                 {disk ? (
                   <>
                     Pick a folder to use as your vault. Your notes are saved there
@@ -93,10 +138,12 @@ export default function VaultGate({
                   </>
                 )}
               </p>
-              <button type="button" className="btn-primary" onClick={connect}>
-                <FolderOpen size={18} />
-                {disk ? 'Open folder' : 'Get started'}
-              </button>
+              <div className="gate-actions">
+                <button type="button" className="btn-primary" onClick={connect}>
+                  <FolderOpen size={18} />
+                  {disk ? 'Open folder' : 'Get started'}
+                </button>
+              </div>
             </>
           )}
 
@@ -112,18 +159,19 @@ export default function VaultGate({
 
           {status === 'needs-permission' && (
             <>
-              <FolderOpen size={40} />
-              <h2>Reconnect your vault</h2>
-              <p>
+              <h1 className="gate-title">Reconnect your vault</h1>
+              <p className="gate-lede">
                 Grant access to <strong>{vaultName ?? 'your folder'}</strong> to
                 continue.
               </p>
-              <button type="button" className="btn-primary" onClick={reconnect}>
-                Reconnect
-              </button>
-              <button type="button" className="btn-secondary" onClick={connect}>
-                Choose a different folder
-              </button>
+              <div className="gate-actions">
+                <button type="button" className="btn-primary" onClick={reconnect}>
+                  Reconnect
+                </button>
+                <button type="button" className="btn-secondary" onClick={connect}>
+                  Choose a different folder
+                </button>
+              </div>
             </>
           )}
         </div>
@@ -148,27 +196,29 @@ function ChooseBackend({
   if (!localSupported) {
     return (
       <>
-        <Server size={40} />
-        <h2>Open {serverVault.name}</h2>
-        <p>
+        <h1 className="gate-title">Open {serverVault.name}</h1>
+        <p className="gate-lede">
           Your notes are stored on the server running Nib, so they&rsquo;re
           available on every device and nothing is kept on this one.
         </p>
-        <button type="button" className="btn-primary" onClick={connectServer}>
-          <Server size={18} />
-          Open notes
-        </button>
+        <div className="gate-actions">
+          <button type="button" className="btn-primary" onClick={connectServer}>
+            <Server size={18} />
+            Open notes
+          </button>
+        </div>
       </>
     )
   }
 
   return (
     <>
-      <h2>Where should your notes live?</h2>
-      <p>You can change this later — nothing is copied between the two.</p>
+      <h1 className="gate-title">Where should your notes live?</h1>
       <div className="vault-options">
         <button type="button" className="vault-option" onClick={connectServer}>
-          <Server size={22} />
+          <span className="vault-option-icon">
+            <Server size={20} />
+          </span>
           <span className="vault-option-title">On this server</span>
           <span className="vault-option-desc">
             Notes are stored as Markdown files on the machine running Nib, so you
@@ -178,7 +228,9 @@ function ChooseBackend({
           </span>
         </button>
         <button type="button" className="vault-option" onClick={connect}>
-          <FolderOpen size={22} />
+          <span className="vault-option-icon">
+            <FolderOpen size={20} />
+          </span>
           <span className="vault-option-title">
             {disk ? 'In a folder on this computer' : 'Privately in this browser'}
           </span>
@@ -189,6 +241,9 @@ function ChooseBackend({
           </span>
         </button>
       </div>
+      <p className="gate-footnote">
+        You can change this later — nothing is copied between the two.
+      </p>
     </>
   )
 }
@@ -226,9 +281,11 @@ function LoginForm({
 
   return (
     <>
-      <Lock size={40} />
-      <h2>Unlock {name}</h2>
-      <p>Enter the vault password to open your notes.</p>
+      <h1 className="gate-title">
+        <Lock size={22} aria-hidden="true" />
+        Unlock {name}
+      </h1>
+      <p className="gate-lede">Enter the vault password to open your notes.</p>
       <form className="vault-login" onSubmit={(e) => void onSubmit(e)}>
         <input
           type="password"
@@ -250,9 +307,11 @@ function LoginForm({
         </p>
       )}
       {showLocalOption && (
-        <button type="button" className="btn-secondary" onClick={connect}>
-          {disk ? 'Use a local folder instead' : 'Use this browser instead'}
-        </button>
+        <div className="gate-actions">
+          <button type="button" className="btn-secondary" onClick={connect}>
+            {disk ? 'Use a local folder instead' : 'Use this browser instead'}
+          </button>
+        </div>
       )}
     </>
   )

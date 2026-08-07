@@ -17,6 +17,8 @@ interface NoteTabsProps {
   isDirty: (id: string) => boolean
   /** Just-created note, whose tab shows as still-wet ink. */
   justCreatedId: string | null
+  /** Just-restored note. Same wet ink: it was placed on the page. */
+  justPlacedId: string | null
 }
 
 /**
@@ -36,6 +38,7 @@ export default function NoteTabs({
   onToggleSplit,
   isDirty,
   justCreatedId,
+  justPlacedId,
 }: NoteTabsProps) {
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
@@ -80,7 +83,7 @@ export default function NoteTabs({
                 note.id === splitId ? 'in-split' : '',
                 dragId === note.id ? 'dragging' : '',
                 dropIndex === i ? 'drop-before' : '',
-                note.id === justCreatedId ? 'wet' : '',
+                note.id === justCreatedId || note.id === justPlacedId ? 'wet' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}

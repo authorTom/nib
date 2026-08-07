@@ -4,9 +4,9 @@ import { CornerDownLeft, FileText, Search, type LucideIcon } from 'lucide-react'
 import type { NoteFile } from '../fs/vault'
 import { folderOf } from '../lib/format'
 import { useEnterExit } from '../hooks/useEnterExit'
+import { OVERLAY_EXIT_MS } from '../lib/motion'
 
 /** Keep in step with --dur-base in theme.css. */
-const TRANSITION_MS = 180
 
 export interface Command {
   id: string
@@ -48,7 +48,7 @@ export default function CommandPalette({
   const [index, setIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
-  const { render, entered } = useEnterExit(open, TRANSITION_MS)
+  const { render, entered } = useEnterExit(open, OVERLAY_EXIT_MS)
 
   // Reset whenever the palette opens. Focus is handled by autoFocus on the
   // input: the element doesn't exist on the render where `open` flips, so
@@ -145,6 +145,9 @@ export default function CommandPalette({
     >
       <div
         className={`palette${entered ? ' entered' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="palette-input">
@@ -164,7 +167,12 @@ export default function CommandPalette({
         </div>
 
         <div className="palette-list" ref={listRef}>
-          {items.length === 0 && <div className="palette-empty">No results</div>}
+          {items.length === 0 && (
+            <div className="palette-empty">
+              Nothing matches. Commands and note titles are searched; note
+              contents are searched from the sidebar.
+            </div>
+          )}
           {items.map((item, i) => {
             const Icon =
               item.kind === 'command'
@@ -218,6 +226,9 @@ export default function CommandPalette({
           <span>↑↓ navigate</span>
           <span>↵ select</span>
           <span>esc close</span>
+          {/* The palette is where people already come looking for a way to do
+              something; it is the honest place to mention there is a list. */}
+          <span className="palette-footer-end">? all shortcuts</span>
         </div>
       </div>
     </div>

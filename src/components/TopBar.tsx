@@ -20,10 +20,9 @@ import OverflowMenu, { type MenuItem } from './OverflowMenu'
 import SaveIndicator from './SaveIndicator'
 import type { SaveState } from '../hooks/useNotes'
 import type { Theme } from '../hooks/useTheme'
+import { MOD_KEY } from '../lib/platform'
 
-const IS_MAC =
-  typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
-const MOD_KEY = IS_MAC ? '⌘' : 'Ctrl'
+
 
 interface TopBarProps {
   title: string
@@ -44,6 +43,7 @@ interface TopBarProps {
   onToggleSplit: () => void
   isSplit: boolean
   saveState: SaveState
+  saveError: string | null
   lastSavedAt: number | null
   theme: Theme
   onToggleTheme: (e: React.MouseEvent) => void
@@ -75,6 +75,7 @@ export default function TopBar({
   onToggleSplit,
   isSplit,
   saveState,
+  saveError,
   lastSavedAt,
   theme,
   onToggleTheme,
@@ -179,23 +180,33 @@ export default function TopBar({
         <Menu size={20} />
       </button>
 
-      <input
-        className="topbar-title-input"
-        value={localTitle}
-        onChange={(e) => setLocalTitle(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            ;(e.target as HTMLInputElement).blur()
-          }
-        }}
-        placeholder="Untitled"
-        disabled={!hasNote}
-        aria-label="Note title"
-      />
+      <span className="topbar-title">
+        <FileText size={14} aria-hidden="true" />
+        <input
+          className="topbar-title-input"
+          value={localTitle}
+          onChange={(e) => setLocalTitle(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              ;(e.target as HTMLInputElement).blur()
+            }
+          }}
+          placeholder="Untitled"
+          disabled={!hasNote}
+          // Names the field for what it actually is. The heading inside the
+          // document is the note's title; this is the file it lives in.
+          aria-label="File name"
+          title="File name — the note's own heading is in the document"
+        />
+      </span>
 
-      <SaveIndicator state={saveState} lastSavedAt={lastSavedAt} />
+      <SaveIndicator
+        state={saveState}
+        error={saveError}
+        lastSavedAt={lastSavedAt}
+      />
 
       <button
         type="button"
