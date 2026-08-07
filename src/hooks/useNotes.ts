@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  loadVaultHandle,
-  saveVaultHandle,
-  rememberOpfsVault,
-  hasOpfsVault,
+  loadLibraryHandle,
+  saveLibraryHandle,
+  rememberOpfsLibrary,
+  hasOpfsLibrary,
 } from '../db/notes'
-import * as vault from '../fs/vault'
+import * as library from '../fs/library'
 import * as history from '../fs/history'
 import * as remote from '../fs/remote'
 import type {
@@ -14,15 +14,15 @@ import type {
   NoteFile,
   TreeNode,
   TrashItem,
-} from '../fs/vault'
+} from '../fs/library'
 import type { HistoryItem } from '../fs/history'
-import type { ServerVaultInfo } from '../fs/remote'
+import type { ServerLibraryInfo } from '../fs/remote'
 import { clearContentCache, invalidateCached, readCached } from '../lib/contentCache'
 
-export type VaultStatus =
+export type LibraryStatus =
   | 'loading'
   | 'unsupported'
-  | 'no-vault'
+  | 'no-library'
   | 'needs-permission'
   | 'needs-login'
   | 'ready'
@@ -31,9 +31,10 @@ const ACTIVE_KEY = 'notes-active-id'
 // Open tabs and the split pane, so a reload restores the same workspace.
 const TABS_KEY = 'notes-open-tabs'
 const SPLIT_KEY = 'notes-split-id'
-// Which backend the user chose last time: 'server' means the vault lives in the
-// container. Disk and OPFS vaults are already remembered by their own
+// Which backend the user chose last time: 'server' means the library lives in the
+// container. Disk and OPFS libraries are already remembered by their own
 // mechanisms (a persisted handle / a flag), so only 'server' is recorded here.
+// Pre-rename key name, kept so existing users stay on the backend they chose.
 const BACKEND_KEY = 'notes-vault-backend'
 const SAVE_DEBOUNCE_MS = 500
 // While editing, snapshot the previous on-disk version at most this often.
@@ -57,18 +58,18 @@ export type SaveState = 'idle' | 'unsaved' | 'saving' | 'saved' | 'error'
 function describeSaveError(err: unknown): string {
   const name = err instanceof DOMException ? err.name : ''
   if (name === 'NotAllowedError' || name === 'SecurityError') {
-    return 'Nib lost permission to write to your folder. Reopen the vault to grant it again.'
+    return 'Deckle lost permission to write to your folder. Reopen the library to grant it again.'
   }
   if (name === 'QuotaExceededError') {
     return 'There is no room left to save. Free up space, then keep typing to retry.'
   }
   if (name === 'NotFoundError') {
-    return 'The note file has gone — it may have been moved or deleted outside Nib.'
+    return 'The note file has gone — it may have been moved or deleted outside Deckle.'
   }
   const message = err instanceof Error ? err.message : ''
   return message
-    ? `Couldn't save to your vault: ${message}`
-    : "Couldn't save to your vault. Your changes are still here; keep typing to retry."
+    ? `Couldn't save to your library: ${message}`
+    : "Couldn't save to your library. Your changes are still here; keep typing to retry."
 }
 
 /** Which of the two editor panes has the user's attention. */
@@ -103,7 +104,7 @@ function store(key: string, value: string | string[] | null) {
 }
 
 export function useNotes() {
-  const [status, setStatus] = useState<VaultStatus>('loading')
+  const [status, setStatus] = useState<LibraryStatus>('loading')
   const [dir, setDir] = useState<FileSystemDirectoryHandle | null>(null)
   const [tree, setTree] = useState<TreeNode[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -115,61 +116,61 @@ export function useNotes() {
   // Open tabs, in strip order. The active note is always a member.
   const [openIds, setOpenIds] = useState<string[]>(() => readStoredList(TABS_KEY))
 
-  const files = useMemo(() => vault.flattenFiles(tree), [tree])
+  const files = useMemo(() => library.flattenFiles(tree), [tree])
 
-  // Server vault availability, discovered once at startup. null = this build
-  // isn't served by the Nib server, so the option isn't offered at all.
-  const [serverVault, setServerVault] = useState<ServerVaultInfo | null>(null)
+  // Server library availability, discovered once at startup. null = this build
+  // isn't served by the Deckle server, so the option isn't offered at all.
+  const [serverLibrary, setServerLibrary] = useState<ServerLibraryInfo | null>(null)
 
-  // ---- Startup: restore a previously chosen vault ----
+  // ---- Startup: restore a previously chosen library ----
   useEffect(() => {
     let cancelled = false
     void (async () => {
       try {
-        // Ask the server first: the server vault works in every browser, so it
+        // Ask the server first: the server library works in every browser, so it
         // can rescue even a browser with no local storage backend at all.
-        const server = await remote.detectServerVault()
+        const server = await remote.detectServerLibrary()
         if (cancelled) return
-        setServerVault(server)
+        setServerLibrary(server)
 
         if (server && localStorage.getItem(BACKEND_KEY) === 'server') {
           if (server.authRequired && !server.authenticated) {
             setStatus('needs-login')
             return
           }
-          setDir(remote.openServerVault(server.name))
+          setDir(remote.openServerLibrary(server.name))
           setStatus('ready')
           return
         }
 
-        if (!vault.isVaultSupported()) {
-          setStatus(server ? 'no-vault' : 'unsupported')
+        if (!library.isLibrarySupported()) {
+          setStatus(server ? 'no-library' : 'unsupported')
           return
         }
         // Chromium: a previously picked on-disk folder is restored from its
         // persisted handle.
-        const saved = await loadVaultHandle()
+        const saved = await loadLibraryHandle()
         if (cancelled) return
         if (saved) {
-          const granted = await vault.ensurePermission(saved, false)
+          const granted = await library.ensurePermission(saved, false)
           if (cancelled) return
           setDir(saved)
           setStatus(granted ? 'ready' : 'needs-permission')
           return
         }
-        // Safari/Firefox: re-open the OPFS vault (a fixed location, so no stored
+        // Safari/Firefox: re-open the OPFS library (a fixed location, so no stored
         // handle is needed) if the user opened it before.
-        if (!vault.supportsDiskPicker() && vault.supportsOpfs() && hasOpfsVault()) {
-          const handle = await vault.openOpfsVault()
+        if (!library.supportsDiskPicker() && library.supportsOpfs() && hasOpfsLibrary()) {
+          const handle = await library.openOpfsLibrary()
           if (cancelled) return
           setDir(handle)
           setStatus('ready')
           return
         }
-        setStatus('no-vault')
+        setStatus('no-library')
       } catch {
         // Never leave the app stuck on the loading screen.
-        if (!cancelled) setStatus('no-vault')
+        if (!cancelled) setStatus('no-library')
       }
     })()
     return () => {
@@ -178,12 +179,12 @@ export function useNotes() {
   }, [])
 
   const refresh = useCallback(async (d: FileSystemDirectoryHandle) => {
-    const t = await vault.buildTree(d)
+    const t = await library.buildTree(d)
     setTree(t)
-    return vault.flattenFiles(t)
+    return library.flattenFiles(t)
   }, [])
 
-  // ---- Load note list once the vault is ready ----
+  // ---- Load note list once the library is ready ----
   useEffect(() => {
     if (status !== 'ready' || !dir) return
     let cancelled = false
@@ -215,7 +216,7 @@ export function useNotes() {
     store(ACTIVE_KEY, activeId)
     void (async () => {
       try {
-        const text = await vault.readNote(dir, activeId)
+        const text = await library.readNote(dir, activeId)
         if (!cancelled) setActiveContent(text)
       } catch {
         if (!cancelled) setActiveContent('')
@@ -235,7 +236,7 @@ export function useNotes() {
     setSplitContent(null)
     void (async () => {
       try {
-        const text = await vault.readNote(dir, splitId)
+        const text = await library.readNote(dir, splitId)
         if (!cancelled) setSplitContent(text)
       } catch {
         if (!cancelled) setSplitContent('')
@@ -337,27 +338,27 @@ export function useNotes() {
   const connect = useCallback(async () => {
     let handle: FileSystemDirectoryHandle
     try {
-      handle = await vault.pickVault()
+      handle = await library.pickLibrary()
     } catch {
       // User dismissed the picker — leave state untouched.
       return
     }
-    const granted = await vault.ensurePermission(handle, true)
+    const granted = await library.ensurePermission(handle, true)
     if (!granted) return
-    // Remember the chosen vault for next launch. Disk handles persist in
+    // Remember the chosen library for next launch. Disk handles persist in
     // IndexedDB; OPFS handles can't be cloned there (Safari), so we just record
     // a flag and re-open the fixed OPFS location on startup. A persistence
-    // failure must not block opening the vault for this session.
+    // failure must not block opening the library for this session.
     try {
-      if (vault.supportsDiskPicker()) {
-        await saveVaultHandle(handle)
+      if (library.supportsDiskPicker()) {
+        await saveLibraryHandle(handle)
       } else {
-        rememberOpfsVault()
+        rememberOpfsLibrary()
       }
     } catch {
-      // Best effort — continue with the open vault even if it won't be remembered.
+      // Best effort — continue with the open library even if it won't be remembered.
     }
-    // A local vault was chosen, so don't reopen the server vault next launch.
+    // A local library was chosen, so don't reopen the server library next launch.
     try {
       localStorage.removeItem(BACKEND_KEY)
     } catch {
@@ -366,7 +367,7 @@ export function useNotes() {
     setTree([])
     setActiveId(null)
     setActiveContent(null)
-    // A different vault means different notes at the same paths.
+    // A different library means different notes at the same paths.
     clearContentCache()
     setOpenIds([])
     setSplitId(null)
@@ -378,79 +379,79 @@ export function useNotes() {
 
   const reconnect = useCallback(async () => {
     if (!dir) return
-    const granted = await vault.ensurePermission(dir, true)
+    const granted = await library.ensurePermission(dir, true)
     if (granted) setStatus('ready')
   }, [dir])
 
-  // ---- Server vault ----
-  const openServer = useCallback((info: ServerVaultInfo) => {
+  // ---- Server library ----
+  const openServer = useCallback((info: ServerLibraryInfo) => {
     try {
       localStorage.setItem(BACKEND_KEY, 'server')
     } catch {
-      // Storage disabled — the vault still works for this session.
+      // Storage disabled — the library still works for this session.
     }
     setTree([])
     setActiveId(null)
     setActiveContent(null)
-    // A different vault means different notes at the same paths.
+    // A different library means different notes at the same paths.
     clearContentCache()
     setOpenIds([])
     setSplitId(null)
     setSplitContent(null)
     setFocusedPane('primary')
-    setDir(remote.openServerVault(info.name))
+    setDir(remote.openServerLibrary(info.name))
     setStatus('ready')
   }, [])
 
   const connectServer = useCallback(() => {
-    if (!serverVault) return
-    if (serverVault.authRequired && !serverVault.authenticated) {
+    if (!serverLibrary) return
+    if (serverLibrary.authRequired && !serverLibrary.authenticated) {
       setStatus('needs-login')
       return
     }
-    openServer(serverVault)
-  }, [serverVault, openServer])
+    openServer(serverLibrary)
+  }, [serverLibrary, openServer])
 
-  /** Submit the vault password. Returns null on success, or an error message. */
+  /** Submit the library password. Returns null on success, or an error message. */
   const loginServer = useCallback(
     async (password: string) => {
-      if (!serverVault) return 'The server vault is unavailable.'
-      const error = await remote.loginServerVault(password)
+      if (!serverLibrary) return 'The server library is unavailable.'
+      const error = await remote.loginServerLibrary(password)
       if (error) return error
-      const info = { ...serverVault, authenticated: true }
-      setServerVault(info)
+      const info = { ...serverLibrary, authenticated: true }
+      setServerLibrary(info)
       openServer(info)
       return null
     },
-    [serverVault, openServer],
+    [serverLibrary, openServer],
   )
 
   const signOutServer = useCallback(async () => {
-    await remote.logoutServerVault()
+    await remote.logoutServerLibrary()
     try {
       localStorage.removeItem(BACKEND_KEY)
     } catch {
       // Nothing to clean up.
     }
-    setServerVault((info) => (info ? { ...info, authenticated: false } : info))
+    setServerLibrary((info) => (info ? { ...info, authenticated: false } : info))
     setTree([])
     setActiveId(null)
     setActiveContent(null)
-    // A different vault means different notes at the same paths.
+    // A different library means different notes at the same paths.
     clearContentCache()
     setOpenIds([])
     setSplitId(null)
     setSplitContent(null)
     setFocusedPane('primary')
     setDir(null)
-    setStatus('no-vault')
+    setStatus('no-library')
   }, [])
 
   // A session can expire while the app is open. Bounce back to the login
   // screen rather than letting every save fail silently.
   useEffect(() => {
     remote.setUnauthorizedHandler(() => {
-      setServerVault((info) => (info ? { ...info, authenticated: false } : info))
+      setServerLibrary((info) => (info ? { ...info, authenticated: false } : info))
       setStatus((current) => (current === 'ready' ? 'needs-login' : current))
     })
     return () => remote.setUnauthorizedHandler(null)
@@ -466,7 +467,7 @@ export function useNotes() {
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   // What went wrong on the last failed write, in plain language. Cleared as
-  // soon as a write succeeds, so a recovered vault stops nagging.
+  // soon as a write succeeds, so a recovered library stops nagging.
   const [saveError, setSaveError] = useState<string | null>(null)
   // Mirrors `pending`'s keys into state, so tabs can mark themselves unsaved.
   // The ref is the source of truth; this exists only to trigger a render.
@@ -494,7 +495,7 @@ export function useNotes() {
         if (Date.now() - last > SNAPSHOT_INTERVAL_MS) {
           lastSnapshotAt.current.set(id, Date.now())
           try {
-            const prev = await vault.readNote(dir, id)
+            const prev = await library.readNote(dir, id)
             if (prev.trim() && prev !== content) {
               await history.snapshotNote(dir, id, prev, 'edit')
             }
@@ -502,7 +503,7 @@ export function useNotes() {
             // New note — nothing to snapshot.
           }
         }
-        await vault.writeNote(dir, id, content)
+        await library.writeNote(dir, id, content)
         invalidateCached(id)
       }
       setLastSavedAt(Date.now())
@@ -537,7 +538,7 @@ export function useNotes() {
 
   // Persist buffered edits when the tab is hidden, and hold the door on close.
   //
-  // `flush` is async and a vault write cannot finish during unload, so firing
+  // `flush` is async and a library write cannot finish during unload, so firing
   // it at a closing page is a wish, not a save. Whenever there is anything
   // buffered we ask the browser for its native "Leave site?" prompt as well —
   // the debounce window is up to SAVE_DEBOUNCE_MS of typing, which is a
@@ -590,7 +591,7 @@ export function useNotes() {
   const createNote = useCallback(
     async (folderPath = '') => {
       if (!dir) return
-      const note = await vault.createNote(dir, folderPath)
+      const note = await library.createNote(dir, folderPath)
       await refresh(dir)
       setActiveId(note.id)
       setJustCreatedId(note.id)
@@ -606,11 +607,11 @@ export function useNotes() {
       // pending timer can't recreate the note after it's moved to the bin.
       await flush()
       pending.current.delete(id) // don't let a buffered edit recreate the file
-      await vault.trashNote(dir, id)
+      await library.trashNote(dir, id)
       const list = await refresh(dir)
       closeTab(id)
       // closeTab only reassigns the active note when there's a tab to fall back
-      // on; with the strip empty, land on whatever the vault still has.
+      // on; with the strip empty, land on whatever the library still has.
       setActiveId((cur) =>
         cur === null || cur === id ? list[0]?.id ?? null : cur,
       )
@@ -636,7 +637,7 @@ export function useNotes() {
     async (id: string, newTitle: string) => {
       if (!dir || !id) return undefined
       await flush() // ensure latest content is on disk before moving the file
-      const newId = await vault.renameNote(dir, id, newTitle)
+      const newId = await library.renameNote(dir, id, newTitle)
       if (newId !== id) await history.retargetHistory(dir, id, newId)
       await refresh(dir)
       remapId(id, newId)
@@ -650,7 +651,7 @@ export function useNotes() {
   const createFolder = useCallback(
     async (parentPath: string, name: string) => {
       if (!dir) return undefined
-      const id = await vault.createFolder(dir, parentPath, name)
+      const id = await library.createFolder(dir, parentPath, name)
       await refresh(dir)
       return id
     },
@@ -661,7 +662,7 @@ export function useNotes() {
     async (folderPath: string) => {
       if (!dir) return
       await flush() // persist any buffered edits to a note inside the folder
-      await vault.trashFolder(dir, folderPath)
+      await library.trashFolder(dir, folderPath)
       const list = await refresh(dir)
       const survives = (id: string) => list.some((n) => n.id === id)
       // Tabs and panes showing notes from the deleted folder close with it.
@@ -679,7 +680,7 @@ export function useNotes() {
     async (folderPath: string, newName: string) => {
       if (!dir) return
       await flush() // persist any buffered edits before moving files
-      const newPath = await vault.renameFolder(dir, folderPath, newName)
+      const newPath = await library.renameFolder(dir, folderPath, newName)
       await refresh(dir)
       // Every note that lived inside the folder just changed path — rewrite the
       // prefix wherever an id is held: tabs, both panes, and unwritten buffers.
@@ -704,7 +705,7 @@ export function useNotes() {
     async (id: string, targetFolderPath: string) => {
       if (!dir) return
       if (id === activeId) await flush() // persist edits before moving the file
-      const newId = await vault.moveNote(dir, id, targetFolderPath)
+      const newId = await library.moveNote(dir, id, targetFolderPath)
       if (newId !== id) await history.retargetHistory(dir, id, newId)
       await refresh(dir)
       remapId(id, newId)
@@ -714,7 +715,7 @@ export function useNotes() {
 
   // ---- Import ----
   /**
-   * Bring uploaded Markdown files into the vault, preserving any folder
+   * Bring uploaded Markdown files into the library, preserving any folder
    * structure they came with. Returns what actually landed, so the caller can
    * report it — nothing is ever overwritten, so an import is always additive.
    */
@@ -724,7 +725,7 @@ export function useNotes() {
       // Buffered edits first: the import rebuilds the tree, and a pending save
       // landing afterwards would write against a stale view of it.
       await flush()
-      const imported = await vault.importNotes(dir, items, targetFolder)
+      const imported = await library.importNotes(dir, items, targetFolder)
       await refresh(dir)
       // Open the first imported note so the upload visibly did something.
       if (imported.length) setActiveId(imported[0].id)
@@ -741,15 +742,15 @@ export function useNotes() {
       setTrashItems([])
       return
     }
-    setTrashItems(await vault.listTrash(dir))
+    setTrashItems(await library.listTrash(dir))
   }, [dir])
 
   const restoreFromTrash = useCallback(
     async (trashName: string) => {
       if (!dir) return
-      const newId = await vault.restoreTrash(dir, trashName)
+      const newId = await library.restoreTrash(dir, trashName)
       await refresh(dir)
-      setTrashItems(await vault.listTrash(dir))
+      setTrashItems(await library.listTrash(dir))
       if (newId) {
         setActiveId(newId)
         setJustPlacedId(newId)
@@ -761,15 +762,15 @@ export function useNotes() {
   const deleteFromTrash = useCallback(
     async (trashName: string) => {
       if (!dir) return
-      await vault.deleteTrashItem(dir, trashName)
-      setTrashItems(await vault.listTrash(dir))
+      await library.deleteTrashItem(dir, trashName)
+      setTrashItems(await library.listTrash(dir))
     },
     [dir],
   )
 
   const emptyTrash = useCallback(async () => {
     if (!dir) return
-    await vault.emptyTrash(dir)
+    await library.emptyTrash(dir)
     setTrashItems([])
   }, [dir])
 
@@ -804,7 +805,7 @@ export function useNotes() {
       const snapContent = await history.readSnapshot(dir, snapName)
       // Keep the current state as its own restore point before replacing it.
       try {
-        const cur = await vault.readNote(dir, activeId)
+        const cur = await library.readNote(dir, activeId)
         if (cur.trim() && cur !== snapContent) {
           await history.snapshotNote(dir, activeId, cur, 'restore')
         }
@@ -812,7 +813,7 @@ export function useNotes() {
         // Note missing on disk — restore recreates it below.
       }
       lastSnapshotAt.current.set(activeId, Date.now())
-      await vault.writeNote(dir, activeId, snapContent)
+      await library.writeNote(dir, activeId, snapContent)
       setActiveContent(snapContent)
       // The same note may also be open in the split pane; keep them in step.
       if (splitId === activeId) setSplitContent(snapContent)
@@ -916,9 +917,9 @@ export function useNotes() {
     // buffer wins — deterministic, and the editor never diverges from disk.
     await flush()
     try {
-      setActiveContent(await vault.readNote(dir, activeId))
+      setActiveContent(await library.readNote(dir, activeId))
       if (splitId && survives(splitId)) {
-        setSplitContent(await vault.readNote(dir, splitId))
+        setSplitContent(await library.readNote(dir, splitId))
       }
     } catch {
       // Transient read failure — keep showing the current content.
@@ -927,8 +928,8 @@ export function useNotes() {
 
   return {
     status,
-    vaultName: dir?.name ?? null,
-    vaultDir: dir,
+    libraryName: dir?.name ?? null,
+    libraryDir: dir,
     reload,
     tree,
     notes: files,
@@ -962,9 +963,9 @@ export function useNotes() {
     dirtyIds,
     connect,
     reconnect,
-    serverVault,
-    // Is the open vault the server one? Drives the "sign out" affordance.
-    usingServerVault: !!dir && remote.isRemoteHandle(dir),
+    serverLibrary,
+    // Is the open library the server one? Drives the "sign out" affordance.
+    usingServerLibrary: !!dir && remote.isRemoteHandle(dir),
     connectServer,
     loginServer,
     signOutServer,

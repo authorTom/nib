@@ -1,10 +1,10 @@
-import * as vault from '../fs/vault'
-import type { NoteFile } from '../fs/vault'
+import * as library from '../fs/library'
+import type { NoteFile } from '../fs/library'
 
 /**
  * Note bodies keyed by `id::updatedAt`, so an edit invalidates its own entry.
  * Search and the backlink index both walk every note; sharing one cache means
- * the vault is read once per change rather than once per feature.
+ * the library is read once per change rather than once per feature.
  */
 const cache = new Map<string, string>()
 const MAX_ENTRIES = 300
@@ -24,7 +24,7 @@ export async function readCached(
   }
   let content: string
   try {
-    content = await vault.readNote(dir, file.id)
+    content = await library.readNote(dir, file.id)
   } catch {
     content = ''
   }
@@ -52,7 +52,7 @@ export function invalidateCached(id: string): void {
   }
 }
 
-/** Drop everything — used when switching vaults. */
+/** Drop everything — used when switching libraries. */
 export function clearContentCache(): void {
   cache.clear()
 }

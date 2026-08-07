@@ -1,4 +1,4 @@
-# Build and publish the Nib image to GitHub Container Registry.
+# Build and publish the Deckle image to GitHub Container Registry.
 # Runs on every push to main (tagged :latest + :sha-<commit>) and on version
 # tags like v1.2.0 (tagged :1.2.0). Multi-arch: amd64 + arm64.
 

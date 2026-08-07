@@ -1,7 +1,7 @@
 import { RotateCcw, Trash2, X } from 'lucide-react'
 import { useEnterExit } from '../hooks/useEnterExit'
 import { OVERLAY_EXIT_MS } from '../lib/motion'
-import type { TrashItem } from '../fs/vault'
+import type { TrashItem } from '../fs/library'
 import { folderOf, timeAgo } from '../lib/format'
 
 interface TrashModalProps {

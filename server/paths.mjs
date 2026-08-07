@@ -1,9 +1,9 @@
-// Path resolution for the server-side vault.
+// Path resolution for the server-side library.
 //
-// Every request carries a vault-relative POSIX path ("Projects/idea.md"). The
+// Every request carries a library-relative POSIX path ("Projects/idea.md"). The
 // only thing standing between that string and the container filesystem is this
 // module, so it is deliberately strict: reject anything suspicious up front,
-// then verify the resolved path is still inside the vault root.
+// then verify the resolved path is still inside the library root.
 
 import path from 'node:path'
 import fs from 'node:fs/promises'
@@ -28,11 +28,11 @@ function hasIllegalChars(value) {
 }
 
 /**
- * Turn a vault-relative path into an absolute one inside `root`.
+ * Turn a library-relative path into an absolute one inside `root`.
  *
  * The final containment check catches anything the per-segment rules miss.
  */
-export function resolveVaultPath(root, relative) {
+export function resolveLibraryPath(root, relative) {
   const rel = relative ?? ''
   if (typeof rel !== 'string') throw new BadPathError('path must be a string')
   if (hasIllegalChars(rel)) throw new BadPathError('illegal character in path')
@@ -45,7 +45,7 @@ export function resolveVaultPath(root, relative) {
 
   const abs = path.resolve(root, ...segments)
   if (abs !== root && !abs.startsWith(root + path.sep)) {
-    throw new BadPathError('path escapes the vault root')
+    throw new BadPathError('path escapes the library root')
   }
   return abs
 }
@@ -53,8 +53,8 @@ export function resolveVaultPath(root, relative) {
 /**
  * Containment check that also follows symlinks.
  *
- * `resolveVaultPath` works on the path string alone, so a symlink *inside* the
- * vault pointing at /etc would still resolve "inside" the root. Anything that
+ * `resolveLibraryPath` works on the path string alone, so a symlink *inside* the
+ * library pointing at /etc would still resolve "inside" the root. Anything that
  * reads or writes file content runs this too. Missing files are fine (a write
  * creates them) — we validate the nearest existing ancestor instead.
  */
@@ -65,7 +65,7 @@ export async function assertRealPathInside(root, abs) {
     try {
       const real = await fs.realpath(probe)
       if (real !== realRoot && !real.startsWith(realRoot + path.sep)) {
-        throw new BadPathError('path escapes the vault root')
+        throw new BadPathError('path escapes the library root')
       }
       return
     } catch (err) {
@@ -73,7 +73,7 @@ export async function assertRealPathInside(root, abs) {
       if (err.code !== 'ENOENT') throw err
       const parent = path.dirname(probe)
       // Reached the filesystem root without finding an existing ancestor.
-      if (parent === probe) throw new BadPathError('path escapes the vault root')
+      if (parent === probe) throw new BadPathError('path escapes the library root')
       probe = parent
     }
   }
@@ -89,7 +89,7 @@ export function assertValidName(name) {
   }
 }
 
-/** Join a vault-relative prefix and a name into a vault-relative path. */
+/** Join a library-relative prefix and a name into a library-relative path. */
 export function joinRelative(prefix, name) {
   return prefix ? `${prefix}/${name}` : name
 }

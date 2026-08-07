@@ -1,4 +1,4 @@
-// Vault retrieval for the AI assistant's search_notes tool.
+// Library retrieval for the AI assistant's search_notes tool.
 //
 // Two layers, fused with reciprocal-rank fusion:
 //   • Lexical — a BM25 index over note titles, paths, and content. Built
@@ -8,8 +8,8 @@
 //     IndexedDB keyed by note mtime so only changed notes are re-embedded.
 //     Enabled from assistant settings; any failure falls back to lexical.
 
-import type { NoteFile } from '../fs/vault'
-import * as vault from '../fs/vault'
+import type { NoteFile } from '../fs/library'
+import * as library from '../fs/library'
 import type { AssistantSettings } from './types'
 
 export interface RetrievedNote {
@@ -47,7 +47,7 @@ async function readContent(
   if (hit !== undefined) return hit
   let text = ''
   try {
-    text = await vault.readNote(dir, file.id)
+    text = await library.readNote(dir, file.id)
   } catch {
     text = ''
   }
@@ -113,6 +113,8 @@ function bm25Rank(docs: Doc[], query: string): Doc[] {
 
 // ---- Semantic (embeddings) --------------------------------------------------
 
+// Pre-rename database name, kept so the cache survives: renaming it would throw
+// away every embedding and re-embed the whole library at the user's expense.
 const EMB_DB = 'notes-vault-index'
 const EMB_STORE = 'embeddings'
 const EMB_BATCH = 32
@@ -308,10 +310,10 @@ function makeSnippet(text: string, query: string): string {
 }
 
 /**
- * Search the vault for the notes most relevant to `query`.
+ * Search the library for the notes most relevant to `query`.
  * Lexical BM25 always runs; embeddings are fused in when enabled + available.
  */
-export async function searchVault(
+export async function searchLibrary(
   dir: FileSystemDirectoryHandle,
   files: NoteFile[],
   query: string,

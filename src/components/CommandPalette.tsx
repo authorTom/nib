@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { CornerDownLeft, FileText, Search, type LucideIcon } from 'lucide-react'
-import type { NoteFile } from '../fs/vault'
+import type { NoteFile } from '../fs/library'
 import { folderOf } from '../lib/format'
 import { useEnterExit } from '../hooks/useEnterExit'
 import { OVERLAY_EXIT_MS } from '../lib/motion'

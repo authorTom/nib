@@ -13,7 +13,7 @@ interface SaveIndicatorProps {
 /**
  * Quiet confirmation that the debounced writer has reached the disk.
  *
- * Nib writes to the user's own files, so "did that save?" deserves an answer
+ * Deckle writes to the user's own files, so "did that save?" deserves an answer
  * that doesn't require opening the folder. Quiet is right for the three states
  * that are working as intended — and wrong for the fourth, so a failed write
  * breaks the whisper and says what to do about it.
@@ -37,7 +37,7 @@ export default function SaveIndicator({
   // also the only one the user has to act on. `alert` rather than `status`, so
   // a screen reader interrupts instead of waiting for a gap.
   if (state === 'error') {
-    const message = error ?? "Couldn't save to your vault."
+    const message = error ?? "Couldn't save to your library."
     return (
       <span className="save-indicator error" role="alert" title={message}>
         <AlertTriangle size={14} aria-hidden="true" />

@@ -1,21 +1,21 @@
-import * as vault from '../fs/vault'
+import * as library from '../fs/library'
 import * as history from '../fs/history'
-import { searchVault } from './retrieval'
-import type { TreeNode } from '../fs/vault'
+import { searchLibrary } from './retrieval'
+import type { TreeNode } from '../fs/library'
 import type { AssistantSettings, ToolCall, ToolDef } from './types'
 
 export const TOOL_DEFS: ToolDef[] = [
   {
     name: 'list_files',
     description:
-      'List every folder and Markdown note in the vault as an indented tree. Use this first to understand the structure.',
+      'List every folder and Markdown note in the library as an indented tree. Use this first to understand the structure.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
     readOnly: true,
   },
   {
     name: 'search_notes',
     description:
-      'Search the vault for notes relevant to a query — matches titles, paths, and content (plus semantic similarity when enabled). Returns the best-matching note paths with snippets; use read_file to read a result in full.',
+      'Search the library for notes relevant to a query — matches titles, paths, and content (plus semantic similarity when enabled). Returns the best-matching note paths with snippets; use read_file to read a result in full.',
     parameters: {
       type: 'object',
       properties: {
@@ -131,7 +131,7 @@ function str(args: Record<string, unknown>, key: string): string {
   return v
 }
 
-/** Execute a tool against the vault. Returns a text result for the model. */
+/** Execute a tool against the library. Returns a text result for the model. */
 export async function executeTool(
   dir: FileSystemDirectoryHandle,
   call: ToolCall,
@@ -140,12 +140,12 @@ export async function executeTool(
   const a = call.arguments
   switch (call.name) {
     case 'list_files': {
-      const tree = await vault.buildTree(dir)
-      return renderTree(tree).trim() || '(the vault is empty)'
+      const tree = await library.buildTree(dir)
+      return renderTree(tree).trim() || '(the library is empty)'
     }
     case 'search_notes': {
-      const files = vault.flattenFiles(await vault.buildTree(dir))
-      const results = await searchVault(dir, files, str(a, 'query'), ctx?.settings)
+      const files = library.flattenFiles(await library.buildTree(dir))
+      const results = await searchLibrary(dir, files, str(a, 'query'), ctx?.settings)
       if (!results.length) return 'No matching notes found.'
       const lines = results.map(
         (r, i) => `${i + 1}. ${r.id}\n   ${r.snippet || '(empty note)'}`,
@@ -153,31 +153,31 @@ export async function executeTool(
       return `Most relevant notes (best first):\n\n${lines.join('\n')}\n\nUse read_file to read any of these in full.`
     }
     case 'read_file':
-      return await vault.readNote(dir, str(a, 'path'))
+      return await library.readNote(dir, str(a, 'path'))
     case 'write_file': {
       const path = str(a, 'path')
       // Keep a restorable snapshot of anything the AI is about to overwrite.
       try {
-        const before = await vault.readNote(dir, path)
+        const before = await library.readNote(dir, path)
         if (before.trim()) await history.snapshotNote(dir, path, before, 'ai')
       } catch {
         // New file — nothing to snapshot.
       }
-      await vault.writeNote(dir, path, str(a, 'content'))
+      await library.writeNote(dir, path, str(a, 'content'))
       return `Saved ${path}`
     }
     case 'create_folder':
-      await vault.ensureFolder(dir, str(a, 'path'))
+      await library.ensureFolder(dir, str(a, 'path'))
       return `Created folder ${str(a, 'path')}`
     case 'move_file':
-      await vault.movePath(dir, str(a, 'from'), str(a, 'to'))
+      await library.movePath(dir, str(a, 'from'), str(a, 'to'))
       await history.retargetHistory(dir, str(a, 'from'), str(a, 'to'))
       return `Moved ${str(a, 'from')} to ${str(a, 'to')}`
     case 'delete_file':
-      await vault.trashNote(dir, str(a, 'path'))
+      await library.trashNote(dir, str(a, 'path'))
       return `Moved ${str(a, 'path')} to the recycle bin`
     case 'delete_folder':
-      await vault.trashFolder(dir, str(a, 'path'))
+      await library.trashFolder(dir, str(a, 'path'))
       return `Moved folder ${str(a, 'path')} to the recycle bin`
     default:
       throw new Error(`Unknown tool: ${call.name}`)
@@ -204,7 +204,7 @@ export async function buildPreview(
       const path = str(a, 'path')
       let before = ''
       try {
-        before = await vault.readNote(dir, path)
+        before = await library.readNote(dir, path)
       } catch {
         before = ''
       }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FileText } from 'lucide-react'
 import type { Editor } from '@tiptap/react'
-import type { NoteFile } from '../fs/vault'
+import type { NoteFile } from '../fs/library'
 import { wikilinkTargetFor } from '../lib/wikilinks'
 import { folderOf } from '../lib/format'
 

@@ -91,7 +91,7 @@ button {
   gap: 8px;
 }
 
-/* Six actions share the header — slim them so the vault name keeps room. */
+/* Six actions share the header — slim them so the library name keeps room. */
 .sidebar-header-actions .icon-btn {
   width: 30px;
 }
@@ -1485,7 +1485,7 @@ button {
 
 /* The diff on the approval card.
    This is the last thing a user reads before letting a model rewrite a file in
-   their vault, so it is given room (380px rather than 220px) and the changes
+   their library, so it is given room (380px rather than 220px) and the changes
    are marked in the palette's own two signal colours — added in the accent,
    removed in danger — rather than in the green and red of a code host, which
    no palette here contains. */
@@ -1875,7 +1875,7 @@ button {
 }
 
 /* =========================================================================
-   Vault gate
+   Library gate
    The one screen that is not the desk. There is no writing to stay out of the
    way of yet, so this is where the system plays at full strength: the ink, a
    real display step, and a vertical rhythm instead of a uniform gap. It used
@@ -1979,8 +1979,8 @@ button {
   color: var(--text-faint);
 }
 
-/* ---------- Vault gate: backend choice & server login ---------- */
-.vault-options {
+/* ---------- Library gate: backend choice & server login ---------- */
+.library-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
@@ -1992,7 +1992,7 @@ button {
 /* The most consequential choice in the app, so it gets room and a top-to-
    bottom reading order — icon, name, consequence — rather than three lines of
    equal weight in a grey box. */
-.vault-option {
+.library-option {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -2008,7 +2008,7 @@ button {
     color var(--dur-fast) var(--ease-out);
 }
 
-.vault-option-icon {
+.library-option-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2023,40 +2023,40 @@ button {
 
 /* The ink arrives on the option you are actually reaching for — a state, not
    a decoration, so the accent is doing its documented job. */
-.vault-option:hover {
+.library-option:hover {
   border-color: var(--accent);
   background: var(--bg-hover);
 }
 
-.vault-option:hover .vault-option-icon {
+.library-option:hover .library-option-icon {
   background: var(--accent-soft);
   color: var(--accent);
 }
 
-.vault-option:focus-visible {
+.library-option:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.vault-option-title {
+.library-option-title {
   font-size: var(--fs-prose);
   font-weight: 600;
   line-height: 1.3;
   color: var(--text);
 }
 
-.vault-option-desc {
+.library-option-desc {
   font-size: var(--fs-ui);
   line-height: 1.5;
 }
 
-.vault-login {
+.library-login {
   display: flex;
   gap: 8px;
   margin-top: 28px;
 }
 
-.vault-login-input {
+.library-login-input {
   padding: 10px 12px;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -2066,32 +2066,32 @@ button {
   min-width: 220px;
 }
 
-.vault-login-input:focus {
+.library-login-input:focus {
   outline: none;
   border-color: var(--accent);
 }
 
-.vault-login .btn-primary:disabled {
+.library-login .btn-primary:disabled {
   opacity: 0.55;
 }
 
-.vault-login-error {
+.library-login-error {
   color: var(--danger);
   font-size: var(--fs-ui);
 }
 
 @media (max-width: 620px) {
-  .vault-options {
+  .library-options {
     grid-template-columns: 1fr;
   }
 
-  .vault-login {
+  .library-login {
     flex-direction: column;
     width: 100%;
     max-width: 320px;
   }
 
-  .vault-login-input {
+  .library-login-input {
     min-width: 0;
   }
 }
@@ -2623,8 +2623,8 @@ button {
   font-size: 0.95em;
 }
 
-/* Vault-wide actions live in a footer strip: the header row is already full,
-   and these belong with the vault rather than with the open note. */
+/* Library-wide actions live in a footer strip: the header row is already full,
+   and these belong with the library rather than with the open note. */
 .sidebar-footer {
   display: flex;
   align-items: center;
@@ -3858,7 +3858,7 @@ button {
 
 /* =========================================================================
    Ink
-   The app is called Nib and its mark is a fountain pen, so the two moments
+   The app is called Deckle and its mark is a fountain pen, so the two moments
    worth celebrating — a note being made, and a note being opened — are drawn
    in ink rather than in the confetti every other notes app reaches for.
    ========================================================================= */
@@ -3897,7 +3897,7 @@ button {
   /* Displacement noise gives the wash a ragged, bleeding edge; a clean circle
      reads as a loading spinner. The blob starts large and grows only ~4x, so
      the distortion stays a visible fraction of the edge the whole way out. */
-  filter: url(#nib-ink);
+  filter: url(#deckle-ink);
   transform: scale(0.06);
   /* Not the house curve: --ease-out is front-loaded to make UI feel instant,
      which finishes the spread in about 90ms and reads as a flat tint. Ink

@@ -1,21 +1,22 @@
-// Obsidian-style vault backed by the File System Access API.
+// Plain-Markdown library backed by the File System Access API.
 // Each note is a real `.md` file inside a folder the user picks. Subfolders are
 // walked recursively, so notes can be organised in nested folders. A note's
-// `id` is its path relative to the vault root (POSIX "/" separators).
+// `id` is its path relative to the library root (POSIX "/" separators).
 //
 // Three storage backends, sharing the same `FileSystemDirectoryHandle` API:
 //   • On-disk folder — Chromium's `showDirectoryPicker` lets the user pick a
-//     real folder, so notes are visible on disk (open them in Obsidian, sync,
-//     back up, etc).
+//     real folder, so notes are visible on disk (open them in any Markdown
+//     editor, sync, back up, etc).
 //   • Origin Private File System (OPFS) — `navigator.storage.getDirectory`,
 //     supported by Safari and Firefox, gives a sandboxed per-origin directory
 //     that exposes the identical handle interface. Notes live privately inside
 //     the browser. This is the fallback when the disk picker isn't available.
-//   • Server vault — when Nib is deployed with Docker and given a volume, the
+//   • Server library — when Deckle is deployed with Docker and given a volume, the
 //     container holds the .md files and src/fs/remote.ts implements the same
 //     handle interface against its file API. Notes are then reachable from any
 //     device and nothing is stored locally.
 
+import { isDataDir } from './appData'
 import {
   fetchRemoteTree,
   isRemoteHandle,
@@ -25,7 +26,7 @@ import {
 
 export interface NoteFile {
   kind: 'file'
-  /** Path relative to the vault root, e.g. "Projects/idea.md". Unique. */
+  /** Path relative to the library root, e.g. "Projects/idea.md". Unique. */
   id: string
   /** File name including extension, e.g. "idea.md". */
   name: string
@@ -36,7 +37,7 @@ export interface NoteFile {
 
 export interface NoteFolder {
   kind: 'folder'
-  /** Path relative to the vault root, e.g. "Projects". */
+  /** Path relative to the library root, e.g. "Projects". */
   id: string
   name: string
   children: TreeNode[]
@@ -47,9 +48,9 @@ export type TreeNode = NoteFile | NoteFolder
 const MD_EXT = /\.md$/i
 const ILLEGAL = /[\\/:*?"<>|]/g
 
-/** Name of the OPFS subfolder that holds the vault, so it has a friendly
+/** Name of the OPFS subfolder that holds the library, so it has a friendly
  *  display name (the OPFS root itself has an empty name). */
-const OPFS_VAULT_NAME = 'My Notes'
+const OPFS_LIBRARY_NAME = 'My Notes'
 
 /** Whether the on-disk folder picker (Chromium) is available. When false, the
  *  app falls back to OPFS, which Safari and Firefox support. */
@@ -66,19 +67,19 @@ export function supportsOpfs(): boolean {
 }
 
 /** Whether *any* supported storage backend is available. */
-export function isVaultSupported(): boolean {
+export function isLibrarySupported(): boolean {
   return supportsDiskPicker() || supportsOpfs()
 }
 
-/** Open (creating if needed) the OPFS-backed vault. Unlike a disk folder this
+/** Open (creating if needed) the OPFS-backed library. Unlike a disk folder this
  *  is a single fixed location, so it can be re-opened on every load without a
  *  user gesture and without persisting a handle. */
-export async function openOpfsVault(): Promise<FileSystemDirectoryHandle> {
+export async function openOpfsLibrary(): Promise<FileSystemDirectoryHandle> {
   const root = await navigator.storage.getDirectory()
-  return await root.getDirectoryHandle(OPFS_VAULT_NAME, { create: true })
+  return await root.getDirectoryHandle(OPFS_LIBRARY_NAME, { create: true })
 }
 
-export async function pickVault(): Promise<FileSystemDirectoryHandle> {
+export async function pickLibrary(): Promise<FileSystemDirectoryHandle> {
   if (supportsDiskPicker()) {
     return await (
       window as unknown as {
@@ -87,10 +88,12 @@ export async function pickVault(): Promise<FileSystemDirectoryHandle> {
           mode?: 'read' | 'readwrite'
         }) => Promise<FileSystemDirectoryHandle>
       }
+      // Pre-rename picker id, kept so the browser still reopens at the folder
+      // the user last chose.
     ).showDirectoryPicker({ id: 'notes-vault', mode: 'readwrite' })
   }
-  // OPFS fallback: a single private vault stored inside the browser.
-  return await openOpfsVault()
+  // OPFS fallback: a single private library stored inside the browser.
+  return await openOpfsLibrary()
 }
 
 export async function ensurePermission(
@@ -157,7 +160,7 @@ export async function buildTree(
   dir: FileSystemDirectoryHandle,
   prefix = '',
 ): Promise<TreeNode[]> {
-  // Server vault: walking the handle interface would cost one HTTP request per
+  // Server library: walking the handle interface would cost one HTTP request per
   // file, so let the server do the walk and return the finished tree.
   if (isRemoteHandle(dir)) {
     return applyPrefix((await fetchRemoteTree(dir)) as TreeNode[], prefix)
@@ -167,7 +170,7 @@ export async function buildTree(
   const files: NoteFile[] = []
 
   for await (const entry of asAsyncEntries(dir)) {
-    if (entry.name.startsWith('.')) continue // skip .obsidian, .git, etc.
+    if (entry.name.startsWith('.')) continue // skip .git, other editors' config, etc.
     const id = joinPath(prefix, entry.name)
 
     if (entry.kind === 'directory') {
@@ -191,7 +194,7 @@ export async function buildTree(
 }
 
 /** The server returns ids relative to the folder it walked; re-root them so a
- *  subfolder walk (e.g. trashFolder) yields vault-relative ids like the
+ *  subfolder walk (e.g. trashFolder) yields library-relative ids like the
  *  handle-based path does. */
 function applyPrefix(nodes: TreeNode[], prefix: string): TreeNode[] {
   if (!prefix) return nodes
@@ -341,7 +344,7 @@ export async function renameNote(
     // Case-only rename on a case-insensitive filesystem. Creating the new name
     // directly just re-opens the same file, so hop through a temporary name to
     // force the directory entry to adopt the new casing.
-    const tempName = `.nib-rename-${Date.now()}.md`
+    const tempName = `.deckle-rename-${Date.now()}.md`
     await writeRaw(parent, tempName, content)
     await parent.removeEntry(name)
     await writeRaw(parent, desired, content)
@@ -443,7 +446,7 @@ export async function renameFolder(
 
   if (sameEntryDifferentCase) {
     // Case-only rename: hop through a temp folder so the entry adopts the case.
-    const tempName = `.nib-rename-${Date.now()}`
+    const tempName = `.deckle-rename-${Date.now()}`
     const temp = await parent.getDirectoryHandle(tempName, { create: true })
     await copyDirContents(src, temp)
     await parent.removeEntry(name, { recursive: true })
@@ -485,7 +488,7 @@ export async function moveNote(
 
 // ---- Import ----------------------------------------------------------------
 
-/** One file to bring into the vault, with a path relative to the import root. */
+/** One file to bring into the library, with a path relative to the import root. */
 export interface ImportItem {
   /** e.g. "Archive/Projects/idea.md" — folders are created as needed. */
   path: string
@@ -520,7 +523,7 @@ function sanitizeImportPath(rawPath: string): { folder: string; name: string } |
 }
 
 /**
- * Write imported files into the vault under `targetFolder`, preserving their
+ * Write imported files into the library under `targetFolder`, preserving their
  * folder structure. Existing notes are never overwritten — a collision gets a
  * " 1", " 2", … suffix, the same rule note creation uses.
  */
@@ -552,10 +555,7 @@ export async function importNotes(
 
 // ---- Export ----------------------------------------------------------------
 
-/** Folder holding Nib's own metadata (tasks, bookmarks) inside the vault. */
-const NIB_DIR = '.nib'
-
-/** A file collected for export, with its vault-relative path. */
+/** A file collected for export, with its library-relative path. */
 export interface ExportedFile {
   path: string
   content: Uint8Array
@@ -563,13 +563,14 @@ export interface ExportedFile {
 }
 
 /**
- * Walk the whole vault collecting file contents for an archive.
+ * Walk the whole library collecting file contents for an archive.
  *
  * Unlike `buildTree` this keeps everything, not just `.md` files, because an
  * export is a backup: attachments sitting beside notes should come along.
  * `includeHidden` decides whether the dot-folders (`.trash`, `.history`) come
- * too; `.nib` (tasks and bookmarks) is always kept, since without it a restored
- * vault silently loses the planner.
+ * too; the data folder (tasks and bookmarks) is always kept, since without it a
+ * restored library silently loses the planner — including when it is still
+ * under its pre-rename name.
  */
 export async function collectFiles(
   dir: FileSystemDirectoryHandle,
@@ -581,7 +582,7 @@ export async function collectFiles(
 
   for await (const entry of asAsyncEntries(dir)) {
     const isHidden = entry.name.startsWith('.')
-    if (isHidden && !options.includeHidden && entry.name !== NIB_DIR) continue
+    if (isHidden && !options.includeHidden && !isDataDir(entry.name)) continue
     const path = joinPath(prefix, entry.name)
 
     if (entry.kind === 'directory') {
@@ -608,7 +609,7 @@ export async function collectFiles(
 }
 
 // ---- Recycle bin -----------------------------------------------------------
-// Deleted notes are moved into a hidden ".trash" folder at the vault root
+// Deleted notes are moved into a hidden ".trash" folder at the library root
 // (skipped by buildTree). A JSON index records each item's original location
 // and deletion time so it can be restored.
 
@@ -797,7 +798,7 @@ export async function movePath(
   }
 
   if (sameEntry) {
-    const tempName = `.nib-rename-${Date.now()}.md`
+    const tempName = `.deckle-rename-${Date.now()}.md`
     await writeRaw(destParent, tempName, content)
     await srcParent.removeEntry(fromName)
     await writeRaw(destParent, toName, content)

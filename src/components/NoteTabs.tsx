@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Columns2, FileText, X } from 'lucide-react'
-import type { NoteFile } from '../fs/vault'
+import type { NoteFile } from '../fs/library'
 import { rectOf, type FlightOrigin } from '../lib/motion'
 
 interface NoteTabsProps {
@@ -106,7 +106,7 @@ export default function NoteTabs({
                 setDragId(note.id)
                 e.dataTransfer.effectAllowed = 'move'
                 // Marked as a tab move so the note tree's drop handler ignores it.
-                e.dataTransfer.setData('application/x-nib-tab', note.id)
+                e.dataTransfer.setData('application/x-deckle-tab', note.id)
               }}
               onDragEnd={() => {
                 setDragId(null)

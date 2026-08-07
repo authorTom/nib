@@ -1,6 +1,6 @@
 /* Palettes.
  *
- * theme.css holds the motion tokens and the default ("Nib") palette, which is
+ * theme.css holds the motion tokens and the default ("Deckle") palette, which is
  * also the fallback when no data-palette is set. Everything here overrides that
  * pair of variable blocks — light on [data-palette], dark on the same selector
  * plus [data-theme='dark'].

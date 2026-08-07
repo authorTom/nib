@@ -34,7 +34,7 @@ import ResizeCrew from './components/ResizeCrew'
 import { EASTER_EGG_KEYWORDS } from './themes/themes'
 import AssistantPanel from './components/AssistantPanel'
 import TaskPanel from './components/TaskPanel'
-import VaultGate from './components/VaultGate'
+import LibraryGate from './components/LibraryGate'
 import InkFilter from './components/InkFilter'
 import ShortcutsModal from './components/ShortcutsModal'
 import { useAssistant } from './ai/useAssistant'
@@ -64,7 +64,7 @@ import { useBacklinks } from './hooks/useBacklinks'
 import { useResizable } from './hooks/useResizable'
 import { useDeferredUnmount } from './hooks/useDeferredUnmount'
 import { useEnterExit } from './hooks/useEnterExit'
-import { supportsDiskPicker } from './fs/vault'
+import { supportsDiskPicker } from './fs/library'
 
 /**
  * True when the keystroke belongs to whatever the user is writing in.
@@ -95,8 +95,8 @@ export default function App() {
   } = useTheme()
   const {
     status,
-    vaultName,
-    vaultDir,
+    libraryName,
+    libraryDir,
     reload,
     tree,
     notes,
@@ -124,8 +124,8 @@ export default function App() {
     justPlacedId,
     connect,
     reconnect,
-    serverVault,
-    usingServerVault,
+    serverLibrary,
+    usingServerLibrary,
     connectServer,
     loginServer,
     signOutServer,
@@ -213,36 +213,36 @@ export default function App() {
 
   // ---- Resizable docked panels ----
   const sidebarResize = useResizable({
-    storageKey: 'nib-width-sidebar',
+    storageKey: 'deckle-width-sidebar',
     defaultWidth: 280,
     min: 200,
     max: 520,
     edge: 'right',
   })
   const taskResize = useResizable({
-    storageKey: 'nib-width-tasks',
+    storageKey: 'deckle-width-tasks',
     defaultWidth: 340,
     min: 260,
     max: 560,
     edge: 'right',
   })
   const assistantResize = useResizable({
-    storageKey: 'nib-width-assistant',
+    storageKey: 'deckle-width-assistant',
     defaultWidth: 380,
     min: 300,
     max: 640,
     edge: 'left',
   })
 
-  // Tasks (Todoist-style planner, stored in the vault's .nib/tasks.json)
-  const tasks = useTasks(vaultDir)
+  // Tasks (Todoist-style planner, stored in the library's .deckle/tasks.json)
+  const tasks = useTasks(libraryDir)
 
-  // Bookmarks (stored in the vault's .nib/bookmarks.json)
-  const bookmarks = useBookmarks(vaultDir)
+  // Bookmarks (stored in the library's .deckle/bookmarks.json)
+  const bookmarks = useBookmarks(libraryDir)
 
   // Wikilink backlinks, one index per pane.
-  const backlinks = useBacklinks(vaultDir, notes, activeId)
-  const splitBacklinks = useBacklinks(vaultDir, notes, splitId)
+  const backlinks = useBacklinks(libraryDir, notes, activeId)
+  const splitBacklinks = useBacklinks(libraryDir, notes, splitId)
 
   // Transient confirmation toast (e.g. after capturing a task).
   const [toast, setToast] = useState<string | null>(null)
@@ -278,7 +278,7 @@ export default function App() {
   const nameNoteAfterHeading = useCallback(
     (noteId: string, markdown: string) => {
       const note = notes.find((n) => n.id === noteId)
-      // Only ever renames away from the name Nib invented. A title the user
+      // Only ever renames away from the name Deckle invented. A title the user
       // typed is theirs, even when the heading later says something else.
       if (!note || !isGeneratedTitle(note.title)) return
       const derived = deriveTitleFromMarkdown(markdown)
@@ -413,7 +413,7 @@ export default function App() {
   )
 
   // AI assistant (right-side panel)
-  const getDir = useCallback(() => vaultDir, [vaultDir])
+  const getDir = useCallback(() => libraryDir, [libraryDir])
   const onAssistantMutated = useCallback(() => void reload(), [reload])
   const getActivePath = useCallback(() => activeNote?.id ?? null, [activeNote])
   const assistant = useAssistant({
@@ -618,9 +618,9 @@ export default function App() {
         id: 'open-folder',
         label: supportsDiskPicker()
           ? 'Open a different folder'
-          : 'Use the vault in this browser',
+          : 'Use the library in this browser',
         icon: FolderOpen,
-        keywords: 'vault switch change local folder',
+        keywords: 'library switch change local folder',
         run: () => void connect(),
       },
       {
@@ -634,21 +634,21 @@ export default function App() {
         id: 'import-md',
         label: 'Import Markdown files',
         icon: Upload,
-        keywords: 'import upload md markdown add files obsidian migrate',
+        keywords: 'import upload md markdown add files migrate',
         run: openImport,
       },
       {
         id: 'import-folder',
         label: 'Import a folder of notes',
         icon: FolderOpen,
-        keywords: 'import upload folder directory bulk obsidian migrate restore',
+        keywords: 'import upload folder directory bulk migrate restore',
         run: openFolderImport,
       },
       {
         id: 'export-zip',
         label: 'Export knowledge base as ZIP',
         icon: Package,
-        keywords: 'export download backup zip archive everything vault',
+        keywords: 'export download backup zip archive everything library',
         run: () => setExportOpen(true),
       },
       {
@@ -714,19 +714,19 @@ export default function App() {
       })
     }
 
-    // Only offered where a server vault actually exists (Docker deployments
+    // Only offered where a server library actually exists (Docker deployments
     // with a volume mounted).
-    if (serverVault) {
+    if (serverLibrary) {
       list.push({
-        id: 'server-vault',
-        label: usingServerVault
-          ? serverVault.authRequired
-            ? 'Sign out of the server vault'
-            : 'Leave the server vault'
-          : 'Switch to the server vault',
+        id: 'server-library',
+        label: usingServerLibrary
+          ? serverLibrary.authRequired
+            ? 'Sign out of the server library'
+            : 'Leave the server library'
+          : 'Switch to the server library',
         icon: Server,
-        keywords: 'server vault docker remote sign out log out switch hosted',
-        run: () => (usingServerVault ? void signOutServer() : connectServer()),
+        keywords: 'server library docker remote sign out log out switch hosted',
+        run: () => (usingServerLibrary ? void signOutServer() : connectServer()),
       })
     }
 
@@ -814,23 +814,23 @@ export default function App() {
     activeNote,
     handleDelete,
     editor,
-    serverVault,
-    usingServerVault,
+    serverLibrary,
+    usingServerLibrary,
     connectServer,
     signOutServer,
   ])
 
-  // ---- Vault gate: shown until a vault is connected ----
+  // ---- Library gate: shown until a library is connected ----
   if (status !== 'ready') {
     return (
-      <VaultGate
+      <LibraryGate
         status={status}
         theme={theme}
         toggleTheme={() => toggleTheme()}
-        vaultName={vaultName}
+        libraryName={libraryName}
         connect={() => void connect()}
         reconnect={() => void reconnect()}
-        serverVault={serverVault}
+        serverLibrary={serverLibrary}
         connectServer={connectServer}
         loginServer={loginServer}
       />
@@ -848,7 +848,7 @@ export default function App() {
           tree={tree}
           activeId={activeId}
           open={sidebarOpen}
-          vaultName={vaultName}
+          libraryName={libraryName}
           query={query}
           searchResults={searchResults}
           onQueryChange={setQuery}
@@ -866,7 +866,7 @@ export default function App() {
           onRenameNote={handleRenameNote}
           onMoveNote={(id, target) => void moveNote(id, target)}
           onDelete={handleDelete}
-          onSwitchVault={() => void connect()}
+          onSwitchLibrary={() => void connect()}
           onOpenTrash={() => void openTrash()}
           onOpenTasks={toggleTasks}
           onOpenBookmarks={toggleBookmarks}
@@ -916,7 +916,7 @@ export default function App() {
         saveError={saveError}
         lastSavedAt={lastSavedAt}
         isDirty={(id) => dirtyIds.includes(id)}
-        vaultEmpty={notes.length === 0}
+        libraryEmpty={notes.length === 0}
         justCreatedId={justCreatedId}
         justPlacedId={justPlacedId}
         flightFrom={flightFrom}
@@ -1013,8 +1013,8 @@ export default function App() {
 
       <ExportModal
         open={exportOpen}
-        dir={vaultDir}
-        vaultName={vaultName}
+        dir={libraryDir}
+        libraryName={libraryName}
         noteCount={notes.length}
         onClose={() => setExportOpen(false)}
       />

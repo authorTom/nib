@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { NoteFile } from '../fs/vault'
+import type { NoteFile } from '../fs/library'
 import { readCached } from '../lib/contentCache'
 import { findBacklinks, type Backlink } from '../lib/wikilinks'
 
@@ -7,9 +7,9 @@ import { findBacklinks, type Backlink } from '../lib/wikilinks'
  * Notes that link to `targetId` via `[[wikilinks]]`.
  *
  * Rebuilds whenever the tree or the target changes, reading through the shared
- * content cache so an unchanged vault costs nothing after the first pass. The
+ * content cache so an unchanged library costs nothing after the first pass. The
  * work is deferred behind a short timer: switching notes quickly shouldn't
- * queue a full vault scan per keystroke of navigation.
+ * queue a full library scan per keystroke of navigation.
  */
 export function useBacklinks(
   dir: FileSystemDirectoryHandle | null,

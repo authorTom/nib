@@ -1,6 +1,6 @@
 import type { AssistantSettings } from './types'
 
-const STORAGE_KEY = 'nib-assistant-settings'
+const STORAGE_KEY = 'deckle-assistant-settings'
 
 export const DEFAULT_SETTINGS: AssistantSettings = {
   provider: 'lmstudio',

@@ -1,4 +1,4 @@
-// The server-side vault: a thin, deliberately dumb file API over a directory
+// The server-side library: a thin, deliberately dumb file API over a directory
 // in the container (a Docker volume, by default /data).
 //
 // It mirrors the handful of operations the browser's File System Access API
@@ -7,14 +7,14 @@
 // lets the rest of the app stay backend-agnostic — notes, history, tasks,
 // bookmarks and the AI tools all go through the same handle interface.
 //
-// Endpoints (all vault-relative paths in the ?path= query parameter):
-//   GET    /api/vault/tree    recursive note tree (one round trip per refresh)
-//   GET    /api/vault/list    shallow directory listing, including dotfiles
-//   GET    /api/vault/stat    entry kind + mtime, 404 when missing
-//   GET    /api/vault/file    file contents
-//   PUT    /api/vault/file    write file contents (creates parent folders)
-//   POST   /api/vault/dir     create a directory (mkdir -p)
-//   DELETE /api/vault/entry   remove a file or directory
+// Endpoints (all library-relative paths in the ?path= query parameter):
+//   GET    /api/library/tree    recursive note tree (one round trip per refresh)
+//   GET    /api/library/list    shallow directory listing, including dotfiles
+//   GET    /api/library/stat    entry kind + mtime, 404 when missing
+//   GET    /api/library/file    file contents
+//   PUT    /api/library/file    write file contents (creates parent folders)
+//   POST   /api/library/dir     create a directory (mkdir -p)
+//   DELETE /api/library/entry   remove a file or directory
 
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -25,7 +25,7 @@ import {
   BadPathError,
   assertRealPathInside,
   joinRelative,
-  resolveVaultPath,
+  resolveLibraryPath,
 } from './paths.mjs'
 
 const MD_EXT = /\.md$/i
@@ -51,16 +51,16 @@ function limitBytes(limit) {
   })
 }
 
-export function createVaultApi(root) {
+export function createLibraryApi(root) {
   /** Resolve + symlink-check in one step. */
   async function safePath(rel) {
-    const abs = resolveVaultPath(root, rel)
+    const abs = resolveLibraryPath(root, rel)
     await assertRealPathInside(root, abs)
     return abs
   }
 
   /**
-   * Recursive walk producing exactly the shape `buildTree` in src/fs/vault.ts
+   * Recursive walk producing exactly the shape `buildTree` in src/fs/library.ts
    * builds by hand: folders first, then files, both sorted by display name,
    * with dotfiles skipped and non-.md files ignored. Ids are relative to the
    * directory being walked; the client re-prefixes them if it asked for a
@@ -79,7 +79,7 @@ export function createVaultApi(root) {
     }
 
     for (const entry of entries) {
-      if (entry.name.startsWith('.')) continue // .trash, .history, .nib, .git…
+      if (entry.name.startsWith('.')) continue // .trash, .history, .deckle, .git…
       const id = joinRelative(prefix, entry.name)
 
       if (entry.isDirectory()) {
@@ -108,7 +108,7 @@ export function createVaultApi(root) {
   }
 
   return {
-    /** Create the vault directory if this is a first run. */
+    /** Create the library directory if this is a first run. */
     async init() {
       await fs.mkdir(root, { recursive: true })
       // Fail fast and loudly if the volume is mounted read-only, rather than
@@ -174,7 +174,7 @@ export function createVaultApi(root) {
       await fs.mkdir(path.dirname(abs), { recursive: true })
       const tmp = path.join(
         path.dirname(abs),
-        `.nib-upload-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        `.deckle-upload-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       )
       try {
         await pipeline(stream, limitBytes(MAX_FILE_BYTES), createWriteStream(tmp))
@@ -207,7 +207,7 @@ export function createVaultApi(root) {
       await fs.mkdir(path.dirname(abs), { recursive: true })
       const tmp = path.join(
         path.dirname(abs),
-        `.nib-write-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        `.deckle-write-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       )
       try {
         await fs.writeFile(tmp, text, 'utf8')
@@ -238,7 +238,7 @@ export function createVaultApi(root) {
 
     async remove(rel, recursive) {
       const abs = await safePath(rel)
-      if (abs === root) throw new BadPathError('cannot remove the vault root')
+      if (abs === root) throw new BadPathError('cannot remove the library root')
       const stat = await fs.stat(abs)
       if (stat.isDirectory()) {
         if (recursive) {

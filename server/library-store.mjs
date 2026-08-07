@@ -1,14 +1,14 @@
-// The vault's *semantics*, server-side.
+// The library's *semantics*, server-side.
 //
-// server/vault-api.mjs is a dumb file API — read this path, write that one.
+// server/library-api.mjs is a dumb file API — read this path, write that one.
 // Everything above it (unique names, the recycle bin, version history, the
-// tasks and bookmarks JSON) lives in the browser, in src/fs/vault.ts,
+// tasks and bookmarks JSON) lives in the browser, in src/fs/library.ts,
 // src/fs/history.ts and the two stores, because until now the browser was the
-// only thing that ever touched a vault.
+// only thing that ever touched a library.
 //
 // The API changed that: an agent writing a note must trash it into the same
 // `.trash`, snapshot into the same `.history`, and add tasks to the same
-// `.nib/tasks.json` the app reads, or the two halves would quietly disagree.
+// `.deckle/tasks.json` the app reads, or the two halves would quietly disagree.
 // So this module mirrors those rules. The formats are the contract — if one
 // side changes, the other must follow.
 
@@ -19,9 +19,22 @@ const TRASH_DIR = '.trash'
 const TRASH_INDEX = `${TRASH_DIR}/index.json`
 const HISTORY_DIR = '.history'
 const HISTORY_INDEX = `${HISTORY_DIR}/index.json`
-const NIB_DIR = '.nib'
-const TASKS_FILE = `${NIB_DIR}/tasks.json`
-const BOOKMARKS_FILE = `${NIB_DIR}/bookmarks.json`
+const DATA_DIR = '.deckle'
+const TASKS_FILE = `${DATA_DIR}/tasks.json`
+const BOOKMARKS_FILE = `${DATA_DIR}/bookmarks.json`
+
+// The data folder was called ".nib" before the app was renamed. A server
+// library sitting in a mounted volume survives image upgrades, so it may well
+// still hold the old folder — read it when the new one is empty, and mirror
+// src/fs/appData.ts, which does the same on the browser side.
+const LEGACY_DATA_DIR = '.nib'
+const LEGACY_TASKS_FILE = `${LEGACY_DATA_DIR}/tasks.json`
+const LEGACY_BOOKMARKS_FILE = `${LEGACY_DATA_DIR}/bookmarks.json`
+
+/** True for either spelling of the data folder. */
+export function isDataDir(name) {
+  return name === DATA_DIR || name === LEGACY_DATA_DIR
+}
 
 /** Snapshots kept per note, matching src/fs/history.ts. */
 const MAX_HISTORY_PER_NOTE = 20
@@ -86,7 +99,7 @@ export function normalizeNotePath(raw) {
     throw new ApiError(
       400,
       'invalid_path',
-      'path may not contain hidden (dot) folders — those are reserved for Nib',
+      'path may not contain hidden (dot) folders — those are reserved for Deckle',
     )
   }
 
@@ -134,12 +147,12 @@ function createLocks() {
   }
 }
 
-export function createVaultStore(vault) {
+export function createLibraryStore(library) {
   const withLock = createLocks()
 
   async function readJson(path, fallback) {
     try {
-      const parsed = JSON.parse(await vault.readText(path))
+      const parsed = JSON.parse(await library.readText(path))
       return parsed ?? fallback
     } catch {
       return fallback
@@ -147,25 +160,36 @@ export function createVaultStore(vault) {
   }
 
   async function writeJson(path, value) {
-    await vault.writeText(path, JSON.stringify(value, null, 2))
+    await library.writeText(path, JSON.stringify(value, null, 2))
+  }
+
+  /**
+   * Read one of the data files, falling back to its pre-rename location. Writes
+   * always go to the current path, so the file moves forward on first mutation;
+   * nothing deletes the legacy copy.
+   */
+  async function readDataJson(path, legacyPath, fallback) {
+    const current = await readJson(path, null)
+    if (current !== null) return current
+    return readJson(legacyPath, fallback)
   }
 
   // ---- Notes ---------------------------------------------------------------
 
   /** Find a free file name in `folder`, appending " 1", " 2", … on collision. */
   async function uniqueName(folder, desired) {
-    if (!(await vault.exists(joinPath(folder, desired)))) return desired
+    if (!(await library.exists(joinPath(folder, desired)))) return desired
     const base = baseName(desired)
     for (let i = 1; ; i++) {
       const candidate = `${base} ${i}.md`
-      if (!(await vault.exists(joinPath(folder, candidate)))) return candidate
+      if (!(await library.exists(joinPath(folder, candidate)))) return candidate
     }
   }
 
   async function readNote(path) {
-    const kind = await vault.exists(path)
+    const kind = await library.exists(path)
     if (kind !== 'file') throw new ApiError(404, 'not_found', `no note at "${path}"`)
-    const [content, stat] = await Promise.all([vault.readText(path), vault.stat(path)])
+    const [content, stat] = await Promise.all([library.readText(path), library.stat(path)])
     return {
       path,
       title: baseName(splitPath(path).name),
@@ -184,7 +208,7 @@ export function createVaultStore(vault) {
     const { parentPath, name } = splitPath(path)
     const finalName = await uniqueName(parentPath, name)
     const finalPath = joinPath(parentPath, finalName)
-    await vault.writeText(finalPath, content)
+    await library.writeText(finalPath, content)
     return await readNote(finalPath)
   }
 
@@ -193,29 +217,29 @@ export function createVaultStore(vault) {
    * into `.history` first, so an agent's edits are as recoverable as the app's.
    */
   async function writeNote(path, content, reason = 'ai') {
-    const existing = await vault.exists(path)
+    const existing = await library.exists(path)
     if (existing === 'directory') {
       throw new ApiError(409, 'conflict', `"${path}" is a folder`)
     }
     if (existing === 'file') {
-      const previous = await vault.readText(path)
+      const previous = await library.readText(path)
       if (previous.trim() && previous !== content) {
         await snapshot(path, previous, reason)
       }
     }
-    await vault.writeText(path, content)
+    await library.writeText(path, content)
     return { note: await readNote(path), created: existing !== 'file' }
   }
 
   /** Move or rename a note, carrying its history entries with it. */
   async function moveNote(from, to) {
     if (from === to) return await readNote(from)
-    if (await vault.exists(to)) {
+    if (await library.exists(to)) {
       throw new ApiError(409, 'conflict', `a note already exists at "${to}"`)
     }
-    const content = await vault.readText(from)
-    await vault.writeText(to, content)
-    await vault.remove(from, false)
+    const content = await library.readText(from)
+    await library.writeText(to, content)
+    await library.remove(from, false)
     await retargetHistory(from, to)
     return await readNote(to)
   }
@@ -226,7 +250,7 @@ export function createVaultStore(vault) {
     const items = await readJson(TRASH_INDEX, [])
     const valid = []
     for (const item of Array.isArray(items) ? items : []) {
-      if (await vault.exists(joinPath(TRASH_DIR, item.trashName))) valid.push(item)
+      if (await library.exists(joinPath(TRASH_DIR, item.trashName))) valid.push(item)
     }
     valid.sort((a, b) => b.deletedAt - a.deletedAt)
     return valid
@@ -234,12 +258,12 @@ export function createVaultStore(vault) {
 
   /** Move a note to the recycle bin, recording where it came from. */
   async function trashNote(path) {
-    const content = await vault.readText(path)
+    const content = await library.readText(path)
     return await withLock(TRASH_INDEX, async () => {
       const { name } = splitPath(path)
       const trashName = await uniqueName(TRASH_DIR, name)
-      await vault.writeText(joinPath(TRASH_DIR, trashName), content)
-      await vault.remove(path, false)
+      await library.writeText(joinPath(TRASH_DIR, trashName), content)
+      await library.remove(path, false)
 
       const items = await readJson(TRASH_INDEX, [])
       const entry = {
@@ -261,13 +285,13 @@ export function createVaultStore(vault) {
       )
       if (!entry) throw new ApiError(404, 'not_found', 'no such item in the recycle bin')
 
-      const content = await vault.readText(joinPath(TRASH_DIR, trashName))
+      const content = await library.readText(joinPath(TRASH_DIR, trashName))
       const { parentPath, name } = splitPath(entry.originalPath)
       const target = await uniqueName(parentPath, name)
       const path = joinPath(parentPath, target)
 
-      await vault.writeText(path, content)
-      await vault.remove(joinPath(TRASH_DIR, trashName), false)
+      await library.writeText(path, content)
+      await library.remove(joinPath(TRASH_DIR, trashName), false)
       await writeJson(
         TRASH_INDEX,
         items.filter((i) => i.trashName !== trashName),
@@ -284,7 +308,7 @@ export function createVaultStore(vault) {
         throw new ApiError(404, 'not_found', 'no such item in the recycle bin')
       }
       try {
-        await vault.remove(joinPath(TRASH_DIR, trashName), false)
+        await library.remove(joinPath(TRASH_DIR, trashName), false)
       } catch {
         // Already gone from disk; still drop the index entry.
       }
@@ -302,7 +326,7 @@ export function createVaultStore(vault) {
     await withLock(HISTORY_INDEX, async () => {
       const savedAt = Date.now()
       const snapName = `${savedAt}_${notePath.replace(/\//g, '__')}`
-      await vault.writeText(joinPath(HISTORY_DIR, snapName), content)
+      await library.writeText(joinPath(HISTORY_DIR, snapName), content)
 
       const items = await readJson(HISTORY_INDEX, [])
       const list = Array.isArray(items) ? items : []
@@ -313,7 +337,7 @@ export function createVaultStore(vault) {
         .sort((a, b) => b.savedAt - a.savedAt)
       for (const stale of mine.slice(MAX_HISTORY_PER_NOTE)) {
         try {
-          await vault.remove(joinPath(HISTORY_DIR, stale.snapName), false)
+          await library.remove(joinPath(HISTORY_DIR, stale.snapName), false)
         } catch {
           // already gone
         }
@@ -335,7 +359,7 @@ export function createVaultStore(vault) {
     )
     const valid = []
     for (const item of list) {
-      if (await vault.exists(joinPath(HISTORY_DIR, item.snapName))) valid.push(item)
+      if (await library.exists(joinPath(HISTORY_DIR, item.snapName))) valid.push(item)
     }
     valid.sort((a, b) => b.savedAt - a.savedAt)
     return valid
@@ -344,10 +368,10 @@ export function createVaultStore(vault) {
   async function readSnapshot(snapName) {
     if (snapName.includes('/')) throw new ApiError(400, 'invalid_path', 'invalid snapshot')
     const path = joinPath(HISTORY_DIR, snapName)
-    if ((await vault.exists(path)) !== 'file') {
+    if ((await library.exists(path)) !== 'file') {
       throw new ApiError(404, 'not_found', 'no such snapshot')
     }
-    return await vault.readText(path)
+    return await library.readText(path)
   }
 
   async function retargetHistory(fromPath, toPath) {
@@ -373,14 +397,18 @@ export function createVaultStore(vault) {
   const EMPTY_BOOKMARKS = { version: 1, bookmarks: [], collections: [] }
 
   async function loadTasks() {
-    const store = await readJson(TASKS_FILE, EMPTY_TASKS)
+    const store = await readDataJson(TASKS_FILE, LEGACY_TASKS_FILE, EMPTY_TASKS)
     return store?.version === 1 && Array.isArray(store.tasks) && Array.isArray(store.projects)
       ? store
       : EMPTY_TASKS
   }
 
   async function loadBookmarks() {
-    const store = await readJson(BOOKMARKS_FILE, EMPTY_BOOKMARKS)
+    const store = await readDataJson(
+      BOOKMARKS_FILE,
+      LEGACY_BOOKMARKS_FILE,
+      EMPTY_BOOKMARKS,
+    )
     return store?.version === 1 &&
       Array.isArray(store.bookmarks) &&
       Array.isArray(store.collections)
@@ -435,6 +463,6 @@ export function createVaultStore(vault) {
     updateBookmarks,
     // constants the API needs for export filtering
     HIDDEN_DIRS: [TRASH_DIR, HISTORY_DIR],
-    NIB_DIR,
+    DATA_DIR,
   }
 }

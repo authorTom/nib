@@ -1,6 +1,6 @@
 // The keyboard reference.
 //
-// Nib is built for people who would rather not reach for the mouse, and until
+// Deckle is built for people who would rather not reach for the mouse, and until
 // now it kept that a secret: F2 renames, Delete bins, middle-click closes a
 // tab, `[[` opens the note picker — none of it written down anywhere, in the
 // app or out of it. A tool that rewards fluency owes the reader the list.

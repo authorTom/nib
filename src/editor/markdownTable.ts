@@ -9,8 +9,8 @@ import type { Node as PMNode } from '@tiptap/pm/model'
  *
  * The library parses markdown tables but has no serializer for them, so a table
  * would round-trip out as a raw `<table>` blob. That's the one thing this app
- * can't do: notes are meant to be plain Markdown that Obsidian and every other
- * editor can read.
+ * can't do: notes are meant to be plain Markdown that every other editor can
+ * read.
  */
 
 /** Minimal view of prosemirror-markdown's serializer state. */

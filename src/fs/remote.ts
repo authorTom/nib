@@ -1,20 +1,20 @@
-// Server vault: a third storage backend, behind the same interface as the
+// Server library: a third storage backend, behind the same interface as the
 // other two.
 //
-// src/fs/vault.ts, history.ts, tasks/store.ts, bookmarks/store.ts and the AI
+// src/fs/library.ts, history.ts, tasks/store.ts, bookmarks/store.ts and the AI
 // tools all speak `FileSystemDirectoryHandle`. Rather than thread a second
 // storage abstraction through all of them, this module implements that same
-// handle interface on top of the container's file API (see server/vault-api.mjs),
+// handle interface on top of the container's file API (see server/library-api.mjs),
 // so the entire app keeps working unchanged when notes live on the server.
 //
 // Only the subset the app actually uses is implemented — getFileHandle,
 // getDirectoryHandle, values, removeEntry, isSameEntry, getFile and
 // createWritable. The handles are cast to the DOM types at the boundary
-// (`openServerVault`), which is the one place the pretence is made explicit.
+// (`openServerLibrary`), which is the one place the pretence is made explicit.
 
-const API = '/api/vault'
+const API = '/api/library'
 
-export interface ServerVaultInfo {
+export interface ServerLibraryInfo {
   enabled: boolean
   name: string
   authRequired: boolean
@@ -29,7 +29,7 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
 }
 
 /** Marks requests as coming from the app itself — see hasAppHeader() server-side. */
-const APP_HEADERS = { 'X-Nib-App': '1' }
+const APP_HEADERS = { 'X-Deckle-App': '1' }
 
 class NotFoundError extends DOMException {
   constructor(message: string) {
@@ -62,7 +62,7 @@ async function request(
     } catch {
       // Non-JSON error body — keep the status text.
     }
-    throw new Error(`Server vault request failed (${res.status}): ${detail}`)
+    throw new Error(`Server library request failed (${res.status}): ${detail}`)
   }
   return res
 }
@@ -119,7 +119,7 @@ class RemoteFileHandle {
 
   constructor(
     readonly name: string,
-    /** Path relative to the vault root. */
+    /** Path relative to the library root. */
     readonly path: string,
     private readonly known?: { lastModified: number; size: number },
   ) {}
@@ -146,7 +146,7 @@ class RemoteDirectoryHandle {
 
   constructor(
     readonly name: string,
-    /** Path relative to the vault root; '' for the root itself. */
+    /** Path relative to the library root; '' for the root itself. */
     readonly path: string,
   ) {}
 
@@ -225,7 +225,7 @@ class RemoteDirectoryHandle {
 
 // ---- Public API ------------------------------------------------------------
 
-/** True for handles belonging to the server vault (used for the tree fast path). */
+/** True for handles belonging to the server library (used for the tree fast path). */
 export function isRemoteHandle(handle: unknown): handle is RemoteDirectoryHandle {
   return handle instanceof RemoteDirectoryHandle
 }
@@ -235,7 +235,7 @@ export function isRemoteHandle(handle: unknown): handle is RemoteDirectoryHandle
  *
  * `buildTree` walks the handle interface entry by entry, which costs one
  * request per file over HTTP. The server can do that walk locally and return
- * the finished tree, so a vault refresh is a single request either way.
+ * the finished tree, so a library refresh is a single request either way.
  */
 export async function fetchRemoteTree(
   handle: RemoteDirectoryHandle,
@@ -282,14 +282,14 @@ export async function writeRemoteFile(
 }
 
 /**
- * Ask the server whether it offers a vault. Returns null when this build isn't
- * served by the Nib server at all (a plain static host, or `npm run dev`
+ * Ask the server whether it offers a library. Returns null when this build isn't
+ * served by the Deckle server at all (a plain static host, or `npm run dev`
  * without the API running), which is what makes the server option appear only
  * where it can actually work.
  */
-export async function detectServerVault(): Promise<ServerVaultInfo | null> {
+export async function detectServerLibrary(): Promise<ServerLibraryInfo | null> {
   try {
-    const res = await fetch('/api/server-vault', {
+    const res = await fetch('/api/server-library', {
       credentials: 'same-origin',
       headers: APP_HEADERS,
       // This runs before anything else on startup, so a server that accepts the
@@ -298,17 +298,17 @@ export async function detectServerVault(): Promise<ServerVaultInfo | null> {
       signal: AbortSignal.timeout(4000),
     })
     if (!res.ok) return null
-    const info = (await res.json()) as ServerVaultInfo
+    const info = (await res.json()) as ServerLibraryInfo
     return info?.enabled ? info : null
   } catch {
     return null
   }
 }
 
-/** Submit the vault password. Returns null on success, or an error message. */
-export async function loginServerVault(password: string): Promise<string | null> {
+/** Submit the library password. Returns null on success, or an error message. */
+export async function loginServerLibrary(password: string): Promise<string | null> {
   try {
-    const res = await fetch('/api/server-vault/login', {
+    const res = await fetch('/api/server-library/login', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { ...APP_HEADERS, 'Content-Type': 'application/json' },
@@ -322,9 +322,9 @@ export async function loginServerVault(password: string): Promise<string | null>
   }
 }
 
-export async function logoutServerVault(): Promise<void> {
+export async function logoutServerLibrary(): Promise<void> {
   try {
-    await fetch('/api/server-vault/logout', {
+    await fetch('/api/server-library/logout', {
       method: 'POST',
       credentials: 'same-origin',
       headers: APP_HEADERS,
@@ -334,7 +334,7 @@ export async function logoutServerVault(): Promise<void> {
   }
 }
 
-/** The server vault root, typed as the handle the rest of the app expects. */
-export function openServerVault(name: string): FileSystemDirectoryHandle {
+/** The server library root, typed as the handle the rest of the app expects. */
+export function openServerLibrary(name: string): FileSystemDirectoryHandle {
   return new RemoteDirectoryHandle(name, '') as unknown as FileSystemDirectoryHandle
 }

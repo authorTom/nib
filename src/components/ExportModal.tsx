@@ -3,15 +3,15 @@ import { useEnterExit } from '../hooks/useEnterExit'
 import { OVERLAY_EXIT_MS } from '../lib/motion'
 import { Archive, Check, Download, X } from 'lucide-react'
 import {
-  exportVaultZip,
+  exportLibraryZip,
   formatBytes,
   type ExportProgress,
-} from '../lib/exportVault'
+} from '../lib/exportLibrary'
 
 interface ExportModalProps {
   open: boolean
   dir: FileSystemDirectoryHandle | null
-  vaultName: string | null
+  libraryName: string | null
   noteCount: number
   onClose: () => void
 }
@@ -19,7 +19,7 @@ interface ExportModalProps {
 export default function ExportModal({
   open,
   dir,
-  vaultName,
+  libraryName,
   noteCount,
   onClose,
 }: ExportModalProps) {
@@ -49,9 +49,9 @@ export default function ExportModal({
     setError(null)
     setProgress({ phase: 'reading', done: 0, total: 0 })
     try {
-      const result = await exportVaultZip(
+      const result = await exportLibraryZip(
         dir,
-        vaultName ?? 'vault',
+        libraryName ?? 'library',
         { includeHidden },
         setProgress,
       )
@@ -92,10 +92,10 @@ export default function ExportModal({
 
         <div className="modal-body">
           <p className="modal-note">
-            Downloads everything in <strong>{vaultName ?? 'this vault'}</strong> as a
+            Downloads everything in <strong>{libraryName ?? 'this library'}</strong> as a
             single ZIP — {noteCount} note{noteCount === 1 ? '' : 's'} with their folder
             structure intact, plus your tasks and bookmarks. Unzip it anywhere, or open
-            it in Obsidian; it's just Markdown.
+            it in any editor; it's just Markdown.
           </p>
 
           <label className="export-option">

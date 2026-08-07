@@ -16,7 +16,7 @@ export interface AddBookmarkInput {
   source?: { noteId: string }
 }
 
-/** Bookmark state backed by .nib/bookmarks.json, saved with a debounce. */
+/** Bookmark state backed by .deckle/bookmarks.json, saved with a debounce. */
 export function useBookmarks(dir: FileSystemDirectoryHandle | null) {
   const [store, setStore] = useState<BookmarkStore>(EMPTY_STORE)
 

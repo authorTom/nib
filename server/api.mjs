@@ -1,14 +1,14 @@
-// Nib's machine API: everything the app can do to a vault, over HTTP, for
+// Deckle's machine API: everything the app can do to a library, over HTTP, for
 // agents and scripts rather than browsers.
 //
-// It sits beside — not on top of — the app's own /api/vault endpoints. Those
+// It sits beside — not on top of — the app's own /api/library endpoints. Those
 // are a file-handle shim for the browser, cookie-authenticated and shaped by
 // the File System Access API. This is a normal REST API: bearer tokens, JSON
-// bodies, note paths in the URL, and vault semantics (the recycle bin, version
+// bodies, note paths in the URL, and library semantics (the recycle bin, version
 // history, tasks, bookmarks) applied server-side so an agent's writes behave
 // exactly like a person's.
 //
-// It requires the server vault. A local-folder or in-browser vault lives on the
+// It requires the server library. A local-folder or in-browser library lives on the
 // user's device and there is nothing here for an agent to reach.
 //
 // The full surface is documented by the OpenAPI 3.1 document this serves at
@@ -17,8 +17,13 @@
 import { randomUUID } from 'node:crypto'
 import { SECURITY_HEADERS } from './static.mjs'
 import { BadPathError } from './paths.mjs'
-import { TooLargeError } from './vault-api.mjs'
-import { ApiError, normalizeFolderPath, normalizeNotePath } from './vault-store.mjs'
+import { TooLargeError } from './library-api.mjs'
+import {
+  ApiError,
+  isDataDir,
+  normalizeFolderPath,
+  normalizeNotePath,
+} from './library-store.mjs'
 import { buildOpenApi } from './openapi.mjs'
 import { writeZip } from './zip.mjs'
 
@@ -60,7 +65,7 @@ function requireString(body, field, { optional = false, max = 100_000 } = {}) {
   return value
 }
 
-/** Re-root ids from a subtree walk so every path is vault-relative. */
+/** Re-root ids from a subtree walk so every path is library-relative. */
 function applyPrefix(nodes, prefix) {
   if (!prefix) return nodes
   return nodes.map((node) =>
@@ -85,12 +90,12 @@ function flattenFiles(nodes, out = []) {
 // ---- Router ----------------------------------------------------------------
 
 export function createApi({
-  vault,
+  library,
   store,
   search,
   auth,
-  vaultEnabled,
-  vaultName,
+  libraryEnabled,
+  libraryName,
   corsOrigins = [],
 }) {
   const allowAllOrigins = corsOrigins.includes('*')
@@ -157,7 +162,7 @@ export function createApi({
     const includeContent = boolParam(url.searchParams.get('include_content'))
     const sort = url.searchParams.get('sort') ?? 'path'
 
-    const tree = applyPrefix(await vault.tree(folder), folder)
+    const tree = applyPrefix(await library.tree(folder), folder)
     const files = flattenFiles(tree)
 
     if (sort === 'updated') files.sort((a, b) => b.updatedAt - a.updatedAt)
@@ -175,7 +180,7 @@ export function createApi({
       }
       if (includeContent) {
         try {
-          note.content = await vault.readText(file.id)
+          note.content = await library.readText(file.id)
         } catch {
           note.content = ''
         }
@@ -287,22 +292,23 @@ export function createApi({
     return { imported: imported.length, failed: failed.length, notes: imported, errors: failed }
   }
 
-  /** Walk the vault yielding every file, for the export archive. */
+  /** Walk the library yielding every file, for the export archive. */
   async function* walkForExport(rel, includeHidden) {
-    const entries = await vault.list(rel)
+    const entries = await library.list(rel)
     for (const entry of entries) {
       const path = rel ? `${rel}/${entry.name}` : entry.name
       const hidden = entry.name.startsWith('.')
-      // `.nib` always travels: without tasks.json and bookmarks.json a restored
-      // vault silently loses the planner and the bookmarks.
-      if (hidden && !includeHidden && entry.name !== store.NIB_DIR) continue
+      // The data folder always travels: without tasks.json and bookmarks.json a
+      // restored library silently loses the planner and the bookmarks. That
+      // holds for the pre-rename folder name too.
+      if (hidden && !includeHidden && !isDataDir(entry.name)) continue
 
       if (entry.kind === 'directory') {
         yield* walkForExport(path, includeHidden)
       } else {
         yield {
           path,
-          content: await vault.readBuffer(path),
+          content: await library.readBuffer(path),
           modified: new Date(entry.lastModified ?? Date.now()),
         }
       }
@@ -313,10 +319,10 @@ export function createApi({
     const includeHidden = boolParam(url.searchParams.get('include_hidden'))
     const stamp = new Date().toISOString().slice(0, 10)
     const slug =
-      vaultName
+      libraryName
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '') || 'vault'
+        .replace(/^-+|-+$/g, '') || 'library'
 
     res.writeHead(200, {
       ...SECURITY_HEADERS,
@@ -333,7 +339,7 @@ export function createApi({
       // Headers are long gone, so there is no status left to send — cut the
       // response short so the client sees a truncated archive rather than a
       // silently valid one, and log the reason.
-      console.error('[nib] export failed midway:', err)
+      console.error('[deckle] export failed midway:', err)
       res.destroy()
     }
   }
@@ -550,12 +556,12 @@ export function createApi({
     if (!head || head === 'health') {
       return {
         status: 200,
-        body: { ok: true, service: 'nib', api: 'v1', vault: vaultName },
+        body: { ok: true, service: 'deckle', api: 'v1', library: libraryName },
       }
     }
 
     if (head === 'openapi.json' && method === 'GET') {
-      return { status: 200, body: buildOpenApi(vaultName) }
+      return { status: 200, body: buildOpenApi(libraryName) }
     }
 
     // -- notes -----------------------------------------------------------
@@ -597,7 +603,7 @@ export function createApi({
       if (method === 'DELETE') {
         await store.readNote(path) // 404 before doing anything
         if (boolParam(url.searchParams.get('permanent'))) {
-          await vault.remove(path, false)
+          await library.remove(path, false)
           return { status: 200, body: { deleted: path, permanent: true } }
         }
         const entry = await store.trashNote(path)
@@ -624,14 +630,14 @@ export function createApi({
           const folder = normalizeFolderPath(url.searchParams.get('path') ?? '')
           return {
             status: 200,
-            body: { path: folder, tree: applyPrefix(await vault.tree(folder), folder) },
+            body: { path: folder, tree: applyPrefix(await library.tree(folder), folder) },
           }
         }
         if (method === 'POST') {
           const body = await readBody(req)
           const path = normalizeFolderPath(requireString(body, 'path', { max: 1024 }))
           if (!path) throw new ApiError(400, 'invalid_path', '"path" is required')
-          await vault.mkdir(path)
+          await library.mkdir(path)
           return { status: 201, body: { path } }
         }
         throw methodNotAllowed(method)
@@ -639,14 +645,14 @@ export function createApi({
 
       const path = normalizeFolderPath(rest.join('/'))
       if (method === 'DELETE') {
-        if (!path) throw new ApiError(400, 'invalid_path', 'cannot delete the vault root')
-        if ((await vault.exists(path)) !== 'directory') {
+        if (!path) throw new ApiError(400, 'invalid_path', 'cannot delete the library root')
+        if ((await library.exists(path)) !== 'directory') {
           throw new ApiError(404, 'not_found', `no folder at "${path}"`)
         }
         // Match the app: notes inside go to the recycle bin, not oblivion.
-        const notes = flattenFiles(applyPrefix(await vault.tree(path), path))
+        const notes = flattenFiles(applyPrefix(await library.tree(path), path))
         for (const note of notes) await store.trashNote(note.id)
-        await vault.remove(path, true)
+        await library.remove(path, true)
         return { status: 200, body: { deleted: path, trashed: notes.length } }
       }
       throw methodNotAllowed(method)
@@ -862,17 +868,17 @@ export function createApi({
         res,
         404,
         'api_disabled',
-        'the API is disabled — set NIB_API_TOKENS to enable it',
+        'the API is disabled — set DECKLE_API_TOKENS to enable it',
       )
       return true
     }
-    if (!vaultEnabled) {
+    if (!libraryEnabled) {
       sendError(
         req,
         res,
         503,
-        'vault_disabled',
-        'the API needs the server vault — set NIB_SERVER_VAULT=true',
+        'library_disabled',
+        'the API needs the server library — set DECKLE_SERVER_LIBRARY=true',
       )
       return true
     }
@@ -893,7 +899,7 @@ export function createApi({
         result.error === 'missing'
           ? 'missing Authorization header (expected "Bearer <token>")'
           : 'invalid API token',
-        { 'WWW-Authenticate': 'Bearer realm="nib"' },
+        { 'WWW-Authenticate': 'Bearer realm="deckle"' },
       )
       return true
     }
@@ -941,9 +947,9 @@ export function createApi({
       } else if (err?.code === 'ENOTEMPTY' || err?.code === 'EEXIST') {
         sendError(req, res, 409, 'conflict', err.code)
       } else if (err?.code === 'EACCES' || err?.code === 'EROFS') {
-        sendError(req, res, 500, 'not_writable', 'the vault directory is not writable')
+        sendError(req, res, 500, 'not_writable', 'the library directory is not writable')
       } else {
-        console.error('[nib] api request failed:', req.method, url.pathname, err)
+        console.error('[deckle] api request failed:', req.method, url.pathname, err)
         sendError(req, res, 500, 'internal_error', 'internal error')
       }
     }

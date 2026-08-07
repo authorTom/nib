@@ -344,7 +344,7 @@ function SettingsView({
               checked={draft.semanticSearch}
               onChange={(e) => set({ semanticSearch: e.target.checked })}
             />
-            <span>Semantic vault search (embeddings)</span>
+            <span>Semantic library search (embeddings)</span>
           </label>
           {draft.semanticSearch && (
             <label className="field">
@@ -360,7 +360,7 @@ function SettingsView({
               />
               <span className="assistant-note">
                 {draft.provider === 'openai'
-                  ? 'Notes are embedded via the OpenAI API when the assistant searches your vault (a small per-note cost, cached until a note changes).'
+                  ? 'Notes are embedded via the OpenAI API when the assistant searches your library (a small per-note cost, cached until a note changes).'
                   : 'Requires an embedding model loaded in LM Studio — runs fully locally. If unavailable, search falls back to keyword matching.'}
               </span>
             </label>
@@ -533,7 +533,7 @@ export default function AssistantPanel({
                 <Sparkles size={26} />
                 <p>
                   Ask me to summarize, reorganize, draft, or edit your notes. I can read
-                  the whole vault and propose changes for your approval.
+                  the whole library and propose changes for your approval.
                 </p>
                 <p className="assistant-note">
                   Type <strong>/</strong> to reference a specific note.

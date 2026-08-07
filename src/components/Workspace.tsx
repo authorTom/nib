@@ -6,7 +6,7 @@ import Toolbar from './Toolbar'
 import NoteTabs from './NoteTabs'
 import EditorPane from './EditorPane'
 import EditorSkeleton from './EditorSkeleton'
-import type { NoteFile } from '../fs/vault'
+import type { NoteFile } from '../fs/library'
 import type { Pane, SaveState } from '../hooks/useNotes'
 import type { Backlink } from '../lib/wikilinks'
 import type { EnterFrom, FlightOrigin } from '../lib/motion'
@@ -27,8 +27,8 @@ interface WorkspaceProps {
   saveError: string | null
   lastSavedAt: number | null
   isDirty: (id: string) => boolean
-  /** The vault has no notes at all — show the first-run state in the panes. */
-  vaultEmpty: boolean
+  /** The library has no notes at all — show the first-run state in the panes. */
+  libraryEmpty: boolean
   /** Note created moments ago, for the ink bloom and the wet-ink tab. */
   justCreatedId: string | null
   /** Note restored moments ago: wet ink, but no bloom — it was placed, not made. */
@@ -77,7 +77,7 @@ interface WorkspaceProps {
 }
 
 /**
- * What a brand-new vault opens on.
+ * What a brand-new library opens on.
  *
  * Lives inside the panes rather than over the whole app: it used to be an
  * opaque overlay across `.app`, which covered the sidebar it was telling you
@@ -85,7 +85,7 @@ interface WorkspaceProps {
  * Here the note list stays visible beside it, so "bring in Markdown" points at
  * something the reader can actually see.
  */
-function EmptyVault({
+function EmptyLibrary({
   onNew,
   onImport,
 }: {
@@ -135,7 +135,7 @@ export default function Workspace({
   saveError,
   lastSavedAt,
   isDirty,
-  vaultEmpty,
+  libraryEmpty,
   justCreatedId,
   justPlacedId,
   flightFrom,
@@ -232,8 +232,8 @@ export default function Workspace({
       {focusedEditor && <Toolbar editor={focusedEditor} />}
 
       <div className={`panes${split ? ' split' : ''}`}>
-        {vaultEmpty ? (
-          <EmptyVault onNew={onNew} onImport={onOpenImport} />
+        {libraryEmpty ? (
+          <EmptyLibrary onNew={onNew} onImport={onOpenImport} />
         ) : activeNote && activeContent !== null ? (
           <EditorPane
             key={activeNote.id}

@@ -1,11 +1,11 @@
-// The screen shown until a vault is connected.
+// The screen shown until a library is connected.
 //
 // Which choices appear depends on what the deployment actually supports: the
-// server vault only when this build is served by the Nib server with a volume
+// server library only when this build is served by the Deckle server with a volume
 // mounted, and the on-disk picker only on Chromium. When neither the server nor
 // the browser offers storage there is nothing to offer, and the gate says so.
 //
-// This is the one screen in Nib that is not the desk. Everywhere else the
+// This is the one screen in Deckle that is not the desk. Everywhere else the
 // chrome holds still so the writing can move; here there is no writing yet, and
 // the screen's whole job is the promise it makes about where your notes will
 // live. So it gets the system's strongest moves rather than opting out of them:
@@ -14,29 +14,29 @@
 
 import { useState, type FormEvent } from 'react'
 import { FolderOpen, Lock, Moon, Server, Sun } from 'lucide-react'
-import { isVaultSupported, supportsDiskPicker } from '../fs/vault'
-import type { ServerVaultInfo } from '../fs/remote'
-import type { VaultStatus } from '../hooks/useNotes'
+import { isLibrarySupported, supportsDiskPicker } from '../fs/library'
+import type { ServerLibraryInfo } from '../fs/remote'
+import type { LibraryStatus } from '../hooks/useNotes'
 import InkFilter from './InkFilter'
 
 interface Props {
-  status: VaultStatus
+  status: LibraryStatus
   theme: string
   toggleTheme: () => void
-  vaultName: string | null
+  libraryName: string | null
   connect: () => void
   reconnect: () => void
-  serverVault: ServerVaultInfo | null
+  serverLibrary: ServerLibraryInfo | null
   connectServer: () => void
   loginServer: (password: string) => Promise<string | null>
 }
 
 /**
- * The nib, inlined so it takes the palette's ink through `currentColor`.
- * `public/nib.svg` stays as it is — it is the favicon, and a favicon has no
+ * The deckle, inlined so it takes the palette's ink through `currentColor`.
+ * `public/deckle.svg` stays as it is — it is the favicon, and a favicon has no
  * document to inherit a colour from.
  */
-function NibMark({ size = 40 }: { size?: number }) {
+function DeckleMark({ size = 40 }: { size?: number }) {
   return (
     <svg
       className="gate-mark"
@@ -54,19 +54,19 @@ function NibMark({ size = 40 }: { size?: number }) {
   )
 }
 
-export default function VaultGate({
+export default function LibraryGate({
   status,
   theme,
   toggleTheme,
-  vaultName,
+  libraryName,
   connect,
   reconnect,
-  serverVault,
+  serverLibrary,
   connectServer,
   loginServer,
 }: Props) {
   const disk = supportsDiskPicker()
-  const choosing = status === 'no-vault' && serverVault !== null
+  const choosing = status === 'no-library' && serverLibrary !== null
 
   return (
     <div className="app">
@@ -90,8 +90,8 @@ export default function VaultGate({
 
         <div className={`gate-inner${choosing ? ' wide' : ''}`}>
           <div className="gate-masthead">
-            <NibMark />
-            <span className="gate-wordmark">Nib</span>
+            <DeckleMark />
+            <span className="gate-wordmark">Deckle</span>
           </div>
 
           {status === 'loading' && <p className="gate-lede">Loading…</p>}
@@ -106,28 +106,28 @@ export default function VaultGate({
             </>
           )}
 
-          {status === 'no-vault' && serverVault && (
+          {status === 'no-library' && serverLibrary && (
             <ChooseBackend
               disk={disk}
               // A browser with neither the picker nor OPFS can still use the
-              // server vault, so offer that alone rather than a dead button.
-              localSupported={isVaultSupported()}
-              serverVault={serverVault}
+              // server library, so offer that alone rather than a dead button.
+              localSupported={isLibrarySupported()}
+              serverLibrary={serverLibrary}
               connect={connect}
               connectServer={connectServer}
             />
           )}
 
-          {status === 'no-vault' && !serverVault && (
+          {status === 'no-library' && !serverLibrary && (
             <>
               <h1 className="gate-title">
-                {disk ? 'Choose a notes folder' : 'Create your vault'}
+                {disk ? 'Choose a notes folder' : 'Create your library'}
               </h1>
               <p className="gate-lede">
                 {disk ? (
                   <>
-                    Pick a folder to use as your vault. Your notes are saved there
-                    as plain Markdown (.md) files — open them in Obsidian, sync
+                    Pick a folder to use as your library. Your notes are saved there
+                    as plain Markdown (.md) files — open them in any editor, sync
                     them, or back them up however you like.
                   </>
                 ) : (
@@ -149,19 +149,19 @@ export default function VaultGate({
 
           {status === 'needs-login' && (
             <LoginForm
-              name={serverVault?.name ?? 'the server vault'}
+              name={serverLibrary?.name ?? 'the server library'}
               loginServer={loginServer}
               connect={connect}
-              showLocalOption={disk || !serverVault}
+              showLocalOption={disk || !serverLibrary}
               disk={disk}
             />
           )}
 
           {status === 'needs-permission' && (
             <>
-              <h1 className="gate-title">Reconnect your vault</h1>
+              <h1 className="gate-title">Reconnect your library</h1>
               <p className="gate-lede">
-                Grant access to <strong>{vaultName ?? 'your folder'}</strong> to
+                Grant access to <strong>{libraryName ?? 'your folder'}</strong> to
                 continue.
               </p>
               <div className="gate-actions">
@@ -183,22 +183,22 @@ export default function VaultGate({
 function ChooseBackend({
   disk,
   localSupported,
-  serverVault,
+  serverLibrary,
   connect,
   connectServer,
 }: {
   disk: boolean
   localSupported: boolean
-  serverVault: ServerVaultInfo
+  serverLibrary: ServerLibraryInfo
   connect: () => void
   connectServer: () => void
 }) {
   if (!localSupported) {
     return (
       <>
-        <h1 className="gate-title">Open {serverVault.name}</h1>
+        <h1 className="gate-title">Open {serverLibrary.name}</h1>
         <p className="gate-lede">
-          Your notes are stored on the server running Nib, so they&rsquo;re
+          Your notes are stored on the server running Deckle, so they&rsquo;re
           available on every device and nothing is kept on this one.
         </p>
         <div className="gate-actions">
@@ -214,29 +214,29 @@ function ChooseBackend({
   return (
     <>
       <h1 className="gate-title">Where should your notes live?</h1>
-      <div className="vault-options">
-        <button type="button" className="vault-option" onClick={connectServer}>
-          <span className="vault-option-icon">
+      <div className="library-options">
+        <button type="button" className="library-option" onClick={connectServer}>
+          <span className="library-option-icon">
             <Server size={20} />
           </span>
-          <span className="vault-option-title">On this server</span>
-          <span className="vault-option-desc">
-            Notes are stored as Markdown files on the machine running Nib, so you
+          <span className="library-option-title">On this server</span>
+          <span className="library-option-desc">
+            Notes are stored as Markdown files on the machine running Deckle, so you
             can reach them from any device and any browser. Nothing is kept
             locally.
-            {serverVault.authRequired ? ' Protected by a password.' : ''}
+            {serverLibrary.authRequired ? ' Protected by a password.' : ''}
           </span>
         </button>
-        <button type="button" className="vault-option" onClick={connect}>
-          <span className="vault-option-icon">
+        <button type="button" className="library-option" onClick={connect}>
+          <span className="library-option-icon">
             <FolderOpen size={20} />
           </span>
-          <span className="vault-option-title">
+          <span className="library-option-title">
             {disk ? 'In a folder on this computer' : 'Privately in this browser'}
           </span>
-          <span className="vault-option-desc">
+          <span className="library-option-desc">
             {disk
-              ? 'Pick a folder and Nib writes ordinary .md files into it — open them in Obsidian, sync them, or back them up yourself.'
+              ? 'Pick a folder and Deckle writes ordinary .md files into it — open them in any editor, sync them, or back them up yourself.'
               : 'Notes are saved privately inside this browser on this device, and are not uploaded anywhere.'}
           </span>
         </button>
@@ -276,7 +276,7 @@ function LoginForm({
       setError(message)
       setPassword('')
     }
-    // On success the vault opens and this screen unmounts.
+    // On success the library opens and this screen unmounts.
   }
 
   return (
@@ -285,15 +285,15 @@ function LoginForm({
         <Lock size={22} aria-hidden="true" />
         Unlock {name}
       </h1>
-      <p className="gate-lede">Enter the vault password to open your notes.</p>
-      <form className="vault-login" onSubmit={(e) => void onSubmit(e)}>
+      <p className="gate-lede">Enter the library password to open your notes.</p>
+      <form className="library-login" onSubmit={(e) => void onSubmit(e)}>
         <input
           type="password"
-          className="vault-login-input"
+          className="library-login-input"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Password"
-          aria-label="Vault password"
+          aria-label="Library password"
           autoComplete="current-password"
           autoFocus
         />
@@ -302,7 +302,7 @@ function LoginForm({
         </button>
       </form>
       {error && (
-        <p className="vault-login-error" role="alert">
+        <p className="library-login-error" role="alert">
           {error}
         </p>
       )}

@@ -1,10 +1,10 @@
 // Export the whole knowledge base as one ZIP.
 //
 // Built in the browser rather than on the server, so it works identically for
-// all three backends — a local folder, the in-browser OPFS vault, and the
-// server vault — instead of only the one that has a server behind it.
+// all three backends — a local folder, the in-browser OPFS library, and the
+// server library — instead of only the one that has a server behind it.
 
-import { collectFiles } from '../fs/vault'
+import { collectFiles } from '../fs/library'
 import { createZip, downloadBlob, type ZipEntry } from './zip'
 
 export interface ExportOptions {
@@ -25,13 +25,13 @@ export interface ExportResult {
 }
 
 /** "My Notes" → "my-notes-2026-07-30.zip" */
-function archiveName(vaultName: string): string {
+function archiveName(libraryName: string): string {
   const slug =
-    vaultName
+    libraryName
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'vault'
+      .replace(/^-+|-+$/g, '') || 'library'
   const today = new Date()
   const stamp = [
     today.getFullYear(),
@@ -42,13 +42,13 @@ function archiveName(vaultName: string): string {
 }
 
 /**
- * Read every file in the vault, zip it, and hand the archive to the browser as
- * a download. Progress is reported in two phases because reading a server vault
+ * Read every file in the library, zip it, and hand the archive to the browser as
+ * a download. Progress is reported in two phases because reading a server library
  * is one request per file and can dominate the wait.
  */
-export async function exportVaultZip(
+export async function exportLibraryZip(
   dir: FileSystemDirectoryHandle,
-  vaultName: string,
+  libraryName: string,
   options: ExportOptions = {},
   onProgress?: (progress: ExportProgress) => void,
 ): Promise<ExportResult> {
@@ -60,7 +60,7 @@ export async function exportVaultZip(
     onProgress?.({ phase: 'reading', done: read, total: read })
   })
 
-  if (!files.length) throw new Error('There is nothing in this vault to export yet.')
+  if (!files.length) throw new Error('There is nothing in this library to export yet.')
 
   const entries: ZipEntry[] = files.map((file) => ({
     path: file.path,
@@ -72,7 +72,7 @@ export async function exportVaultZip(
     onProgress?.({ phase: 'compressing', done, total }),
   )
 
-  const fileName = archiveName(vaultName)
+  const fileName = archiveName(libraryName)
   downloadBlob(blob, fileName)
   return { fileName, fileCount: files.length, bytes: blob.size }
 }
