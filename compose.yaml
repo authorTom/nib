@@ -1,4 +1,4 @@
-# Nib - Docker Compose
+# Deckle - Docker Compose
 #
 # Production (pull the prebuilt image):
 #   docker compose up -d            -> http://localhost:8080
@@ -8,20 +8,20 @@
 #                                   -> http://localhost:5173
 #
 # Compose automatically reads a sibling ".env" file in this directory for the
-# ${...} values below. Copy .env.example to .env to set a vault password,
+# ${...} values below. Copy .env.example to .env to set a library password,
 # override the port, or pin a specific image tag.
 #
-# By default this runs a *server vault*: your notes are stored as .md files in
-# the "nib-vault" volume below, so Nib works from any device and any browser
+# By default this runs a *server library*: your notes are stored as .md files in
+# the "nib-vault" volume below, so Deckle works from any device and any browser
 # with nothing kept locally. The app still offers a local folder / in-browser
-# vault as well — you choose on first load. To turn the server vault off
-# entirely, set NIB_SERVER_VAULT=false in .env.
+# library as well — you choose on first load. To turn the server library off
+# entirely, set DECKLE_SERVER_LIBRARY=false in .env.
 
 services:
   web:
     # Pull the multi-arch image published by .github/workflows/docker.yml on
     # every push to main. GHCR lowercases the owner/repo (authorTom -> authortom).
-    image: ${NIB_IMAGE:-ghcr.io/authortom/nib:latest}
+    image: ${DECKLE_IMAGE:-ghcr.io/authortom/deckle:latest}
 
     # --- Build from source instead of pulling (optional) -----------------
     # Requires the full repo checkout on the host. Uncomment this block and
@@ -30,36 +30,40 @@ services:
     #   context: .
 
     ports:
-      - "${NIB_PORT:-8080}:8080"
+      - "${DECKLE_PORT:-8080}:8080"
     init: true                 # PID 1 signal forwarding + zombie reaping
     restart: unless-stopped
 
     environment:
       # Store notes in the container (see the volume below). "false" turns this
-      # off and makes Nib a purely static, browser-storage app again.
-      NIB_SERVER_VAULT: "${NIB_SERVER_VAULT:-true}"
-      # Name shown in the app's sidebar for the server vault.
-      NIB_VAULT_NAME: "${NIB_VAULT_NAME:-My Notes}"
-      # Password for the server vault. UNSET MEANS NO PASSWORD — anyone who can
+      # off and makes Deckle a purely static, browser-storage app again.
+      DECKLE_SERVER_LIBRARY: "${DECKLE_SERVER_LIBRARY:-true}"
+      # Name shown in the app's sidebar for the server library.
+      DECKLE_LIBRARY_NAME: "${DECKLE_LIBRARY_NAME:-My Notes}"
+      # Password for the server library. UNSET MEANS NO PASSWORD — anyone who can
       # reach this port can read and write every note. Leave it unset only when
       # something else already guards the port (a VPN, Tailscale, or a reverse
       # proxy that authenticates).
-      NIB_PASSWORD: "${NIB_PASSWORD:-}"
+      DECKLE_PASSWORD: "${DECKLE_PASSWORD:-}"
       # Optional: keeps sign-ins valid across restarts. Without it, a restart
       # generates a new signing key and everyone signs in again.
-      NIB_SESSION_SECRET: "${NIB_SESSION_SECRET:-}"
+      DECKLE_SESSION_SECRET: "${DECKLE_SESSION_SECRET:-}"
       # Bearer tokens for the /api/v1 REST API, so an agent or script can read
-      # and write the vault. Blank (the default) keeps the API switched off.
+      # and write the library. Blank (the default) keeps the API switched off.
       # Format: "name:scope:secret" (scope "r" or "rw"), comma-separated.
-      NIB_API_TOKENS: "${NIB_API_TOKENS:-}"
+      DECKLE_API_TOKENS: "${DECKLE_API_TOKENS:-}"
       # Origins allowed to call /api/v1 from a browser. Rarely needed.
-      NIB_API_CORS_ORIGINS: "${NIB_API_CORS_ORIGINS:-}"
+      DECKLE_API_CORS_ORIGINS: "${DECKLE_API_CORS_ORIGINS:-}"
 
     volumes:
       # Your notes. A named volume survives `docker compose down` and image
       # upgrades; swap in a host path (e.g. ./notes:/data) to keep the Markdown
-      # files somewhere you can open in Obsidian or back up directly — the host
-      # directory must be writable by uid 1000.
+      # files somewhere you can open in another editor or back up directly — the
+      # host directory must be writable by uid 1000.
+      #
+      # The volume keeps its original name on purpose. Renaming it here would
+      # not move anything: Compose would create a new, empty volume and serve an
+      # empty library, while the notes sat in the old one.
       - nib-vault:/data
 
     healthcheck:
@@ -90,5 +94,6 @@ services:
       - "5173:5173"
 
 volumes:
+  # Named for the app's previous name; see the mount above for why it stays.
   nib-vault:
   node_modules:

@@ -139,8 +139,8 @@ const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
 // Optional ranking/attribution headers recommended by OpenRouter. "HTTP-Referer"
 // (not the browser-forbidden "Referer") and "X-Title" are safe to set from fetch.
 const OPENROUTER_HEADERS: Record<string, string> = {
-  'HTTP-Referer': 'https://github.com/authorTom/nib',
-  'X-Title': 'Nib',
+  'HTTP-Referer': 'https://github.com/authorTom/deckle',
+  'X-Title': 'Deckle',
 }
 
 interface CompatibleConfig {

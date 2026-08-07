@@ -1,4 +1,4 @@
-// Note version history, stored in a hidden ".history" folder at the vault
+// Note version history, stored in a hidden ".history" folder at the library
 // root (skipped by buildTree, like ".trash"). Each snapshot is a full copy of
 // a note's content taken before it is overwritten — by the AI assistant, by a
 // restore, or periodically while the user edits. A JSON index records which

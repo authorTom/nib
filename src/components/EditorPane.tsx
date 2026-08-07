@@ -33,14 +33,14 @@ import {
   type EnterFrom,
   type FlightOrigin,
 } from '../lib/motion'
-import type { NoteFile } from '../fs/vault'
+import type { NoteFile } from '../fs/library'
 
 const lowlight = createLowlight(common)
 
 interface EditorPaneProps {
   noteId: string
   content: string
-  /** Every note in the vault — wikilink resolution and the `[[` picker need it. */
+  /** Every note in the library — wikilink resolution and the `[[` picker need it. */
   notes: NoteFile[]
   backlinks: Backlink[]
   /** True when this pane owns the toolbar and the topbar title. */

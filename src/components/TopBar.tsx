@@ -156,7 +156,7 @@ export default function TopBar({
     },
     {
       id: 'export-zip',
-      label: 'Export vault as ZIP…',
+      label: 'Export library as ZIP…',
       Icon: Package,
       run: onOpenExport,
     },

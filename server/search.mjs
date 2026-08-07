@@ -5,9 +5,9 @@
 // the user's browser, never on the server. So the API offers the lexical half:
 // BM25 over note titles, paths, and content — no key, no network, no config.
 //
-// The index is rebuilt whenever the vault's contents change, detected by a
+// The index is rebuilt whenever the library's contents change, detected by a
 // cheap signature over every note's path and mtime, so repeated searches
-// against an unchanged vault cost nothing but the scoring pass.
+// against an unchanged library cost nothing but the scoring pass.
 
 const K1 = 1.2
 const B = 0.75
@@ -49,10 +49,10 @@ function snippetAround(content, terms) {
   return snippet
 }
 
-export function createSearch(vault) {
+export function createSearch(library) {
   let cache = null // { signature, docs, df, avgLength }
 
-  /** Flatten the tree the vault API already builds into a list of note files. */
+  /** Flatten the tree the library API already builds into a list of note files. */
   function flatten(nodes, out = []) {
     for (const node of nodes) {
       if (node.kind === 'folder') flatten(node.children, out)
@@ -62,7 +62,7 @@ export function createSearch(vault) {
   }
 
   async function buildIndex() {
-    const files = flatten(await vault.tree(''))
+    const files = flatten(await library.tree(''))
     const signature = files.map((f) => `${f.id}:${f.updatedAt}`).join('|')
     if (cache && cache.signature === signature) return cache
 
@@ -73,7 +73,7 @@ export function createSearch(vault) {
     for (const file of files) {
       let content = ''
       try {
-        content = await vault.readText(file.id)
+        content = await library.readText(file.id)
       } catch {
         // Disappeared between the walk and the read — skip it.
         continue

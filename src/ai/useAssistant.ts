@@ -14,8 +14,8 @@ export interface PendingAction {
   status: 'pending' | 'approved' | 'rejected'
 }
 
-const SYSTEM_PROMPT = `You are Nib's built-in assistant, embedded in a local Markdown note-taking app.
-The user's notes are plain Markdown (.md) files in a folder ("vault"). You can read and
+const SYSTEM_PROMPT = `You are Deckle's built-in assistant, embedded in a local Markdown note-taking app.
+The user's notes are plain Markdown (.md) files in a folder ("library"). You can read and
 edit them with the provided tools.
 
 Guidelines:

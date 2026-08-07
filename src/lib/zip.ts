@@ -2,11 +2,11 @@
 // archive without pulling in a dependency.
 //
 // Deflate comes from the platform: `CompressionStream('deflate-raw')` is in
-// every browser Nib supports (Chrome 103+, Safari 16.4+, Firefox 113+). Where
+// every browser Deckle supports (Chrome 103+, Safari 16.4+, Firefox 113+). Where
 // it isn't, or where compressing a file makes it bigger, the entry is stored
 // uncompressed instead — a perfectly valid ZIP either way.
 //
-// Deliberately not implemented: Zip64. A Markdown vault will not approach the
+// Deliberately not implemented: Zip64. A Markdown library will not approach the
 // 4 GiB / 65535-entry limits, and pretending otherwise would mean a much larger
 // writer; `createZip` throws a clear error rather than emit a corrupt archive.
 
@@ -107,7 +107,7 @@ interface CentralRecord {
 
 /**
  * Build a ZIP archive. `onProgress` is called after each entry so a large
- * vault can show progress rather than appearing to hang.
+ * library can show progress rather than appearing to hang.
  */
 export async function createZip(
   entries: ZipEntry[],
@@ -191,7 +191,7 @@ export async function createZip(
   const centralSize = out.length - centralOffset
 
   if (out.length > MAX_BYTES) {
-    throw new Error('The vault is too large for a single ZIP archive (over 4 GB).')
+    throw new Error('The library is too large for a single ZIP archive (over 4 GB).')
   }
 
   // End of central directory.

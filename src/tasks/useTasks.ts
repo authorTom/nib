@@ -20,7 +20,7 @@ export interface AddTaskInput {
   source?: { noteId: string }
 }
 
-/** Task state backed by .nib/tasks.json in the vault, saved with a debounce. */
+/** Task state backed by .deckle/tasks.json in the library, saved with a debounce. */
 export function useTasks(dir: FileSystemDirectoryHandle | null) {
   const [store, setStore] = useState<TaskStore>(EMPTY_STORE)
 
@@ -31,7 +31,7 @@ export function useTasks(dir: FileSystemDirectoryHandle | null) {
   const dirty = useRef(false)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
-  // (Re)load whenever the vault changes.
+  // (Re)load whenever the library changes.
   useEffect(() => {
     let cancelled = false
     setStore(EMPTY_STORE)

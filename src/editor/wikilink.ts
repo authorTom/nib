@@ -4,7 +4,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { WIKILINK_RE } from '../lib/wikilinks'
 
 export interface WikilinkOptions {
-  /** Note id for a target, or null when nothing in the vault matches. */
+  /** Note id for a target, or null when nothing in the library matches. */
   resolve: (target: string) => string | null
   /** Called when the reader clicks a link that resolves. */
   onOpen: (noteId: string) => void
@@ -16,7 +16,7 @@ export const wikilinkPluginKey = new PluginKey('wikilink')
  * Renders `[[Target]]` as a clickable link without touching the document.
  *
  * Wikilinks stay plain text in the model, so `tiptap-markdown` round-trips them
- * untouched and the `.md` on disk keeps the exact syntax Obsidian expects.
+ * untouched and the `.md` on disk keeps the exact syntax other editors expect.
  * Everything here is presentation: inline decorations for the styling, and a
  * click handler for navigation.
  */

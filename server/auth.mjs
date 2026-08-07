@@ -1,19 +1,19 @@
-// Optional single-password gate for the server vault.
+// Optional single-password gate for the server library.
 //
-// Nib has no user accounts: the server vault is one shared vault behind one
-// optional password (NIB_PASSWORD). With no password set the API is wide open,
+// Deckle has no user accounts: the server library is one shared library behind one
+// optional password (DECKLE_PASSWORD). With no password set the API is wide open,
 // which is the right default only when something else already guards the port
 // (Tailscale, a VPN, an authenticating reverse proxy).
 //
 // Sessions are stateless: a signed "expiry" token in an HttpOnly cookie. No
 // session store to keep, and revoking everything is a matter of changing the
-// secret. Set NIB_SESSION_SECRET to keep sessions valid across restarts;
+// secret. Set DECKLE_SESSION_SECRET to keep sessions valid across restarts;
 // otherwise a fresh random secret is generated at boot and a restart logs
 // everyone out.
 
 import crypto from 'node:crypto'
 
-const COOKIE_NAME = 'nib_session'
+const COOKIE_NAME = 'deckle_session'
 const DEFAULT_TTL_DAYS = 30
 
 // Failed logins are throttled per client IP so the password can't be ground
@@ -22,12 +22,12 @@ const LOCKOUT_WINDOW_MS = 15 * 60_000
 const MAX_ATTEMPTS = 10
 
 export function createAuth(env = process.env) {
-  const password = env.NIB_PASSWORD || ''
+  const password = env.DECKLE_PASSWORD || ''
   const required = password.length > 0
-  const secret = env.NIB_SESSION_SECRET
-    ? Buffer.from(env.NIB_SESSION_SECRET, 'utf8')
+  const secret = env.DECKLE_SESSION_SECRET
+    ? Buffer.from(env.DECKLE_SESSION_SECRET, 'utf8')
     : crypto.randomBytes(32)
-  const ttlMs = Number(env.NIB_SESSION_TTL_DAYS || DEFAULT_TTL_DAYS) * 86_400_000
+  const ttlMs = Number(env.DECKLE_SESSION_TTL_DAYS || DEFAULT_TTL_DAYS) * 86_400_000
   const attempts = new Map() // ip -> { count, resetAt }
 
   function sign(value) {
@@ -66,7 +66,7 @@ export function createAuth(env = process.env) {
     return null
   }
 
-  /** Is this request allowed to touch the vault? */
+  /** Is this request allowed to touch the library? */
   function isAuthenticated(req) {
     if (!required) return true
     return verifyToken(readCookie(req))
@@ -122,7 +122,7 @@ export function createAuth(env = process.env) {
   }
 
   function buildCookie(req, value, maxAgeSeconds) {
-    // Strict SameSite is the primary CSRF defence: the vault API is only ever
+    // Strict SameSite is the primary CSRF defence: the library API is only ever
     // called by the app served from the same origin, never by a cross-site
     // navigation. `Secure` is added only when the request actually arrived over
     // HTTPS — setting it unconditionally would break plain-HTTP LAN deploys,

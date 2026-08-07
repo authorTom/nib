@@ -1,4 +1,4 @@
-import type { NoteFile } from '../fs/vault'
+import type { NoteFile } from '../fs/library'
 
 /** `[[Target]]` or `[[Target|shown text]]`, never spanning a line break. */
 export const WIKILINK_RE = /\[\[([^\]|\n]+)(?:\|([^\]\n]+))?\]\]/g
@@ -97,7 +97,7 @@ export interface Backlink {
 /**
  * Notes that link to `targetId`, with a snippet of surrounding text.
  * `contents` is a map of note id → markdown; callers pass the cache they
- * already keep for search rather than re-reading the vault.
+ * already keep for search rather than re-reading the library.
  */
 export function findBacklinks(
   targetId: string,

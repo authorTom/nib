@@ -1,6 +1,6 @@
 :root {
   /* ---- Motion ----
-   * One easing family, three durations. Anything that moves in Nib picks from
+   * One easing family, three durations. Anything that moves in Deckle picks from
    * these so the whole app decelerates the same way. Keep animations to
    * transform and opacity — those don't hit layout. */
   --dur-fast: 120ms; /* hover, press, icon state */
@@ -21,7 +21,7 @@
    *
    * Chrome runs dense on purpose (13.6px default, under the 16px web body
    * floor): this is a desktop writing tool for keyboard-fluent people, the
-   * same register as Obsidian or VS Code, and the document above it sits at
+   * same register as a code editor, and the document above it sits at
    * 16.8px so the note always reads as content and the app as apparatus. */
   --fs-label: 0.7rem; /* 11.2px — uppercase section labels */
   --fs-meta: 0.75rem; /* 12.0px — timestamps, counts, paths, hints */

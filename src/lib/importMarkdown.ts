@@ -1,11 +1,11 @@
-// Turning what a user drops or picks into notes the vault can write.
+// Turning what a user drops or picks into notes the library can write.
 //
 // Two entry points, because the browser gives folder structure in two different
 // shapes: a `<input webkitdirectory>` puts it on `file.webkitRelativePath`,
 // while a drag-and-drop only exposes it through the (non-standard but
 // universally supported) `webkitGetAsEntry` directory reader.
 
-import type { ImportItem } from '../fs/vault'
+import type { ImportItem } from '../fs/library'
 
 /** Extensions treated as Markdown. `.txt` is included — plain text *is* valid
  *  Markdown, and refusing it would be pedantic. */

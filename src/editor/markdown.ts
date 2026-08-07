@@ -5,7 +5,7 @@ import type { Editor } from '@tiptap/react'
  *
  * prosemirror-markdown escapes `[` and `]` in text nodes so they can't be
  * mistaken for link syntax on the way back in. Correct in general, but it turns
- * a wikilink into `\[\[Target\]\]` on disk — which Obsidian doesn't recognise
+ * a wikilink into `\[\[Target\]\]` on disk — which no other editor recognises
  * and our own backlink scanner doesn't match.
  */
 const ESCAPED_WIKILINK = /\\\[\\\[([^\n]*?)\\\]\\\]/g

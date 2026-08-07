@@ -1,8 +1,9 @@
-// Bookmark persistence: .nib/bookmarks.json in the vault, alongside tasks.
+// Bookmark persistence: bookmarks.json in the library's hidden data folder,
+// alongside tasks.
 
+import { readDataJson, writeDataJson } from '../fs/appData'
 import type { BookmarkStore } from './types'
 
-const NIB_DIR = '.nib'
 const BOOKMARKS_FILE = 'bookmarks.json'
 
 export const EMPTY_STORE: BookmarkStore = {
@@ -14,19 +15,13 @@ export const EMPTY_STORE: BookmarkStore = {
 export async function loadBookmarkStore(
   dir: FileSystemDirectoryHandle,
 ): Promise<BookmarkStore> {
-  try {
-    const folder = await dir.getDirectoryHandle(NIB_DIR)
-    const handle = await folder.getFileHandle(BOOKMARKS_FILE)
-    const parsed = JSON.parse(await (await handle.getFile()).text())
-    if (
-      parsed?.version === 1 &&
-      Array.isArray(parsed.bookmarks) &&
-      Array.isArray(parsed.collections)
-    ) {
-      return parsed as BookmarkStore
-    }
-  } catch {
-    // Missing or unreadable — start fresh.
+  const parsed = (await readDataJson(dir, BOOKMARKS_FILE)) as BookmarkStore | null
+  if (
+    parsed?.version === 1 &&
+    Array.isArray(parsed.bookmarks) &&
+    Array.isArray(parsed.collections)
+  ) {
+    return parsed
   }
   return EMPTY_STORE
 }
@@ -35,9 +30,5 @@ export async function saveBookmarkStore(
   dir: FileSystemDirectoryHandle,
   store: BookmarkStore,
 ): Promise<void> {
-  const folder = await dir.getDirectoryHandle(NIB_DIR, { create: true })
-  const handle = await folder.getFileHandle(BOOKMARKS_FILE, { create: true })
-  const writable = await handle.createWritable()
-  await writable.write(JSON.stringify(store, null, 2))
-  await writable.close()
+  await writeDataJson(dir, BOOKMARKS_FILE, store)
 }

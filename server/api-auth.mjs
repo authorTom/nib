@@ -1,19 +1,19 @@
 // Bearer-token auth for the machine API (/api/v1).
 //
 // Deliberately separate from the browser's password session (server/auth.mjs).
-// An agent is not a person: it shouldn't hold the human's vault password, its
+// An agent is not a person: it shouldn't hold the human's library password, its
 // access should be revocable on its own, and it should be able to be read-only.
 //
 // Because tokens live in an Authorization header — which a browser never
 // attaches on its own — /api/v1 has no CSRF exposure and needs neither the
-// SameSite cookie nor the X-Nib-App header the app's own endpoints rely on.
+// SameSite cookie nor the X-Deckle-App header the app's own endpoints rely on.
 // The API therefore ignores cookies entirely: a session cookie must never be
 // enough to reach it.
 //
 // Configuration:
-//   NIB_API_TOKENS   comma-separated tokens, each "name:scope:secret" or just
+//   DECKLE_API_TOKENS   comma-separated tokens, each "name:scope:secret" or just
 //                    "secret" (which implies read-write). Scope is "r" or "rw".
-//   NIB_API_TOKEN    alias for a single read-write token.
+//   DECKLE_API_TOKEN    alias for a single read-write token.
 
 import crypto from 'node:crypto'
 
@@ -52,18 +52,18 @@ function parseToken(raw, index, warn) {
     secret = parts.slice(2).join(':').trim()
   } else if (parts.length === 2) {
     warn(
-      `[nib] ignoring API token "${parts[0]}": expected "name:scope:secret" (scope is "r" or "rw") or a bare secret`,
+      `[deckle] ignoring API token "${parts[0]}": expected "name:scope:secret" (scope is "r" or "rw") or a bare secret`,
     )
     return null
   }
 
   if (scope !== 'r' && scope !== 'rw') {
-    warn(`[nib] ignoring API token "${name}": scope must be "r" or "rw", got "${scope}"`)
+    warn(`[deckle] ignoring API token "${name}": scope must be "r" or "rw", got "${scope}"`)
     return null
   }
   if (secret.length < MIN_TOKEN_LENGTH) {
     warn(
-      `[nib] ignoring API token "${name}": secrets must be at least ${MIN_TOKEN_LENGTH} characters`,
+      `[deckle] ignoring API token "${name}": secrets must be at least ${MIN_TOKEN_LENGTH} characters`,
     )
     return null
   }
@@ -72,7 +72,7 @@ function parseToken(raw, index, warn) {
 }
 
 export function createApiAuth(env = process.env, warn = console.warn) {
-  const raw = [env.NIB_API_TOKENS, env.NIB_API_TOKEN].filter(Boolean).join(',')
+  const raw = [env.DECKLE_API_TOKENS, env.DECKLE_API_TOKEN].filter(Boolean).join(',')
   const tokens = raw
     .split(',')
     .map((entry, index) => parseToken(entry, index, warn))

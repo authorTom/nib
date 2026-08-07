@@ -1,12 +1,12 @@
 // ZIP writer for GET /api/v1/export.
 //
 // The browser has its own writer (src/lib/zip.ts) because the app can export a
-// vault the server has never seen — a local folder or the in-browser OPFS one.
+// library the server has never seen — a local folder or the in-browser OPFS one.
 // This is the server's half of the same job: the API has to be able to hand an
 // agent the whole knowledge base without a browser in the loop.
 //
-// Entries are streamed out as they're read so a large vault never has to sit in
-// memory at once. Zip64 is not implemented; a Markdown vault will not reach the
+// Entries are streamed out as they're read so a large library never has to sit in
+// memory at once. Zip64 is not implemented; a Markdown library will not reach the
 // 4 GiB / 65535-entry limits, and `createZipStream` reports rather than emits a
 // corrupt archive if one somehow does.
 

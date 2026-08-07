@@ -24,12 +24,12 @@ export interface ThemeInfo {
   secret?: boolean
 }
 
-export const DEFAULT_THEME = 'nib'
+export const DEFAULT_THEME = 'deckle'
 
 export const THEMES: ThemeInfo[] = [
   {
-    id: 'nib',
-    name: 'Nib',
+    id: 'deckle',
+    name: 'Deckle',
     description: 'Indigo on paper. The original.',
     swatch: ['#ffffff', '#f7f7f8', '#4f46e5'],
     swatchDark: ['#18181b', '#1f1f23', '#818cf8'],

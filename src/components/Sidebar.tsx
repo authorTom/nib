@@ -20,7 +20,7 @@ import {
   X,
 } from 'lucide-react'
 import OverflowMenu, { type MenuItem } from './OverflowMenu'
-import type { TreeNode } from '../fs/vault'
+import type { TreeNode } from '../fs/library'
 import type { SearchResult } from '../hooks/useNotes'
 import { dragHasFiles } from '../lib/importMarkdown'
 import { rectOf, type FlightOrigin } from '../lib/motion'
@@ -29,7 +29,7 @@ interface SidebarProps {
   tree: TreeNode[]
   activeId: string | null
   open: boolean
-  vaultName: string | null
+  libraryName: string | null
   query: string
   searchResults: SearchResult[] | null
   onQueryChange: (q: string) => void
@@ -48,7 +48,7 @@ interface SidebarProps {
   onRenameNote: (id: string, newTitle: string) => void
   onMoveNote: (id: string, targetFolderPath: string) => void
   onDelete: (id: string) => void
-  onSwitchVault: () => void
+  onSwitchLibrary: () => void
   onOpenTrash: () => void
   onOpenTasks: () => void
   onOpenBookmarks: () => void
@@ -139,7 +139,7 @@ export default function Sidebar({
   tree,
   activeId,
   open,
-  vaultName,
+  libraryName,
   query,
   searchResults,
   onQueryChange,
@@ -154,7 +154,7 @@ export default function Sidebar({
   onRenameNote,
   onMoveNote,
   onDelete,
-  onSwitchVault,
+  onSwitchLibrary,
   onOpenTrash,
   onOpenTasks,
   onOpenBookmarks,
@@ -168,7 +168,7 @@ export default function Sidebar({
   const [draggingId, setDraggingId] = useState<string | null>(null)
   /** Row currently being renamed in place. */
   const [renaming, setRenaming] = useState<string | null>(null)
-  /** Parent folder awaiting a name for a new subfolder ("" = vault root). */
+  /** Parent folder awaiting a name for a new subfolder ("" = library root). */
   const [creatingIn, setCreatingIn] = useState<string | null>(null)
   /** Roving tabindex: the one row that's reachable with Tab. */
   const [focusedId, setFocusedId] = useState<string | null>(null)
@@ -278,7 +278,7 @@ export default function Sidebar({
     }
 
     // A tab being dragged along the strip isn't a request to move the file.
-    if (e.dataTransfer.types.includes('application/x-nib-tab')) return
+    if (e.dataTransfer.types.includes('application/x-deckle-tab')) return
 
     const id = e.dataTransfer.getData('text/plain')
     if (!id) return
@@ -569,7 +569,7 @@ export default function Sidebar({
     )
   }
 
-  const vaultMenu: MenuItem[] = [
+  const libraryMenu: MenuItem[] = [
     {
       id: 'new-folder',
       label: 'New folder',
@@ -598,7 +598,7 @@ export default function Sidebar({
     },
     {
       id: 'export',
-      label: 'Export vault as ZIP…',
+      label: 'Export library as ZIP…',
       Icon: Package,
       run: onOpenExport,
     },
@@ -607,15 +607,15 @@ export default function Sidebar({
       label: 'Open a different folder…',
       Icon: FolderOpen,
       separated: true,
-      run: onSwitchVault,
+      run: onSwitchLibrary,
     },
   ]
 
   return (
     <aside className={`sidebar${open ? ' open' : ''}`}>
       <div className="sidebar-header">
-        <span className="sidebar-title" title={vaultName ?? 'Notes'}>
-          {vaultName ?? 'Notes'}
+        <span className="sidebar-title" title={libraryName ?? 'Notes'}>
+          {libraryName ?? 'Notes'}
         </span>
         <div className="sidebar-header-actions">
           <button
@@ -645,7 +645,7 @@ export default function Sidebar({
           >
             <Plus size={20} />
           </button>
-          <OverflowMenu items={vaultMenu} label="Vault actions" align="right" />
+          <OverflowMenu items={libraryMenu} label="Library actions" align="right" />
         </div>
       </div>
 
@@ -713,7 +713,7 @@ export default function Sidebar({
           type="button"
           className="sidebar-footer-btn"
           onClick={onOpenImport}
-          title="Import Markdown files into this vault"
+          title="Import Markdown files into this library"
         >
           <Upload size={15} />
           Import

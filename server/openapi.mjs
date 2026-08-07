@@ -1,6 +1,6 @@
 // The OpenAPI 3.1 document served at GET /api/v1/openapi.json.
 //
-// This is the API's contract, and the reason an agent can be pointed at Nib and
+// This is the API's contract, and the reason an agent can be pointed at Deckle and
 // work out what to do without anyone writing tool definitions by hand. It is
 // hand-maintained alongside server/api.mjs — change a route there, change it
 // here in the same commit, or the description stops being true.
@@ -9,8 +9,8 @@
 // for and when to reach for it, not just what its fields are called.
 
 const NOTE_PATH_DESCRIPTION =
-  'Note path relative to the vault root, using "/" separators, e.g. "Projects/idea.md". ' +
-  'The ".md" extension is added if missing. Hidden (dot) folders are reserved by Nib and rejected.'
+  'Note path relative to the library root, using "/" separators, e.g. "Projects/idea.md". ' +
+  'The ".md" extension is added if missing. Hidden (dot) folders are reserved by Deckle and rejected.'
 
 function ref(name) {
   return { $ref: `#/components/schemas/${name}` }
@@ -41,15 +41,15 @@ function withErrors(operation, extra = {}) {
   }
 }
 
-export function buildOpenApi(vaultName) {
+export function buildOpenApi(libraryName) {
   return {
     openapi: '3.1.0',
     info: {
-      title: 'Nib API',
+      title: 'Deckle API',
       version: '1.0.0',
-      summary: 'Read and write a Nib knowledge base over HTTP.',
+      summary: 'Read and write a Deckle knowledge base over HTTP.',
       description:
-        'Nib stores a knowledge base as plain Markdown files in folders, plus a task planner ' +
+        'Deckle stores a knowledge base as plain Markdown files in folders, plus a task planner ' +
         'and bookmark collections. This API exposes all of it: search and read notes, create ' +
         'and edit them, move them between folders, manage tasks and bookmarks, browse version ' +
         'history and the recycle bin, and export the whole thing as a ZIP.\n\n' +
@@ -60,13 +60,13 @@ export function buildOpenApi(vaultName) {
         'configured server-side and may be read-only, in which case any write returns 403.',
       license: { name: 'MIT' },
     },
-    servers: [{ url: '/api/v1', description: `Nib server — vault "${vaultName}"` }],
+    servers: [{ url: '/api/v1', description: `Deckle server — library "${libraryName}"` }],
     security: [{ bearerAuth: [] }],
     tags: [
       { name: 'notes', description: 'Markdown notes — the knowledge base itself.' },
       { name: 'search', description: 'Find notes by meaning of the words they contain.' },
       { name: 'folders', description: 'The folder tree notes are organised into.' },
-      { name: 'transfer', description: 'Bulk import and whole-vault export.' },
+      { name: 'transfer', description: 'Bulk import and whole-library export.' },
       { name: 'tasks', description: 'The task planner and its projects.' },
       { name: 'bookmarks', description: 'Saved links and their collections.' },
       { name: 'history', description: 'Per-note version snapshots.' },
@@ -78,7 +78,7 @@ export function buildOpenApi(vaultName) {
         get: {
           tags: ['notes'],
           operationId: 'health',
-          summary: 'Check the API is up and which vault it serves.',
+          summary: 'Check the API is up and which library it serves.',
           responses: {
             200: jsonResponse('Service information.', {
               type: 'object',
@@ -86,7 +86,7 @@ export function buildOpenApi(vaultName) {
                 ok: { type: 'boolean' },
                 service: { type: 'string' },
                 api: { type: 'string' },
-                vault: { type: 'string' },
+                library: { type: 'string' },
               },
             }),
           },
@@ -97,7 +97,7 @@ export function buildOpenApi(vaultName) {
         get: withErrors({
           tags: ['notes'],
           operationId: 'listNotes',
-          summary: 'List notes in the vault.',
+          summary: 'List notes in the library.',
           description:
             'Returns note paths and titles, newest-first when sorted by "updated". Use this to ' +
             'get an overview of the knowledge base; use /search when looking for something ' +
@@ -107,7 +107,7 @@ export function buildOpenApi(vaultName) {
               name: 'folder',
               in: 'query',
               schema: { type: 'string' },
-              description: 'Restrict to one folder and its subfolders. Omit for the whole vault.',
+              description: 'Restrict to one folder and its subfolders. Omit for the whole library.',
             },
             {
               name: 'limit',
@@ -120,7 +120,7 @@ export function buildOpenApi(vaultName) {
               in: 'query',
               schema: { type: 'boolean', default: false },
               description:
-                'Include each note\'s full Markdown. Expensive on a large vault — prefer ' +
+                'Include each note\'s full Markdown. Expensive on a large library — prefer ' +
                 'reading individual notes.',
             },
             {
@@ -304,7 +304,7 @@ export function buildOpenApi(vaultName) {
               name: 'path',
               in: 'query',
               schema: { type: 'string' },
-              description: 'Walk only this subtree. Omit for the whole vault.',
+              description: 'Walk only this subtree. Omit for the whole library.',
             },
           ],
           responses: {
@@ -424,7 +424,7 @@ export function buildOpenApi(vaultName) {
       '/export': {
         get: withErrors({
           tags: ['transfer'],
-          operationId: 'exportVault',
+          operationId: 'exportLibrary',
           summary: 'Download the whole knowledge base as a ZIP.',
           description:
             'Every note with its folder structure intact, plus the tasks and bookmarks files. ' +
@@ -754,7 +754,7 @@ export function buildOpenApi(vaultName) {
           type: 'http',
           scheme: 'bearer',
           description:
-            'A token from the server\'s NIB_API_TOKENS. Tokens may be read-only, in which ' +
+            'A token from the server\'s DECKLE_API_TOKENS. Tokens may be read-only, in which ' +
             'case POST, PUT, PATCH and DELETE return 403.',
         },
       },
@@ -798,7 +798,7 @@ export function buildOpenApi(vaultName) {
           description: 'A folder (with children) or a note.',
           properties: {
             kind: { type: 'string', enum: ['folder', 'file'] },
-            id: { type: 'string', description: 'Vault-relative path.' },
+            id: { type: 'string', description: 'Library-relative path.' },
             name: { type: 'string' },
             title: { type: 'string', description: 'Files only: the name without ".md".' },
             updatedAt: { type: 'integer', description: 'Files only.' },

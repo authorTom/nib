@@ -10,13 +10,13 @@ export function timeAgo(ts: number): string {
   return new Date(ts).toLocaleDateString()
 }
 
-/** Filenames Nib generated itself, which the user has not chosen: "Untitled 3". */
+/** Filenames Deckle generated itself, which the user has not chosen: "Untitled 3". */
 const GENERATED_TITLE = /^Untitled(?: \d+)?$/
 
 /** Long enough for any real heading; short enough to stay a usable filename. */
 const MAX_DERIVED_TITLE = 120
 
-/** True when a note is still carrying the name Nib gave it, not one the user chose. */
+/** True when a note is still carrying the name Deckle gave it, not one the user chose. */
 export function isGeneratedTitle(title: string): boolean {
   return GENERATED_TITLE.test(title.trim())
 }
@@ -24,12 +24,12 @@ export function isGeneratedTitle(title: string): boolean {
 /**
  * The note's own first heading, as a filename.
  *
- * Nib's first principle is that the files outlive the app, and a vault full of
- * `Untitled 7.md` does not survive contact with Obsidian, a file manager, or a
- * backup. Obsidian — the compatibility target — names the file after the
- * heading, so a note that says `# Latency review` becomes `Latency review.md`
- * here too. Returns null when there is nothing safe to derive, in which case
- * the generated name stands.
+ * Deckle's first principle is that the files outlive the app, and a library full of
+ * `Untitled 7.md` does not survive contact with another editor, a file manager,
+ * or a backup. The convention among folder-based Markdown editors — the
+ * compatibility target — is to name the file after the heading, so a note that
+ * says `# Latency review` becomes `Latency review.md` here too. Returns null
+ * when there is nothing safe to derive, in which case the generated name stands.
  */
 export function deriveTitleFromMarkdown(markdown: string): string | null {
   for (const raw of markdown.split('\n')) {
