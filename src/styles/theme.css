@@ -8,7 +8,9 @@
   --dur-slow: 260ms; /* panels opening, layout shifts */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* the house curve */
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* confirmations only */
+  /* There is deliberately no spring/overshoot curve. Where a pop is wanted the
+   * keyframe says so (check-pop goes to 1.18 and back); layering an overshoot
+   * easing on top of an overshoot keyframe just made things wobble twice. */
 
   /* Light theme (default) */
   --bg: #ffffff;

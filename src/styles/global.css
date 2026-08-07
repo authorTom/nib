@@ -872,6 +872,10 @@ button {
 .toolbar,
 .tab-strip {
   max-height: 200px;
+  /* Correct in general, accepted here: these bars have to *collapse* so the
+     editor reclaims the space, which transform can't do. Focus mode is toggled
+     occasionally, not dragged, so the layout cost is paid once per toggle. */
+  /* impeccable-disable-next-line layout-transition */
   transition: max-height var(--dur-slow) var(--ease-in-out),
     min-height var(--dur-slow) var(--ease-in-out),
     padding var(--dur-slow) var(--ease-in-out),
@@ -1170,6 +1174,9 @@ button {
   padding: 10px 12px;
   max-height: 240px;
   overflow: auto;
+  /* Deliberately echoes the blockquote rule in editor.css: this is a quoted
+     excerpt of an older version of the note. */
+  /* impeccable-disable-next-line side-tab */
   border-left: 2px solid var(--border);
   background: var(--bg-hover);
   border-radius: 0 8px 8px 0;
@@ -2377,6 +2384,10 @@ button {
   height: 100%;
   display: flex;
   overflow: hidden;
+  /* A transform would slide the panel *over* the editor; width makes it push
+     the editor aside, which is the behaviour being designed for. Runs on
+     open/close only — the drag path disables this transition entirely. */
+  /* impeccable-disable-next-line layout-transition */
   transition: width var(--dur-slow) var(--ease-out),
     opacity var(--dur-base) var(--ease-out);
 }
@@ -2576,7 +2587,7 @@ button {
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--text-faint);
-  animation: dot-in var(--dur-base) var(--ease-spring);
+  animation: dot-in var(--dur-base) var(--ease-out);
 }
 
 @keyframes dot-in {
@@ -3062,7 +3073,7 @@ button {
 }
 
 .save-indicator.saved .save-dot {
-  animation: save-settle var(--dur-slow) var(--ease-spring);
+  animation: save-settle var(--dur-slow) var(--ease-out);
 }
 
 @keyframes save-pulse {
@@ -3283,7 +3294,7 @@ button {
 }
 
 .task-item.completing .task-check {
-  animation: check-pop var(--dur-base) var(--ease-spring);
+  animation: check-pop var(--dur-base) var(--ease-out);
 }
 
 @keyframes check-pop {
@@ -3322,7 +3333,7 @@ button {
   opacity: 0;
   transform: translate(-50%, 8px);
   transition: opacity var(--dur-base) var(--ease-out),
-    transform var(--dur-base) var(--ease-spring);
+    transform var(--dur-base) var(--ease-out);
   animation: none;
 }
 
@@ -3359,7 +3370,7 @@ button {
 .ProseMirror ul[data-type='taskList'] input[type='checkbox'] {
   accent-color: var(--accent);
   cursor: pointer;
-  transition: transform var(--dur-fast) var(--ease-spring);
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 
 .ProseMirror ul[data-type='taskList'] input[type='checkbox']:checked {
