@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { useEnterExit } from '../hooks/useEnterExit'
+import { OVERLAY_EXIT_MS } from '../lib/motion'
 
 /** Keep in step with --dur-base in theme.css. */
-const TRANSITION_MS = 180
 
 export interface ConfirmRequest {
   title: string
@@ -29,7 +29,7 @@ interface ConfirmDialogProps {
  */
 export default function ConfirmDialog({ request, onClose }: ConfirmDialogProps) {
   const confirmRef = useRef<HTMLButtonElement>(null)
-  const { render, entered } = useEnterExit(request !== null, TRANSITION_MS)
+  const { render, entered } = useEnterExit(request !== null, OVERLAY_EXIT_MS)
   // The request is cleared the moment the dialog closes, so hold the last one
   // to render against while it animates out.
   const [shown, setShown] = useState(request)

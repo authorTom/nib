@@ -16,9 +16,18 @@ body {
     Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
   background: var(--bg);
   color: var(--text);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Light text on a dark surface blooms: the glyphs read heavier and tighter
+   than the same text on paper. Compensate on the axes that actually shift —
+   thin the rendering, and open the tracking a hair. Antialiasing is scoped
+   here rather than applied globally, because on a light background it does
+   the opposite of what is wanted and thins type that was already correct. */
+:root[data-theme='dark'] body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  letter-spacing: 0.006em;
 }
 
 button {
@@ -88,85 +97,17 @@ button {
 }
 
 .sidebar-title {
-  font-size: 0.95rem;
+  font-size: var(--fs-md);
   font-weight: 600;
   letter-spacing: 0.01em;
-}
-
-.note-list {
-  list-style: none;
-  margin: 0;
-  padding: 4px 8px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.note-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  color: var(--text);
-  border: none;
-  background: transparent;
-  width: 100%;
-  text-align: left;
-}
-
-.note-item:hover {
-  background: var(--bg-hover);
-}
-
-.note-item.active {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.note-item-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.note-item-title {
-  font-size: 0.9rem;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.note-item-date {
-  font-size: 0.75rem;
-  color: var(--text-faint);
-  margin-top: 2px;
-}
-
-.note-delete {
-  opacity: 0;
-  background: transparent;
-  border: none;
-  color: var(--text-faint);
-  display: flex;
-  padding: 4px;
-  border-radius: 6px;
-}
-
-.note-item:hover .note-delete {
-  opacity: 1;
-}
-
-.note-delete:hover {
-  color: var(--danger);
-  background: var(--bg-active);
 }
 
 .sidebar-empty {
   padding: 24px 16px;
   color: var(--text-faint);
-  font-size: 0.85rem;
+  font-size: var(--fs-ui);
   text-align: center;
+  line-height: var(--lh-ui);
 }
 
 /* ---------- Folder tree ---------- */
@@ -187,7 +128,7 @@ button {
   border-radius: 7px;
   color: var(--text);
   text-align: left;
-  font-size: 0.88rem;
+  font-size: var(--fs-md);
   cursor: pointer;
   user-select: none;
   transition: background-color var(--dur-fast) var(--ease-out),
@@ -214,7 +155,9 @@ button {
 
 .file-row.active {
   background: var(--accent-soft);
-  color: var(--accent);
+  /* Not the accent: a note's name is body text and has to stay readable on
+     every palette's tint. The fill and the icon carry "this is the open one". */
+  color: var(--text);
 }
 
 .tree-chevron,
@@ -265,7 +208,7 @@ button {
   padding: 3px;
   border: none;
   background: transparent;
-  border-radius: 5px;
+  border-radius: 6px;
   color: var(--text-faint);
   transform: translateX(2px);
   transition: opacity var(--dur-fast) var(--ease-out),
@@ -304,10 +247,10 @@ button {
   flex: 1;
   min-width: 0;
   font: inherit;
-  font-size: 0.88rem;
+  font-size: var(--fs-md);
   padding: 2px 6px;
   border: 1px solid var(--accent);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--bg);
   color: var(--text);
   outline: none;
@@ -360,7 +303,7 @@ button {
   background: transparent;
   outline: none;
   color: var(--text);
-  font-size: 0.85rem;
+  font-size: var(--fs-ui);
 }
 
 .sidebar-search input::placeholder {
@@ -373,7 +316,7 @@ button {
   background: transparent;
   color: var(--text-faint);
   padding: 2px;
-  border-radius: 5px;
+  border-radius: 6px;
 }
 
 .search-clear:hover {
@@ -398,7 +341,7 @@ button {
 }
 
 .search-result-path {
-  font-size: 0.72rem;
+  font-size: var(--fs-meta);
   color: var(--text-faint);
   white-space: nowrap;
   overflow: hidden;
@@ -406,12 +349,13 @@ button {
 }
 
 .search-result-snippet {
-  font-size: 0.75rem;
+  font-size: var(--fs-meta);
   color: var(--text-muted);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  line-height: var(--lh-ui);
 }
 
 /* ---------- TopBar ---------- */
@@ -465,19 +409,54 @@ button {
   }
 }
 
+/* This is the file's name, not the note's title — the note's title is the h1 in
+   the document below. At 1.05rem/600 it was set at document body size, which
+   made two things on screen look like "the title of this note" while holding
+   different values. Chrome scale settles that: the document is always larger
+   than the apparatus around it. */
 .topbar-title-input {
   flex: 1;
   min-width: 0;
   border: none;
   background: transparent;
-  color: var(--text);
-  font-size: 1.05rem;
-  font-weight: 600;
+  color: var(--text-muted);
+  font-size: var(--fs-md);
+  font-weight: 500;
   padding: 6px 4px;
+  border-radius: 6px;
   outline: none;
+  transition: background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+/* Editable, and worth saying so before the click rather than after it. */
+.topbar-title-input:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.topbar-title-input:focus {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.topbar-title-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .topbar-title-input::placeholder {
+  color: var(--text-faint);
+}
+
+/* The file glyph in front of it, so the field reads as "the file this is"
+   rather than as a heading someone forgot to style. */
+.topbar-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
   color: var(--text-faint);
 }
 
@@ -497,7 +476,7 @@ button {
   border-radius: 8px;
   background: var(--bg-elevated);
   color: var(--text-faint);
-  font-size: 0.82rem;
+  font-size: var(--fs-ui);
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
@@ -512,10 +491,10 @@ button {
 
 .palette-trigger-kbd {
   font-family: inherit;
-  font-size: 0.72rem;
+  font-size: var(--fs-meta);
   padding: 2px 6px;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--bg);
   color: var(--text-muted);
   white-space: nowrap;
@@ -596,6 +575,14 @@ button {
   color: var(--accent);
 }
 
+/* The toolbar is one tab stop with the arrows moving inside it, so the ring is
+   how a keyboard user knows which control they are on — inset, like the tabs,
+   so it doesn't overlap the neighbour 2px away. */
+.toolbar-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .toolbar-divider {
   width: 1px;
   height: 22px;
@@ -610,7 +597,7 @@ button {
   padding: 4px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   box-shadow: var(--shadow-lg);
 }
 
@@ -629,8 +616,12 @@ button {
   gap: 0;
 }
 
-.toolbar-btn.ai-trigger {
+/* Resting controls don't wear the ink — the accent means "here", and a button
+   nobody has engaged is not where you are. It arrives on hover like the rest
+   of the toolbar, and keeps the accent for the engaged state. */
+.toolbar-btn.ai-trigger:hover {
   color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .inline-ai {
@@ -643,7 +634,7 @@ button {
   align-items: center;
   justify-content: space-between;
   padding: 4px 6px 6px;
-  font-size: 0.74rem;
+  font-size: var(--fs-meta);
   color: var(--text-faint);
 }
 
@@ -659,7 +650,7 @@ button {
   background: transparent;
   color: var(--text-faint);
   padding: 2px;
-  border-radius: 5px;
+  border-radius: 6px;
 }
 
 .inline-ai-x:hover {
@@ -679,7 +670,7 @@ button {
   background: transparent;
   border-radius: 7px;
   color: var(--text);
-  font-size: 0.85rem;
+  font-size: var(--fs-ui);
 }
 
 .inline-ai-action:hover {
@@ -702,7 +693,7 @@ button {
   background: var(--bg);
   color: var(--text);
   font-family: inherit;
-  font-size: 0.85rem;
+  font-size: var(--fs-ui);
   padding: 7px 9px;
   outline: none;
 }
@@ -734,7 +725,7 @@ button {
   justify-content: space-between;
   gap: 10px;
   padding: 12px 8px;
-  font-size: 0.85rem;
+  font-size: var(--fs-ui);
   color: var(--text-muted);
 }
 
@@ -748,7 +739,7 @@ button {
   max-height: 240px;
   overflow-y: auto;
   padding: 8px 9px;
-  font-size: 0.85rem;
+  font-size: var(--fs-ui);
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
@@ -772,7 +763,7 @@ button {
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
 }
 
 .inline-ai-apply {
@@ -909,12 +900,14 @@ button {
   justify-content: center;
   align-items: flex-start;
   padding: 12vh 16px 16px;
+  backdrop-filter: blur(2px);
   opacity: 0;
-  transition: opacity var(--dur-base) var(--ease-out);
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
 
 .palette-overlay.entered {
   opacity: 1;
+  transition-duration: var(--dur-base);
 }
 
 /* Scaled down and lifted, so it reads as dropping into place rather than
@@ -931,13 +924,14 @@ button {
   overflow: hidden;
   opacity: 0;
   transform: scale(0.97) translateY(-8px);
-  transition: opacity var(--dur-base) var(--ease-out),
-    transform var(--dur-base) var(--ease-out);
+  transition: opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .palette.entered {
   opacity: 1;
   transform: none;
+  transition-duration: var(--dur-base);
 }
 
 .palette-input {
@@ -956,7 +950,7 @@ button {
   background: transparent;
   outline: none;
   color: var(--text);
-  font-size: 1rem;
+  font-size: var(--fs-lg);
 }
 
 .palette-input input::placeholder {
@@ -970,7 +964,7 @@ button {
 }
 
 .palette-section {
-  font-size: 0.7rem;
+  font-size: var(--fs-label);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-faint);
@@ -993,7 +987,7 @@ button {
 
 .palette-item.selected {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--text);
 }
 
 .palette-item-icon {
@@ -1011,12 +1005,12 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 0.9rem;
+  font-size: var(--fs-md);
 }
 
 .palette-hint {
   flex-shrink: 0;
-  font-size: 0.72rem;
+  font-size: var(--fs-meta);
   color: var(--text-faint);
   white-space: nowrap;
 }
@@ -1025,7 +1019,103 @@ button {
   padding: 22px;
   text-align: center;
   color: var(--text-faint);
-  font-size: 0.88rem;
+  font-size: var(--fs-ui);
+}
+
+/* =========================================================================
+   Keyboard sheet
+   The app rewards fluency and, until now, never said how. Two columns so the
+   keys form a scannable edge down the left rather than hiding inside prose,
+   and the keycaps reuse the palette trigger's own cap so the reference looks
+   like the thing it describes.
+   ========================================================================= */
+.shortcuts-modal {
+  width: min(94vw, 680px);
+  max-height: 80vh;
+}
+
+.shortcuts-body {
+  padding: 4px 18px 18px;
+}
+
+.shortcut-group + .shortcut-group {
+  margin-top: 22px;
+}
+
+.shortcut-group-title {
+  margin: 0 0 8px;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+
+.shortcut-list {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) 1fr;
+  gap: 2px 16px;
+  align-items: baseline;
+}
+
+.shortcut-row {
+  display: contents;
+}
+
+.shortcut-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+  padding: 4px 0;
+}
+
+.shortcut-keys kbd {
+  font-family: inherit;
+  font-size: var(--fs-meta);
+  line-height: 1.4;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.shortcut-what {
+  margin: 0;
+  padding: 4px 0;
+  font-size: var(--fs-ui);
+  line-height: var(--lh-ui);
+  color: var(--text);
+}
+
+.shortcuts-footer {
+  justify-content: flex-start;
+}
+
+.shortcut-footnote {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+  color: var(--text-muted);
+}
+
+@media (max-width: 620px) {
+  .shortcut-list {
+    grid-template-columns: 1fr;
+    gap: 0 0;
+  }
+
+  .shortcut-keys {
+    justify-content: flex-start;
+    padding-top: 8px;
+  }
+
+  .shortcut-what {
+    padding-top: 0;
+    padding-bottom: 6px;
+  }
 }
 
 .palette-footer {
@@ -1033,21 +1123,44 @@ button {
   gap: 16px;
   padding: 8px 14px;
   border-top: 1px solid var(--border);
-  font-size: 0.72rem;
+  font-size: var(--fs-meta);
   color: var(--text-faint);
 }
 
+/* Pushed to the far end: it is an offer, not one of the three keys you need
+   right now to work the palette in front of you. */
+.palette-footer-end {
+  margin-left: auto;
+}
+
 /* ---------- Modal (recycle bin) ---------- */
+/* One grammar for everything that floats over the page.
+   Five of these surfaces used to arrive with a keyframe and then vanish on
+   close, which left the page snapping back with no account of where the thing
+   went. A transition pair can run both ways, so they now leave the way they
+   came — and the durations are deliberately asymmetric: the base rule carries
+   the exit (--dur-fast) and `.entered` carries the entrance (--dur-base),
+   because arriving is worth watching and leaving is just getting out of the
+   way. A slow exit reads as lag. */
 .modal-overlay {
   position: fixed;
   inset: 0;
   z-index: 60;
   background: rgba(0, 0, 0, 0.4);
+  /* The page behind doesn't just dim, it goes out of focus — the scrim's job
+     stated in the material rather than only in opacity. */
+  backdrop-filter: blur(2px);
   display: flex;
   justify-content: center;
   align-items: flex-start;
   padding: 12vh 16px 16px;
-  animation: overlay-in var(--dur-base) var(--ease-out);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.modal-overlay.entered {
+  opacity: 1;
+  transition-duration: var(--dur-base);
 }
 
 .modal {
@@ -1060,20 +1173,18 @@ button {
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
   overflow: hidden;
-  animation: modal-in var(--dur-base) var(--ease-out);
+  /* Scaled down and lifted, so it reads as dropping into place rather than
+     zooming at the reader — the same arrival the palette has always used. */
+  opacity: 0;
+  transform: scale(0.97) translateY(-8px);
+  transition: opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
-@keyframes overlay-in {
-  from {
-    opacity: 0;
-  }
-}
-
-@keyframes modal-in {
-  from {
-    opacity: 0;
-    transform: scale(0.97) translateY(-8px);
-  }
+.modal.entered {
+  opacity: 1;
+  transform: none;
+  transition-duration: var(--dur-base);
 }
 
 .modal-header {
@@ -1085,7 +1196,7 @@ button {
 }
 
 .modal-title {
-  font-size: 1rem;
+  font-size: var(--fs-lg);
   font-weight: 600;
 }
 
@@ -1099,7 +1210,7 @@ button {
   padding: 32px;
   text-align: center;
   color: var(--text-faint);
-  font-size: 0.9rem;
+  font-size: var(--fs-md);
 }
 
 .modal-footer {
@@ -1129,7 +1240,7 @@ button {
 }
 
 .trash-title {
-  font-size: 0.9rem;
+  font-size: var(--fs-md);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -1137,7 +1248,7 @@ button {
 }
 
 .trash-meta {
-  font-size: 0.74rem;
+  font-size: var(--fs-meta);
   color: var(--text-faint);
   white-space: nowrap;
   overflow: hidden;
@@ -1180,7 +1291,7 @@ button {
   border-left: 2px solid var(--border);
   background: var(--bg-hover);
   border-radius: 0 8px 8px 0;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
@@ -1211,7 +1322,7 @@ button {
   align-items: center;
   gap: 8px;
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: var(--fs-md);
 }
 
 .assistant-header-actions {
@@ -1241,15 +1352,15 @@ button {
 
 .assistant-empty p {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--fs-ui);
   line-height: 1.5;
   max-width: 280px;
 }
 
 .msg {
-  font-size: 0.88rem;
+  font-size: var(--fs-md);
   line-height: 1.55;
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 9px 12px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -1275,7 +1386,8 @@ button {
 /* Collapsible chain-of-thought for reasoning models. */
 .msg-reasoning {
   margin-bottom: 6px;
-  font-size: 0.82rem;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
 }
 
 .msg-reasoning > summary {
@@ -1302,7 +1414,7 @@ button {
 .tool-chip {
   align-self: flex-start;
   max-width: 100%;
-  font-size: 0.76rem;
+  font-size: var(--fs-meta);
   color: var(--text-muted);
   background: var(--bg);
   border: 1px solid var(--border);
@@ -1311,6 +1423,7 @@ button {
   display: flex;
   gap: 8px;
   overflow: hidden;
+  line-height: var(--lh-ui);
 }
 
 .tool-chip.error {
@@ -1331,9 +1444,10 @@ button {
 
 .assistant-thinking {
   align-self: flex-start;
-  font-size: 0.82rem;
+  font-size: var(--fs-sm);
   color: var(--text-faint);
   font-style: italic;
+  line-height: var(--lh-ui);
 }
 
 /* ---- Approval cards ---- */
@@ -1345,7 +1459,7 @@ button {
 
 .approval-card {
   border: 1px solid var(--accent);
-  border-radius: 10px;
+  border-radius: 8px;
   overflow: hidden;
   background: var(--bg);
 }
@@ -1365,22 +1479,101 @@ button {
   align-items: center;
   gap: 8px;
   padding: 9px 12px;
-  font-size: 0.84rem;
+  font-size: var(--fs-ui);
   font-weight: 500;
 }
 
+/* The diff on the approval card.
+   This is the last thing a user reads before letting a model rewrite a file in
+   their vault, so it is given room (380px rather than 220px) and the changes
+   are marked in the palette's own two signal colours — added in the accent,
+   removed in danger — rather than in the green and red of a code host, which
+   no palette here contains. */
 .approval-diff {
-  margin: 0;
-  padding: 10px 12px;
   border-top: 1px solid var(--border);
   background: var(--bg-elevated);
+}
+
+.diff-stat {
+  font-variant-numeric: tabular-nums;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+
+.diff-added {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.diff-removed {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.diff-body {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 6px 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.74rem;
+  font-size: var(--fs-meta);
   line-height: 1.5;
-  max-height: 220px;
+  max-height: 380px;
   overflow: auto;
+}
+
+.diff-line {
+  display: flex;
+  gap: 8px;
+  padding: 0 12px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.diff-mark {
+  flex-shrink: 0;
+  width: 0.7em;
+  color: var(--text-faint);
+  user-select: none;
+}
+
+.diff-text {
+  min-width: 0;
+}
+
+.diff-line.add {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.diff-line.add .diff-mark {
+  color: var(--accent);
+}
+
+.diff-line.remove {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--text-muted);
+}
+
+.diff-line.remove .diff-mark {
+  color: var(--danger);
+}
+
+/* Where unchanged lines were collapsed away — stated, so nobody assumes the
+   file is only as long as what's on screen. */
+.diff-skip {
+  padding: 3px 12px;
+  color: var(--text-faint);
+  user-select: none;
+}
+
+.diff-more {
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+  line-height: var(--lh-ui);
 }
 
 .approval-actions {
@@ -1401,7 +1594,7 @@ button {
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text);
-  font-size: 0.82rem;
+  font-size: var(--fs-ui);
 }
 
 .btn-approve {
@@ -1418,14 +1611,14 @@ button {
 .btn-approve-all {
   align-self: flex-start;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--text);
   border-color: transparent;
 }
 
 .approval-result {
   padding: 8px 12px;
   border-top: 1px solid var(--border);
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
 }
 
@@ -1455,7 +1648,7 @@ button {
   margin-bottom: 6px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   box-shadow: var(--shadow-lg);
   overflow-y: auto;
   max-height: 220px;
@@ -1473,7 +1666,7 @@ button {
   border-radius: 7px;
   background: transparent;
   color: var(--text);
-  font-size: 0.82rem;
+  font-size: var(--fs-ui);
   text-align: left;
 }
 
@@ -1486,18 +1679,18 @@ button {
 .mention-item.active,
 .mention-item:hover {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--text);
 }
 
 .assistant-input textarea {
   flex: 1;
   resize: none;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--bg);
   color: var(--text);
   font-family: inherit;
-  font-size: 0.88rem;
+  font-size: var(--fs-md);
   padding: 9px 11px;
   outline: none;
   max-height: 140px;
@@ -1515,7 +1708,7 @@ button {
   height: 38px;
   flex-shrink: 0;
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--accent);
   color: var(--accent-contrast);
 }
@@ -1541,7 +1734,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  font-size: 0.82rem;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
 }
 
@@ -1553,7 +1746,7 @@ button {
   background: var(--bg);
   color: var(--text);
   padding: 8px 10px;
-  font-size: 0.88rem;
+  font-size: var(--fs-ui);
   font-family: inherit;
   outline: none;
 }
@@ -1575,7 +1768,7 @@ button {
   align-items: center;
   gap: 9px;
   color: var(--text);
-  font-size: 0.85rem;
+  font-size: var(--fs-ui);
 }
 
 .assistant-settings .field-row input {
@@ -1591,7 +1784,7 @@ button {
 }
 
 .assistant-note {
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   color: var(--text-faint);
   line-height: 1.5;
   margin: 0;
@@ -1628,19 +1821,6 @@ button {
   color: var(--text-muted);
 }
 
-.brand-mark {
-  display: block;
-  margin-bottom: 2px;
-}
-
-.brand {
-  font-size: 2.4rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--accent);
-  margin-bottom: 4px;
-}
-
 .btn-primary {
   display: inline-flex;
   align-items: center;
@@ -1650,7 +1830,7 @@ button {
   border: none;
   background: var(--accent);
   color: var(--accent-contrast);
-  font-size: 0.9rem;
+  font-size: var(--fs-md);
   font-weight: 500;
 }
 
@@ -1667,7 +1847,7 @@ button {
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--fs-ui);
 }
 
 .btn-secondary:hover {
@@ -1691,6 +1871,112 @@ button {
   position: absolute;
   top: 12px;
   right: 12px;
+  z-index: 2;
+}
+
+/* =========================================================================
+   Vault gate
+   The one screen that is not the desk. There is no writing to stay out of the
+   way of yet, so this is where the system plays at full strength: the ink, a
+   real display step, and a vertical rhythm instead of a uniform gap. It used
+   to borrow .empty-state — a utility whose job is to be ignored — which is
+   exactly why it read flat.
+   ========================================================================= */
+.gate {
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Behind the words, not over them: the drop lands, the promise stays legible
+   the whole way through. */
+.gate-bloom {
+  z-index: 0;
+}
+
+.gate-bloom span {
+  left: 50%;
+  top: 44%;
+}
+
+.gate-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 480px;
+  padding: 24px;
+  text-align: center;
+}
+
+.gate-inner.wide {
+  max-width: 680px;
+}
+
+/* Mark and wordmark set as one lockup rather than two stacked things — a
+   masthead, which is what the top of a first screen wants to be. */
+.gate-masthead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 32px;
+}
+
+.gate-mark {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.gate-wordmark {
+  font-size: var(--fs-brand);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--text);
+}
+
+/* Display scale, in full ink. This sentence is the product's promise; it was
+   set at chrome size in --text-muted, which is the system's voice for a note's
+   timestamp. */
+.gate-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+  font-size: var(--fs-prose-h2);
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  text-wrap: balance;
+}
+
+.gate-lede {
+  margin: 12px 0 0;
+  max-width: 46ch;
+  font-size: var(--fs-prose);
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.gate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 28px;
+}
+
+/* The reassurance, in the tier that is actually meant for asides. */
+.gate-footnote {
+  margin: 16px 0 0;
+  font-size: var(--fs-ui);
+  color: var(--text-faint);
 }
 
 /* ---------- Vault gate: backend choice & server login ---------- */
@@ -1699,43 +1985,75 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   width: 100%;
-  max-width: 640px;
-  margin-top: 8px;
+  margin-top: 28px;
+  text-align: left;
 }
 
+/* The most consequential choice in the app, so it gets room and a top-to-
+   bottom reading order — icon, name, consequence — rather than three lines of
+   equal weight in a grey box. */
 .vault-option {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
-  padding: 18px;
-  border-radius: 10px;
+  gap: 10px;
+  padding: 22px 20px;
+  border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--bg-elevated);
   color: var(--text-muted);
   text-align: left;
+  transition: border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
 }
 
+.vault-option-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  transition: background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+/* The ink arrives on the option you are actually reaching for — a state, not
+   a decoration, so the accent is doing its documented job. */
 .vault-option:hover {
   border-color: var(--accent);
   background: var(--bg-hover);
 }
 
+.vault-option:hover .vault-option-icon {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.vault-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .vault-option-title {
-  font-size: 0.95rem;
+  font-size: var(--fs-prose);
   font-weight: 600;
+  line-height: 1.3;
   color: var(--text);
 }
 
 .vault-option-desc {
-  font-size: 0.83rem;
-  line-height: 1.45;
+  font-size: var(--fs-ui);
+  line-height: 1.5;
 }
 
 .vault-login {
   display: flex;
   gap: 8px;
-  margin-top: 4px;
+  margin-top: 28px;
 }
 
 .vault-login-input {
@@ -1744,7 +2062,7 @@ button {
   border: 1px solid var(--border);
   background: var(--bg-elevated);
   color: var(--text);
-  font-size: 0.9rem;
+  font-size: var(--fs-md);
   min-width: 220px;
 }
 
@@ -1759,7 +2077,7 @@ button {
 
 .vault-login-error {
   color: var(--danger);
-  font-size: 0.85rem;
+  font-size: var(--fs-ui);
 }
 
 @media (max-width: 620px) {
@@ -1797,14 +2115,6 @@ button {
   border-bottom: 1px solid var(--border);
 }
 
-.task-header-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  font-size: 0.95rem;
-}
-
 .task-nav {
   display: flex;
   flex-wrap: wrap;
@@ -1824,7 +2134,7 @@ button {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   padding: 4px 9px;
   border-radius: 999px;
   border: 1px solid var(--border);
@@ -1844,7 +2154,7 @@ button {
 }
 
 .task-count {
-  font-size: 0.68rem;
+  font-size: var(--fs-meta);
   opacity: 0.75;
 }
 
@@ -1871,11 +2181,11 @@ button {
   border: none;
   outline: none;
   color: var(--text);
-  font-size: 0.85rem;
+  font-size: var(--fs-ui);
 }
 
 .task-section {
-  font-size: 0.7rem;
+  font-size: var(--fs-label);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1919,9 +2229,21 @@ button {
   color: var(--text-muted);
 }
 
-.task-check.p1 { border-color: #ef4444; background: rgba(239, 68, 68, 0.12); }
-.task-check.p2 { border-color: #f59e0b; background: rgba(245, 158, 11, 0.12); }
-.task-check.p3 { border-color: #3b82f6; background: rgba(59, 130, 246, 0.12); }
+/* Urgency is the one meaning that must not move with the theme. */
+.task-check.p1 {
+  border-color: var(--priority-1);
+  background: color-mix(in srgb, var(--priority-1) 12%, transparent);
+}
+
+.task-check.p2 {
+  border-color: var(--priority-2);
+  background: color-mix(in srgb, var(--priority-2) 12%, transparent);
+}
+
+.task-check.p3 {
+  border-color: var(--priority-3);
+  background: color-mix(in srgb, var(--priority-3) 12%, transparent);
+}
 
 .task-item.done .task-check {
   background: var(--text-faint);
@@ -1946,7 +2268,8 @@ button {
   flex-direction: column;
   gap: 2px;
   padding: 0;
-  font-size: 0.86rem;
+  font-size: var(--fs-md);
+  line-height: var(--lh-ui);
 }
 
 /* Non-interactive variant used by bin rows. */
@@ -1956,7 +2279,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-size: 0.86rem;
+  font-size: var(--fs-md);
 }
 
 .task-title {
@@ -1968,7 +2291,7 @@ button {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  font-size: 0.72rem;
+  font-size: var(--fs-meta);
   color: var(--text-faint);
 }
 
@@ -2009,7 +2332,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  font-size: 0.72rem;
+  font-size: var(--fs-meta);
   color: var(--text-muted);
 }
 
@@ -2026,7 +2349,7 @@ button {
   border-radius: 6px;
   padding: 5px 7px;
   color: var(--text);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-family: inherit;
 }
 
@@ -2048,7 +2371,7 @@ button {
   align-items: center;
   gap: 8px;
   margin: 2px 0 8px;
-  font-size: 0.88rem;
+  font-size: var(--fs-ui);
 }
 
 .task-cal-toggle {
@@ -2059,7 +2382,7 @@ button {
   border: none;
   cursor: pointer;
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: var(--fs-meta);
   padding: 2px 0 6px;
 }
 
@@ -2069,15 +2392,19 @@ button {
 
 .task-empty {
   color: var(--text-faint);
-  font-size: 0.82rem;
+  font-size: var(--fs-ui);
   text-align: center;
   padding: 20px 8px;
+  line-height: var(--lh-ui);
 }
 
 /* ---------- Mini month calendar ---------- */
+/* A calendar is a grid of figures; proportional digits make the columns
+   ripple. Same for a +12 / −4 diff count, which is read as a comparison. */
 .minical {
+  font-variant-numeric: tabular-nums;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 8px;
   margin-bottom: 10px;
 }
@@ -2087,7 +2414,7 @@ button {
   align-items: center;
   justify-content: space-between;
   margin: 0 2px 4px 6px;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
 }
 
@@ -2102,7 +2429,7 @@ button {
 }
 
 .minical-dow {
-  font-size: 0.62rem;
+  font-size: var(--fs-label);
   text-align: center;
   color: var(--text-faint);
   padding: 2px 0;
@@ -2114,7 +2441,7 @@ button {
   border: none;
   background: transparent;
   border-radius: 6px;
-  font-size: 0.72rem;
+  font-size: var(--fs-meta);
   color: var(--text);
   cursor: pointer;
   padding: 0;
@@ -2150,19 +2477,35 @@ button {
 }
 
 /* ---------- Toast ---------- */
+/* A confirmation states neither position nor live state, so it doesn't get the
+   ink: it's a floating surface like any other, and it says so with elevation
+   and a hairline rather than by wearing the accent as a decoration. */
 .toast {
   position: fixed;
   bottom: 22px;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--accent);
-  color: var(--accent-contrast);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
   padding: 8px 14px;
   border-radius: 999px;
-  font-size: 0.82rem;
+  font-size: var(--fs-ui);
   box-shadow: var(--shadow-lg);
   z-index: 100;
   animation: toast-in 0.15s ease-out;
+}
+
+/* A failure is not a confirmation and must not wear the same pill. */
+.toast.danger {
+  background: var(--danger);
+  color: #fff;
+  max-width: min(92vw, 440px);
+  /* Not the pill: this one wraps to two or three lines, and 12px is the
+     documented corner for a surface that floats over the page. */
+  border-radius: 12px;
+  line-height: 1.45;
+  text-align: left;
 }
 
 @keyframes toast-in {
@@ -2192,7 +2535,7 @@ button {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.85rem;
+  font-size: var(--fs-ui);
   font-weight: 600;
   padding: 5px 10px;
   border-radius: 8px;
@@ -2229,7 +2572,7 @@ button {
   padding: 0;
   text-align: left;
   color: var(--text);
-  font-size: 0.86rem;
+  font-size: var(--fs-md);
   cursor: pointer;
   overflow-wrap: anywhere;
 }
@@ -2250,7 +2593,7 @@ button {
   border-radius: 6px;
   padding: 5px 7px;
   color: var(--text);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-family: inherit;
   resize: vertical;
 }
@@ -2271,11 +2614,12 @@ button {
 .sidebar-empty-hint {
   display: block;
   margin-top: 6px;
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   color: var(--text-faint);
 }
 
 .sidebar-empty-hint code {
+  /* Relative on purpose: code should track whatever text it sits inside. */
   font-size: 0.95em;
 }
 
@@ -2300,7 +2644,7 @@ button {
   border-radius: 7px;
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-family: inherit;
   cursor: pointer;
 }
@@ -2316,7 +2660,7 @@ button {
 
 .modal-note {
   margin: 6px 10px 14px;
-  font-size: 0.86rem;
+  font-size: var(--fs-ui);
   line-height: 1.55;
   color: var(--text-muted);
 }
@@ -2329,7 +2673,7 @@ button {
   padding: 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  font-size: 0.86rem;
+  font-size: var(--fs-ui);
   cursor: pointer;
 }
 
@@ -2345,8 +2689,9 @@ button {
 .export-option-hint {
   display: block;
   margin-top: 3px;
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   color: var(--text-faint);
+  line-height: var(--lh-ui);
 }
 
 .export-status {
@@ -2354,7 +2699,7 @@ button {
   align-items: center;
   gap: 7px;
   margin: 12px 10px 6px;
-  font-size: 0.84rem;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
 }
 
@@ -2504,7 +2849,7 @@ button {
   padding: 0 8px 0 10px;
   border-radius: 8px 8px 0 0;
   color: var(--text-muted);
-  font-size: 0.84rem;
+  font-size: var(--fs-ui);
   cursor: pointer;
   user-select: none;
   transition: background-color var(--dur-fast) var(--ease-out),
@@ -2538,7 +2883,7 @@ button {
   right: 8px;
   bottom: 0;
   height: 2px;
-  border-radius: 2px 2px 0 0;
+  border-radius: 999px 999px 0 0;
   background: var(--accent);
   transform: scaleX(0);
   transition: transform var(--dur-base) var(--ease-out);
@@ -2677,7 +3022,7 @@ button {
 }
 
 .pane-title {
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--text-muted);
   white-space: nowrap;
@@ -2725,7 +3070,7 @@ button {
 .wikilink {
   color: var(--accent);
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  border-radius: 2px;
+  border-radius: 4px;
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease-out);
 }
@@ -2750,7 +3095,7 @@ button {
   padding: 4px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   box-shadow: var(--shadow-lg);
   animation: suggest-in var(--dur-fast) var(--ease-out);
 }
@@ -2772,7 +3117,7 @@ button {
   background: transparent;
   border-radius: 7px;
   color: var(--text);
-  font-size: 0.85rem;
+  font-size: var(--fs-ui);
   text-align: left;
   transition: background-color var(--dur-fast) var(--ease-out);
 }
@@ -2792,7 +3137,7 @@ button {
 
 .wikilink-suggest-path {
   flex-shrink: 0;
-  font-size: 0.72rem;
+  font-size: var(--fs-meta);
   color: var(--text-faint);
 }
 
@@ -2813,7 +3158,7 @@ button {
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
 }
 
@@ -2865,17 +3210,18 @@ button {
 }
 
 .backlink-title {
-  font-size: 0.85rem;
+  font-size: var(--fs-ui);
   font-weight: 500;
 }
 
 .backlink-context {
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   color: var(--text-muted);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  line-height: var(--lh-ui);
 }
 
 /* =========================================================================
@@ -2894,7 +3240,7 @@ button {
 }
 
 .outline-title {
-  font-size: 0.7rem;
+  font-size: var(--fs-label);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-faint);
@@ -2905,7 +3251,7 @@ button {
   border: none;
   background: transparent;
   text-align: left;
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   line-height: 1.4;
   padding: 4px 8px;
   border-radius: 6px;
@@ -2969,7 +3315,7 @@ button {
   padding: 5px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   box-shadow: var(--shadow-lg);
   animation: menu-in var(--dur-fast) var(--ease-out);
   transform-origin: top right;
@@ -3001,7 +3347,7 @@ button {
   background: transparent;
   border-radius: 7px;
   color: var(--text);
-  font-size: 0.86rem;
+  font-size: var(--fs-ui);
   text-align: left;
   transition: background-color var(--dur-fast) var(--ease-out),
     color var(--dur-fast) var(--ease-out);
@@ -3039,7 +3385,7 @@ button {
 
 .menu-item-hint {
   flex-shrink: 0;
-  font-size: 0.72rem;
+  font-size: var(--fs-meta);
   color: var(--text-faint);
 }
 
@@ -3051,9 +3397,14 @@ button {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-  font-size: 0.76rem;
+  font-size: var(--fs-meta);
   color: var(--text-faint);
-  transition: color var(--dur-base) var(--ease-out);
+  /* Four states share this one chip, and the chip is the app's only standing
+     answer to "did that save?". Easing the colour and the chip's own surface
+     between them makes the change read as one thing changing rather than four
+     things swapping — except the failure, which is allowed to arrive. */
+  transition: color var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out);
 }
 
 .save-dot {
@@ -3068,12 +3419,35 @@ button {
   color: var(--text-muted);
 }
 
+/* A failed write is the one status worth breaking the whisper for: it is the
+   only one the user has to do something about, and in a local-first app it is
+   the only moment the promise is actually in question. Full text colour, the
+   danger hue, and a tinted chip so it reads as a state rather than a label. */
+.save-indicator.error {
+  /* The one state that should not ease in: a failed write has to register.
+     It arrives at full strength on the same curve everything else leaves on. */
+  animation: save-alarm var(--dur-fast) var(--ease-out);
+  gap: 5px;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  font-weight: 500;
+}
+
 .save-indicator.saving .save-dot {
   animation: save-pulse 1s var(--ease-in-out) infinite;
 }
 
 .save-indicator.saved .save-dot {
   animation: save-settle var(--dur-slow) var(--ease-out);
+}
+
+@keyframes save-alarm {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
 }
 
 @keyframes save-pulse {
@@ -3092,6 +3466,12 @@ button {
   .save-label {
     display: none;
   }
+
+  /* "Saved" can go quiet on a narrow screen; "Not saved" cannot. An unlabelled
+     red dot is a decoration, not a warning. */
+  .save-indicator.error .save-label {
+    display: inline;
+  }
 }
 
 /* =========================================================================
@@ -3100,25 +3480,17 @@ button {
 .confirm-overlay {
   align-items: center;
   padding: 16px;
-  opacity: 0;
-  animation: none;
-  transition: opacity var(--dur-base) var(--ease-out);
 }
 
-.confirm-overlay.entered {
-  opacity: 1;
-}
-
+/* A confirmation is a smaller, closer thing than a full modal, so it rises a
+   little less far. Everything else — the timing, the asymmetry, the backdrop —
+   comes from .modal-overlay / .modal. */
 .confirm-dialog {
   width: min(92vw, 420px);
   max-height: none;
   padding: 20px;
   gap: 18px;
-  animation: none;
-  opacity: 0;
   transform: scale(0.96) translateY(6px);
-  transition: opacity var(--dur-base) var(--ease-out),
-    transform var(--dur-base) var(--ease-out);
 }
 
 .confirm-dialog.entered {
@@ -3139,13 +3511,13 @@ button {
 
 .confirm-title {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--fs-lg);
   font-weight: 600;
 }
 
 .confirm-text {
   margin: 6px 0 0;
-  font-size: 0.87rem;
+  font-size: var(--fs-ui);
   line-height: 1.5;
   color: var(--text-muted);
 }
@@ -3162,7 +3534,7 @@ button {
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text);
-  font-size: 0.87rem;
+  font-size: var(--fs-ui);
   transition: background-color var(--dur-fast) var(--ease-out);
 }
 
@@ -3179,7 +3551,7 @@ button {
   border: none;
   background: var(--danger);
   color: #fff;
-  font-size: 0.87rem;
+  font-size: var(--fs-ui);
   font-weight: 500;
   transition: filter var(--dur-fast) var(--ease-out);
 }
@@ -3232,22 +3604,30 @@ button {
 }
 
 /* =========================================================================
-   Empty state overlay
+   First-run empty state
+   Rendered inside the panes rather than over the whole app, so the note list
+   it refers to stays visible beside it.
    ========================================================================= */
-.empty-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg);
-  animation: overlay-in var(--dur-slow) var(--ease-out);
-  pointer-events: none;
+.panes > .empty-state {
+  flex: 1;
+  animation: fade-in var(--dur-slow) var(--ease-out);
 }
 
-.empty-overlay .empty-state {
-  pointer-events: auto;
+/* The last keyframe fade in the app: this panel has no closed state to
+   transition from, so it genuinely needs one. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 /* =========================================================================
@@ -3417,10 +3797,15 @@ button {
   pointer-events: none;
 }
 
-/* Syntax highlighting, driven by lowlight's hljs class names. */
+/* Syntax highlighting, driven by lowlight's hljs class names.
+   Every colour reads a --syn-* variable so a palette can restate the set —
+   which is how Mono stays greyscale instead of erupting in purple and orange
+   in the middle of a theme whose whole point is that nothing competes with the
+   text. Light and dark values live in theme.css beside the rest of the
+   palette; before this, light mode silently used half of the dark set. */
 .ProseMirror pre .hljs-comment,
 .ProseMirror pre .hljs-quote {
-  color: var(--text-faint);
+  color: var(--syn-comment);
   font-style: italic;
 }
 
@@ -3428,50 +3813,31 @@ button {
 .ProseMirror pre .hljs-selector-tag,
 .ProseMirror pre .hljs-literal,
 .ProseMirror pre .hljs-type {
-  color: #c678dd;
+  color: var(--syn-keyword);
 }
 
 .ProseMirror pre .hljs-string,
 .ProseMirror pre .hljs-regexp,
 .ProseMirror pre .hljs-addition {
-  color: #98c379;
+  color: var(--syn-string);
 }
 
 .ProseMirror pre .hljs-number,
 .ProseMirror pre .hljs-built_in,
 .ProseMirror pre .hljs-attr {
-  color: #d19a66;
+  color: var(--syn-number);
 }
 
 .ProseMirror pre .hljs-title,
 .ProseMirror pre .hljs-section,
 .ProseMirror pre .hljs-function {
-  color: #61afef;
+  color: var(--syn-title);
 }
 
 .ProseMirror pre .hljs-name,
 .ProseMirror pre .hljs-tag,
 .ProseMirror pre .hljs-deletion {
-  color: #e06c75;
-}
-
-:root:not([data-theme='dark']) .ProseMirror pre .hljs-keyword,
-:root:not([data-theme='dark']) .ProseMirror pre .hljs-selector-tag,
-:root:not([data-theme='dark']) .ProseMirror pre .hljs-literal,
-:root:not([data-theme='dark']) .ProseMirror pre .hljs-type {
-  color: #a626a4;
-}
-
-:root:not([data-theme='dark']) .ProseMirror pre .hljs-string,
-:root:not([data-theme='dark']) .ProseMirror pre .hljs-regexp,
-:root:not([data-theme='dark']) .ProseMirror pre .hljs-addition {
-  color: #50a14f;
-}
-
-:root:not([data-theme='dark']) .ProseMirror pre .hljs-title,
-:root:not([data-theme='dark']) .ProseMirror pre .hljs-section,
-:root:not([data-theme='dark']) .ProseMirror pre .hljs-function {
-  color: #4078f2;
+  color: var(--syn-name);
 }
 
 /* =========================================================================
@@ -3603,7 +3969,7 @@ button {
 }
 
 .theme-mode-label {
-  font-size: 0.85rem;
+  font-size: var(--fs-ui);
   color: var(--text-muted);
 }
 
@@ -3611,7 +3977,7 @@ button {
   display: flex;
   gap: 2px;
   padding: 3px;
-  border-radius: 9px;
+  border-radius: 6px;
   background: var(--bg-hover);
 }
 
@@ -3624,7 +3990,7 @@ button {
   border-radius: 7px;
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: var(--fs-ui);
   transition: background-color var(--dur-fast) var(--ease-out),
     color var(--dur-fast) var(--ease-out);
 }
@@ -3648,7 +4014,7 @@ button {
   gap: 12px;
   padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 11px;
+  border-radius: 12px;
   background: transparent;
   color: var(--text);
   text-align: left;
@@ -3676,7 +4042,7 @@ button {
   flex-shrink: 0;
   width: 44px;
   height: 44px;
-  border-radius: 9px;
+  border-radius: 6px;
   overflow: hidden;
   border: 1px solid var(--border);
 }
@@ -3697,19 +4063,20 @@ button {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 0.9rem;
+  font-size: var(--fs-md);
   font-weight: 600;
 }
 
 .theme-card-desc {
-  font-size: 0.76rem;
+  font-size: var(--fs-meta);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: var(--lh-ui);
 }
 
 .theme-badge {
-  font-size: 0.62rem;
+  font-size: var(--fs-label);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 2px 6px;

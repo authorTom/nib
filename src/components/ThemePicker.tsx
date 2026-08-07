@@ -1,4 +1,6 @@
 import { useEffect } from 'react'
+import { useEnterExit } from '../hooks/useEnterExit'
+import { OVERLAY_EXIT_MS } from '../lib/motion'
 import { Check, Moon, Sun, X } from 'lucide-react'
 import type { ThemeInfo } from '../themes/themes'
 import type { Theme } from '../hooks/useTheme'
@@ -42,12 +44,15 @@ export default function ThemePicker({
     return () => window.removeEventListener('keydown', onKey, true)
   }, [open, onClose])
 
-  if (!open) return null
+  // Stays mounted for the length of its exit, so the surface leaves the
+  // way it arrived instead of blinking out.
+  const anim = useEnterExit(open, OVERLAY_EXIT_MS)
+  if (!anim.render) return null
 
   return (
-    <div className="modal-overlay" onMouseDown={onClose}>
+    <div className={`modal-overlay${anim.entered ? ' entered' : ''}`} onMouseDown={onClose}>
       <div
-        className="modal theme-modal"
+        className={`modal theme-modal${anim.entered ? ' entered' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-label="Appearance"

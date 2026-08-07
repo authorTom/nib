@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { FilePlus, Upload } from 'lucide-react'
 import type { Editor as TiptapEditor } from '@tiptap/react'
 import TopBar from './TopBar'
 import Toolbar from './Toolbar'
@@ -23,10 +24,15 @@ interface WorkspaceProps {
   backlinks: Backlink[]
   splitBacklinks: Backlink[]
   saveState: SaveState
+  saveError: string | null
   lastSavedAt: number | null
   isDirty: (id: string) => boolean
+  /** The vault has no notes at all — show the first-run state in the panes. */
+  vaultEmpty: boolean
   /** Note created moments ago, for the ink bloom and the wet-ink tab. */
   justCreatedId: string | null
+  /** Note restored moments ago: wet ink, but no bloom — it was placed, not made. */
+  justPlacedId: string | null
   /** Where the current switch was triggered from, for the title flight. */
   flightFrom: FlightOrigin | null
   enterFrom?: EnterFrom
@@ -39,6 +45,10 @@ interface WorkspaceProps {
   onCloseSplit: () => void
 
   onContentChange: (noteId: string, markdown: string) => void
+  /** Leaving a note is the moment it may take its name from its first heading. */
+  onLeaveNote: (noteId: string, markdown: string) => void
+  /** Veto for a pane taking the caret at mount (see EditorPane). */
+  shouldClaimFocus: () => boolean
   onOpenNote: (id: string) => void
   onTitleCommit: (noteId: string, title: string) => void
   onNew: () => void
@@ -67,6 +77,43 @@ interface WorkspaceProps {
 }
 
 /**
+ * What a brand-new vault opens on.
+ *
+ * Lives inside the panes rather than over the whole app: it used to be an
+ * opaque overlay across `.app`, which covered the sidebar it was telling you
+ * to use — while `pointer-events: none` left that hidden sidebar clickable.
+ * Here the note list stays visible beside it, so "bring in Markdown" points at
+ * something the reader can actually see.
+ */
+function EmptyVault({
+  onNew,
+  onImport,
+}: {
+  onNew: () => void
+  onImport: () => void
+}) {
+  return (
+    <div className="empty-state">
+      <h2>No notes yet</h2>
+      <p>
+        Start one here, or bring in Markdown you already have — nested folders
+        keep their structure and nothing is overwritten.
+      </p>
+      <div className="empty-actions">
+        <button type="button" className="btn-primary" onClick={onNew}>
+          <FilePlus size={18} />
+          New note
+        </button>
+        <button type="button" className="btn-secondary" onClick={onImport}>
+          <Upload size={16} />
+          Import Markdown…
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/**
  * Everything to the right of the sidebar: title chrome, the tab strip, one
  * shared formatting toolbar, and one or two editor panes.
  *
@@ -85,9 +132,12 @@ export default function Workspace({
   backlinks,
   splitBacklinks,
   saveState,
+  saveError,
   lastSavedAt,
   isDirty,
+  vaultEmpty,
   justCreatedId,
+  justPlacedId,
   flightFrom,
   enterFrom,
   onSelectTab,
@@ -97,6 +147,8 @@ export default function Workspace({
   onToggleSplit,
   onCloseSplit,
   onContentChange,
+  onLeaveNote,
+  shouldClaimFocus,
   onOpenNote,
   onTitleCommit,
   onNew,
@@ -156,6 +208,7 @@ export default function Workspace({
         onToggleSplit={onToggleSplit}
         isSplit={split}
         saveState={saveState}
+        saveError={saveError}
         lastSavedAt={lastSavedAt}
         theme={theme}
         onToggleTheme={onToggleTheme}
@@ -173,12 +226,15 @@ export default function Workspace({
         onToggleSplit={onToggleSplit}
         isDirty={isDirty}
         justCreatedId={justCreatedId}
+        justPlacedId={justPlacedId}
       />
 
       {focusedEditor && <Toolbar editor={focusedEditor} />}
 
       <div className={`panes${split ? ' split' : ''}`}>
-        {activeNote && activeContent !== null ? (
+        {vaultEmpty ? (
+          <EmptyVault onNew={onNew} onImport={onOpenImport} />
+        ) : activeNote && activeContent !== null ? (
           <EditorPane
             key={activeNote.id}
             noteId={activeNote.id}
@@ -192,6 +248,8 @@ export default function Workspace({
             paneLabel={split ? activeNote.title : undefined}
             onFocusPane={focusPrimary}
             onContentChange={onContentChange}
+            onLeaveNote={onLeaveNote}
+            shouldClaimFocus={shouldClaimFocus}
             onOpenNote={onOpenNote}
             onInlineAsk={onInlineAsk}
             onAddTask={onAddTask}
@@ -217,6 +275,8 @@ export default function Workspace({
                 onClosePane={onCloseSplit}
                 onFocusPane={focusSplit}
                 onContentChange={onContentChange}
+                onLeaveNote={onLeaveNote}
+                shouldClaimFocus={shouldClaimFocus}
                 onOpenNote={onOpenNote}
                 onInlineAsk={onInlineAsk}
                 onAddTask={onAddTask}

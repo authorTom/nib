@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useEnterExit } from '../hooks/useEnterExit'
+import { OVERLAY_EXIT_MS } from '../lib/motion'
 import { Archive, Check, Download, X } from 'lucide-react'
 import {
   exportVaultZip,
@@ -26,7 +28,10 @@ export default function ExportModal({
   const [done, setDone] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  if (!open) return null
+  // Stays mounted for the length of its exit, so the surface leaves the
+  // way it arrived instead of blinking out.
+  const anim = useEnterExit(open, OVERLAY_EXIT_MS)
+  if (!anim.render) return null
 
   const running = progress !== null && done === null && error === null
 
@@ -63,8 +68,14 @@ export default function ExportModal({
   }
 
   return (
-    <div className="modal-overlay" onMouseDown={close}>
-      <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+    <div className={`modal-overlay${anim.entered ? ' entered' : ''}`} onMouseDown={close}>
+      <div
+        className={`modal${anim.entered ? ' entered' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Export knowledge base"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="modal-header">
           <span className="modal-title">Export knowledge base</span>
           <button

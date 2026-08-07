@@ -1,4 +1,6 @@
 import { RotateCcw, Trash2, X } from 'lucide-react'
+import { useEnterExit } from '../hooks/useEnterExit'
+import { OVERLAY_EXIT_MS } from '../lib/motion'
 import type { TrashItem } from '../fs/vault'
 import { folderOf, timeAgo } from '../lib/format'
 
@@ -19,11 +21,20 @@ export default function TrashModal({
   onDeleteForever,
   onEmpty,
 }: TrashModalProps) {
-  if (!open) return null
+  // Stays mounted for the length of its exit, so the surface leaves the
+  // way it arrived instead of blinking out.
+  const anim = useEnterExit(open, OVERLAY_EXIT_MS)
+  if (!anim.render) return null
 
   return (
-    <div className="modal-overlay" onMouseDown={onClose}>
-      <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+    <div className={`modal-overlay${anim.entered ? ' entered' : ''}`} onMouseDown={onClose}>
+      <div
+        className={`modal${anim.entered ? ' entered' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Recycle Bin"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="modal-header">
           <span className="modal-title">Recycle Bin</span>
           <button
@@ -39,7 +50,9 @@ export default function TrashModal({
 
         <div className="modal-body">
           {items.length === 0 ? (
-            <div className="modal-empty">The recycle bin is empty.</div>
+            <div className="modal-empty">
+              Empty — nothing deleted, or nothing left to restore.
+            </div>
           ) : (
             items.map((item) => {
               const folder = folderOf(item.originalPath)

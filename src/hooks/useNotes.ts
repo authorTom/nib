@@ -43,7 +43,33 @@ const SNAPSHOT_INTERVAL_MS = 5 * 60_000
 const INK_DRY_MS = 1400
 
 /** How the topbar reports the debounced writer's progress. */
-export type SaveState = 'idle' | 'unsaved' | 'saving' | 'saved'
+export type SaveState = 'idle' | 'unsaved' | 'saving' | 'saved' | 'error'
+
+/**
+ * Turn a failed write into something a person can act on.
+ *
+ * This is the one moment that matters in a local-first app: the whole promise
+ * is "your notes are your files", so when the disk refuses, saying nothing —
+ * or saying "Unsaved changes", which the user has already learned to ignore —
+ * is the worst available answer. The edits are safe in memory either way; what
+ * the message has to convey is what to fix.
+ */
+function describeSaveError(err: unknown): string {
+  const name = err instanceof DOMException ? err.name : ''
+  if (name === 'NotAllowedError' || name === 'SecurityError') {
+    return 'Nib lost permission to write to your folder. Reopen the vault to grant it again.'
+  }
+  if (name === 'QuotaExceededError') {
+    return 'There is no room left to save. Free up space, then keep typing to retry.'
+  }
+  if (name === 'NotFoundError') {
+    return 'The note file has gone — it may have been moved or deleted outside Nib.'
+  }
+  const message = err instanceof Error ? err.message : ''
+  return message
+    ? `Couldn't save to your vault: ${message}`
+    : "Couldn't save to your vault. Your changes are still here; keep typing to retry."
+}
 
 /** Which of the two editor panes has the user's attention. */
 export type Pane = 'primary' | 'split'
@@ -439,6 +465,9 @@ export function useNotes() {
   const lastSnapshotAt = useRef<Map<string, number>>(new Map())
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
+  // What went wrong on the last failed write, in plain language. Cleared as
+  // soon as a write succeeds, so a recovered vault stops nagging.
+  const [saveError, setSaveError] = useState<string | null>(null)
   // Mirrors `pending`'s keys into state, so tabs can mark themselves unsaved.
   // The ref is the source of truth; this exists only to trigger a render.
   const [dirtyIds, setDirtyIds] = useState<string[]>([])
@@ -477,15 +506,20 @@ export function useNotes() {
         invalidateCached(id)
       }
       setLastSavedAt(Date.now())
+      setSaveError(null)
       // Another keystroke may have landed mid-write; don't claim "saved" then.
       setSaveState(pending.current.size ? 'unsaved' : 'saved')
-    } catch {
+    } catch (err) {
       // Put the batch back so the next flush retries rather than losing edits.
       for (const [id, content] of batch) {
         if (!pending.current.has(id)) pending.current.set(id, content)
       }
       syncDirty()
-      setSaveState('unsaved')
+      // 'error', not 'unsaved': a failed write and a pending write are not the
+      // same event, and showing the same words for both is how a revoked
+      // permission goes unnoticed for an afternoon.
+      setSaveError(describeSaveError(err))
+      setSaveState('error')
     }
   }, [dir, syncDirty])
 
@@ -501,13 +535,29 @@ export function useNotes() {
     [dir, flush, syncDirty],
   )
 
-  // Best-effort: persist buffered edits when the tab is hidden or closed.
+  // Persist buffered edits when the tab is hidden, and hold the door on close.
+  //
+  // `flush` is async and a vault write cannot finish during unload, so firing
+  // it at a closing page is a wish, not a save. Whenever there is anything
+  // buffered we ask the browser for its native "Leave site?" prompt as well —
+  // the debounce window is up to SAVE_DEBOUNCE_MS of typing, which is a
+  // paragraph, and losing it silently is not a trade this app gets to make.
   useEffect(() => {
     const onHide = () => void flush()
-    window.addEventListener('beforeunload', onHide)
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Read before flushing: flush() empties the buffer synchronously, so
+      // asking afterwards always answers "nothing pending".
+      const dirty = pending.current.size > 0
+      void flush()
+      if (!dirty) return
+      e.preventDefault()
+      // Legacy spelling, still required by some browsers to raise the prompt.
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
     document.addEventListener('visibilitychange', onHide)
     return () => {
-      window.removeEventListener('beforeunload', onHide)
+      window.removeEventListener('beforeunload', onBeforeUnload)
       document.removeEventListener('visibilitychange', onHide)
     }
   }, [flush])
@@ -517,6 +567,19 @@ export function useNotes() {
   // on a timer rather than by the animation, so nothing depends on an event
   // that never fires when motion is switched off.
   const [justCreatedId, setJustCreatedId] = useState<string | null>(null)
+
+  // A note that came back rather than one that was made. The ink vocabulary
+  // distinguishes the two: creating a note blooms *and* dries, restoring one
+  // only dries — it was placed on the page, not invented on it. One flag drove
+  // both meanings before, so restoring would have washed a creation bloom
+  // across a note that already existed.
+  const [justPlacedId, setJustPlacedId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!justPlacedId) return
+    const timer = setTimeout(() => setJustPlacedId(null), INK_DRY_MS)
+    return () => clearTimeout(timer)
+  }, [justPlacedId])
 
   useEffect(() => {
     if (!justCreatedId) return
@@ -571,12 +634,15 @@ export function useNotes() {
   // Rename a note's file to match a new title (commit on blur/Enter).
   const renameNote = useCallback(
     async (id: string, newTitle: string) => {
-      if (!dir || !id) return
+      if (!dir || !id) return undefined
       await flush() // ensure latest content is on disk before moving the file
       const newId = await vault.renameNote(dir, id, newTitle)
       if (newId !== id) await history.retargetHistory(dir, id, newId)
       await refresh(dir)
       remapId(id, newId)
+      // Returned so callers can tell a real rename from a no-op, and know the
+      // id the note now answers to.
+      return newId
     },
     [dir, flush, refresh, remapId],
   )
@@ -684,7 +750,10 @@ export function useNotes() {
       const newId = await vault.restoreTrash(dir, trashName)
       await refresh(dir)
       setTrashItems(await vault.listTrash(dir))
-      if (newId) setActiveId(newId)
+      if (newId) {
+        setActiveId(newId)
+        setJustPlacedId(newId)
+      }
     },
     [dir, refresh],
   )
@@ -748,6 +817,8 @@ export function useNotes() {
       // The same note may also be open in the split pane; keep them in step.
       if (splitId === activeId) setSplitContent(snapContent)
       await refresh(dir)
+      // The note's text came back: settle it like any other placed thing.
+      setJustPlacedId(activeId)
       setHistoryItems(await history.listHistory(dir, activeId))
     },
     [dir, activeId, splitId, flush, refresh],
@@ -882,8 +953,10 @@ export function useNotes() {
     setFocusedPane,
     /** Set briefly after createNote, for the ink-bloom and wet-ink treatments. */
     justCreatedId,
+    justPlacedId,
     // Save status
     saveState,
+    saveError,
     lastSavedAt,
     /** Notes with edits not yet written to disk. */
     dirtyIds,

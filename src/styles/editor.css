@@ -1,8 +1,8 @@
 .ProseMirror {
   outline: none;
   min-height: 60vh;
-  font-size: 1.05rem;
-  line-height: 1.7;
+  font-size: var(--fs-prose);
+  line-height: var(--lh-prose);
   color: var(--text);
 }
 
@@ -13,21 +13,21 @@
 .ProseMirror h1,
 .ProseMirror h2,
 .ProseMirror h3 {
-  line-height: 1.25;
+  line-height: var(--lh-tight);
   font-weight: 650;
   margin-top: 1.4em;
 }
 
 .ProseMirror h1 {
-  font-size: 1.9rem;
+  font-size: var(--fs-prose-h1);
 }
 
 .ProseMirror h2 {
-  font-size: 1.5rem;
+  font-size: var(--fs-prose-h2);
 }
 
 .ProseMirror h3 {
-  font-size: 1.2rem;
+  font-size: var(--fs-prose-h3);
 }
 
 .ProseMirror ul,
@@ -68,7 +68,7 @@
   padding: 12px 14px;
   overflow-x: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.9rem;
+  font-size: var(--fs-md);
 }
 
 .ProseMirror pre code {
@@ -95,4 +95,11 @@
   color: var(--text-faint);
   pointer-events: none;
   height: 0;
+}
+
+/* The document gets the same dark-mode compensation as the chrome, and a
+   little more of it: this is the text someone reads for an hour, and light
+   type on a dark page needs the extra leading more than a label does. */
+:root[data-theme='dark'] .ProseMirror {
+  line-height: 1.75;
 }
