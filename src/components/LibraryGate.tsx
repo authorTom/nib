@@ -32,9 +32,10 @@ interface Props {
 }
 
 /**
- * The deckle, inlined so it takes the palette's ink through `currentColor`.
- * `public/deckle.svg` stays as it is — it is the favicon, and a favicon has no
- * document to inherit a colour from.
+ * The mark: a sheet of handmade paper whose right edge was never trimmed — a
+ * deckle edge. Inlined so it takes the palette's ink through `currentColor`.
+ * `public/deckle.svg` carries the same path with the accent hard-coded, because
+ * a favicon has no document to inherit a colour from; keep the two in step.
  */
 function DeckleMark({ size = 40 }: { size?: number }) {
   return (
@@ -46,10 +47,7 @@ function DeckleMark({ size = 40 }: { size?: number }) {
       fill="currentColor"
       aria-hidden="true"
     >
-      <path
-        fillRule="evenodd"
-        d="M12 1.5 17.6 7.2 12.7 20.4 12 22.6 11.3 20.4 6.4 7.2Z M12 5a1.7 1.7 0 1 0 0 3.4 1.7 1.7 0 1 0 0-3.4Z M11.45 9.4 12.55 9.4 12.15 18.8 11.85 18.8Z"
-      />
+      <path d="M4.6 2.5 L19.4 2.5 Q21.3 5.6 19.2 8.8 Q17.4 12 19.5 15.2 Q21.2 18.3 19.2 21.5 L4.6 21.5 Q2.6 17.2 4.9 12.8 Q6.6 7.5 4.6 2.5 Z" />
     </svg>
   )
 }
