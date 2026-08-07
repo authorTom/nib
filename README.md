@@ -12,13 +12,13 @@ computer, Obsidian-style, or — if you self-host with Docker — a volume on yo
 own server, which makes Nib fully web based and leaves nothing on the device
 you're using. No third-party account, no lock-in.
 
-![Markdown notes with a folder tree, live WYSIWYG editing, and a command palette](docs/screenshots/editor.png)
+![Markdown notes with a folder tree, editor tabs, live WYSIWYG editing, and a backlinks panel](docs/screenshots/editor.png)
 
 | Task planner — Inbox, Today, Upcoming with a mini calendar | Bookmarks — collections and per-bookmark comments |
 | --- | --- |
 | ![Todoist-style task planner with due dates, priorities, and a month calendar](docs/screenshots/tasks.png) | ![Bookmarks with coloured collections and a comment box](docs/screenshots/bookmarks.png) |
 | **AI assistant — search and edit your vault (dark mode)** | **Command palette — everything a keystroke away** |
-| ![AI assistant panel in dark mode](docs/screenshots/assistant.png) | ![Command palette in dark mode](docs/screenshots/palette.png) |
+| ![AI assistant panel in dark mode](docs/screenshots/assistant.png) | ![Command palette in dark mode, listing commands from new note to split editor and themes](docs/screenshots/palette.png) |
 
 ## Why it exists
 
