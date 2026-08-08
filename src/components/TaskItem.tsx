@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, FileText, Repeat, Trash2 } from 'lucide-react'
+import { Check, FileText, MessageSquare, Repeat, Trash2 } from 'lucide-react'
 import { dueChipLabel, todayStr } from '../tasks/dates'
+import { timeAgo } from '../lib/format'
 import type { Priority, Project, RecurrenceFreq, Task } from '../tasks/types'
 
 interface TaskItemProps {
@@ -12,6 +13,9 @@ interface TaskItemProps {
   onUpdate: (patch: Partial<Task>) => void
   onDelete: () => void
   onOpenNote: (noteId: string) => void
+  /** Append a free-text update. */
+  onAddComment: (body: string) => void
+  onDeleteComment: (commentId: string) => void
 }
 
 const INTERVAL_UNIT: Record<RecurrenceFreq, string> = {
@@ -29,8 +33,11 @@ export default function TaskItem({
   onUpdate,
   onDelete,
   onOpenNote,
+  onAddComment,
+  onDeleteComment,
 }: TaskItemProps) {
   const [expanded, setExpanded] = useState(false)
+  const [draft, setDraft] = useState('')
   // Ticking a task usually removes it from the list it's in. Hold it in place
   // for the length of the animation so the check has time to draw and the row
   // has time to collapse, rather than the item just blinking out.
@@ -45,6 +52,8 @@ export default function TaskItem({
   const done = !!task.completedAt
   const overdue = !!task.due && !done && task.due < today
 
+  const comments = task.comments ?? []
+
   const handleToggle = () => {
     if (done || completing) {
       onToggle()
@@ -52,6 +61,12 @@ export default function TaskItem({
     }
     setCompleting(true)
     completeTimer.current = setTimeout(onToggle, 320)
+  }
+
+  const postComment = () => {
+    if (!draft.trim()) return
+    onAddComment(draft)
+    setDraft('')
   }
 
   return (
@@ -77,7 +92,10 @@ export default function TaskItem({
           aria-expanded={expanded}
         >
           <span className="task-title">{task.title}</span>
-          {(task.due || task.recurrence || (showProject && project)) && (
+          {(task.due ||
+            task.recurrence ||
+            comments.length > 0 ||
+            (showProject && project)) && (
             <span className="task-meta">
               {task.due && (
                 <span
@@ -89,6 +107,17 @@ export default function TaskItem({
                 </span>
               )}
               {task.recurrence && <Repeat size={11} aria-label="Repeats" />}
+              {comments.length > 0 && (
+                <span
+                  className="task-comment-count"
+                  title={`${comments.length} update${
+                    comments.length === 1 ? '' : 's'
+                  }`}
+                >
+                  <MessageSquare size={11} aria-hidden="true" />
+                  {comments.length}
+                </span>
+              )}
               {showProject && project && (
                 <span className="task-project">
                   <span
@@ -213,6 +242,63 @@ export default function TaskItem({
               {INTERVAL_UNIT[task.recurrence.freq]}
             </label>
           )}
+
+          {/* Updates: what happened, in the task's own words. Append-only by
+              design — a status log you can overwrite is just a notes field, and
+              the point of these is that they're dated. */}
+          <div className="task-updates">
+            <div className="task-updates-title">
+              Updates
+              {comments.length > 0 && (
+                <span className="task-count">{comments.length}</span>
+              )}
+            </div>
+
+            {comments.map((c) => (
+              <div key={c.id} className="task-comment">
+                <div className="task-comment-body">{c.body}</div>
+                <div className="task-comment-foot">
+                  <span className="task-comment-when">{timeAgo(c.createdAt)}</span>
+                  <button
+                    type="button"
+                    className="icon-btn trash-danger task-comment-del"
+                    title="Delete this update"
+                    aria-label="Delete this update"
+                    onClick={() => onDeleteComment(c.id)}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <textarea
+              className="task-comment-input"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter makes a paragraph; the modifier posts. The other way
+                // round loses half-written updates to a stray Return.
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault()
+                  postComment()
+                }
+              }}
+              rows={2}
+              placeholder="Add an update…"
+              aria-label="Add an update"
+            />
+            <div className="task-updates-actions">
+              <button
+                type="button"
+                className="btn-secondary task-comment-add"
+                onClick={postComment}
+                disabled={!draft.trim()}
+              >
+                Add update
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

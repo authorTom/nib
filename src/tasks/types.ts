@@ -9,6 +9,13 @@ export interface Recurrence {
   interval: number
 }
 
+/** A free-text update written against a task, kept in the order it was added. */
+export interface TaskComment {
+  id: string
+  body: string
+  createdAt: number
+}
+
 export interface Task {
   id: string
   title: string
@@ -21,6 +28,11 @@ export interface Task {
   recurrence: Recurrence | null
   /** The note this task was captured from, if any. */
   source?: { noteId: string }
+  /**
+   * Free-text updates written as the task progresses. Optional rather than
+   * always-present, so every task written before this existed still parses.
+   */
+  comments?: TaskComment[]
   completedAt: number | null
   /** Soft-delete timestamp: set = in the bin (purged after 30 days). */
   deletedAt?: number | null

@@ -149,7 +149,7 @@ export default function TopBar({
     },
     {
       id: 'import',
-      label: 'Import Markdown…',
+      label: 'Import Markdown or ZIP…',
       Icon: Upload,
       separated: true,
       run: onOpenImport,

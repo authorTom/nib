@@ -53,10 +53,16 @@ import { exportToPdf } from './lib/exportPdf'
 import { downloadMarkdown } from './lib/exportMarkdown'
 import { serialize } from './editor/markdown'
 import {
+  IMPORT_ACCEPT,
   selectionFromDataTransfer,
   selectionFromFiles,
   type ImportSelection,
+  type ReadProgress,
 } from './lib/importMarkdown'
+import ImportModal, {
+  type ImportOutcome,
+  type ImportProgress,
+} from './components/ImportModal'
 import { useTheme } from './hooks/useTheme'
 import { useNotes } from './hooks/useNotes'
 import type { EnterFrom, FlightOrigin } from './lib/motion'
@@ -64,6 +70,7 @@ import { useBacklinks } from './hooks/useBacklinks'
 import { useResizable } from './hooks/useResizable'
 import { useDeferredUnmount } from './hooks/useDeferredUnmount'
 import { useEnterExit } from './hooks/useEnterExit'
+import { COMPACT_QUERY, useMediaQuery } from './hooks/useMediaQuery'
 import { supportsDiskPicker } from './fs/library'
 
 /**
@@ -153,6 +160,10 @@ export default function App() {
     searchResults,
   } = useNotes()
 
+  // Below this width the three docked panels stop being columns and become
+  // drawers over the editor, so at most one of them can usefully be open.
+  const compact = useMediaQuery(COMPACT_QUERY)
+
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const closeSidebar = useCallback(() => setSidebarOpen(false), [])
 
@@ -186,7 +197,26 @@ export default function App() {
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [tasksOpen, setTasksOpen] = useState(false)
   const [panelTab, setPanelTab] = useState<'tasks' | 'bookmarks'>('tasks')
-  const toggleAssistant = useCallback(() => setAssistantOpen((o) => !o), [])
+
+  /** Shut every drawer — what the scrim does, and what a phone needs on open. */
+  const closeOverlays = useCallback(() => {
+    setSidebarOpen(false)
+    setTasksOpen(false)
+    setAssistantOpen(false)
+  }, [])
+
+  const toggleAssistant = useCallback(() => {
+    // As drawers they'd stack on top of each other, so opening one on a phone
+    // puts the others away first. Decided out here rather than inside a state
+    // updater: those have to stay pure, and React runs them twice in dev.
+    const opening = !assistantOpen
+    if (opening && compact) {
+      setSidebarOpen(false)
+      setTasksOpen(false)
+    }
+    setAssistantOpen(opening)
+  }, [assistantOpen, compact])
+
   /** Open the panel on a tab; clicking the active tab's button closes it. */
   const openPanelTab = useCallback(
     (which: 'tasks' | 'bookmarks') => {
@@ -194,10 +224,14 @@ export default function App() {
         setTasksOpen(false)
         return
       }
+      if (compact) {
+        setSidebarOpen(false)
+        setAssistantOpen(false)
+      }
       setPanelTab(which)
       setTasksOpen(true)
     },
-    [tasksOpen, panelTab],
+    [tasksOpen, panelTab, compact],
   )
   const toggleTasks = useCallback(() => openPanelTab('tasks'), [openPanelTab])
   const toggleBookmarks = useCallback(
@@ -373,32 +407,73 @@ export default function App() {
     [openPicker],
   )
 
+  // An import reports itself in a modal rather than a toast: it has two phases,
+  // it can take a while on a folder or an archive, and when it goes wrong the
+  // interesting part is *which files* went wrong — none of which fits in a
+  // sentence that disappears after two seconds.
+  const [importOpen, setImportOpen] = useState(false)
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null)
+  const [importOutcome, setImportOutcome] = useState<ImportOutcome | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
+
+  const onReadProgress = useCallback<ReadProgress>((done, total, label) => {
+    setImportProgress({ phase: 'reading', done, total, label })
+  }, [])
+
   const runImport = useCallback(
-    async (selection: ImportSelection, targetFolder: string) => {
-      if (!selection.items.length) {
-        showToast(
-          selection.skipped.length
-            ? 'No Markdown files in that selection'
-            : 'Nothing to import',
+    async (pending: Promise<ImportSelection>, targetFolder: string) => {
+      setImportOutcome(null)
+      setImportError(null)
+      setImportProgress({ phase: 'reading', done: 0, total: 0 })
+      setImportOpen(true)
+      if (compact) closeOverlays()
+      else closeSidebar()
+
+      try {
+        const selection = await pending
+
+        if (!selection.items.length) {
+          setImportProgress(null)
+          setImportOutcome({ imported: 0, renamed: 0, skipped: selection.skipped })
+          return
+        }
+
+        const total = selection.items.length
+        setImportProgress({ phase: 'writing', done: 0, total })
+        // One render per file would cost more than the write does on a large
+        // import, and no one can read a counter moving that fast anyway.
+        const step = Math.max(1, Math.floor(total / 100))
+        const imported = await importNotes(
+          selection.items,
+          targetFolder,
+          (done, count) => {
+            if (done === count || done % step === 0) {
+              setImportProgress({ phase: 'writing', done, total: count })
+            }
+          },
         )
-        return
+
+        setImportProgress(null)
+        setImportOutcome({
+          imported: imported.length,
+          renamed: imported.filter((n) => n.renamed).length,
+          skipped: selection.skipped,
+        })
+      } catch (err) {
+        setImportProgress(null)
+        setImportError(
+          err instanceof Error ? err.message : 'Something went wrong during the import.',
+        )
       }
-      const imported = await importNotes(selection.items, targetFolder)
-      const skipped = selection.skipped.length
-      showToast(
-        `Imported ${imported.length} note${imported.length === 1 ? '' : 's'}` +
-          (skipped ? ` · ${skipped} skipped` : ''),
-      )
-      closeSidebar()
     },
-    [importNotes, showToast, closeSidebar],
+    [importNotes, closeSidebar, closeOverlays, compact],
   )
 
   const handleImportFiles = useCallback(
     (files: FileList | File[]) => {
-      void (async () => runImport(await selectionFromFiles(files), ''))()
+      void runImport(selectionFromFiles(files, onReadProgress), '')
     },
-    [runImport],
+    [runImport, onReadProgress],
   )
 
   // `webkitGetAsEntry` is only valid while the drop event is being dispatched,
@@ -406,10 +481,9 @@ export default function App() {
   // first await — don't defer this call.
   const handleDropFiles = useCallback(
     (transfer: DataTransfer, targetFolder: string) => {
-      const pending = selectionFromDataTransfer(transfer)
-      void (async () => runImport(await pending, targetFolder))()
+      void runImport(selectionFromDataTransfer(transfer, onReadProgress), targetFolder)
     },
-    [runImport],
+    [runImport, onReadProgress],
   )
 
   // AI assistant (right-side panel)
@@ -456,7 +530,11 @@ export default function App() {
         // (The command palette and confirm dialog handle their own Escape.)
         if (historyOpen) setHistoryOpen(false)
         else if (trashOpen) setTrashOpen(false)
-        else setFocusMode(false)
+        // On a phone the drawers are the topmost layer, so they go before
+        // focus mode does.
+        else if (compact && (sidebarOpen || tasksOpen || assistantOpen)) {
+          closeOverlays()
+        } else setFocusMode(false)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -470,6 +548,11 @@ export default function App() {
     toggleTasks,
     closeTab,
     activeId,
+    compact,
+    sidebarOpen,
+    tasksOpen,
+    assistantOpen,
+    closeOverlays,
   ])
 
   // ---- Note-switch choreography ----
@@ -490,16 +573,28 @@ export default function App() {
     [openNotes, activeId],
   )
 
-  /** Open a note from the sidebar, palette, or a wikilink. */
+  /** Open a note from the sidebar, palette, a task, or a wikilink. */
   const handleSelect = useCallback(
     (id: string, origin: FlightOrigin | null = null) => {
       setFlightFrom(origin)
       setEnterFrom(undefined) // a jump from outside the strip has no direction
       openNote(id)
-      closeSidebar()
+      // On a phone the panels sit *over* the editor, so leaving them open would
+      // hide the note that was just asked for.
+      if (compact) closeOverlays()
+      else closeSidebar()
     },
-    [openNote, closeSidebar],
+    [openNote, closeSidebar, closeOverlays, compact],
   )
+
+  const toggleSidebar = useCallback(() => {
+    const opening = !sidebarOpen
+    if (opening && compact) {
+      setTasksOpen(false)
+      setAssistantOpen(false)
+    }
+    setSidebarOpen(opening)
+  }, [sidebarOpen, compact])
 
   const handleSelectTab = useCallback(
     (id: string, origin: FlightOrigin | null) => {
@@ -632,9 +727,9 @@ export default function App() {
       },
       {
         id: 'import-md',
-        label: 'Import Markdown files',
+        label: 'Import Markdown or a ZIP…',
         icon: Upload,
-        keywords: 'import upload md markdown add files migrate',
+        keywords: 'import upload md markdown zip archive add files migrate unzip',
         run: openImport,
       },
       {
@@ -896,9 +991,14 @@ export default function App() {
         )}
       </div>
 
+      {/* One scrim for all three drawers. It only becomes visible inside the
+          compact media query, so on a desktop the docked panels never dim the
+          editor and the scrim can't be clicked. */}
       <div
-        className={`scrim${sidebarOpen ? ' show' : ''}`}
-        onClick={closeSidebar}
+        className={`scrim${
+          sidebarOpen || tasksOpen || assistantOpen ? ' show' : ''
+        }`}
+        onClick={closeOverlays}
       />
 
       <Workspace
@@ -936,7 +1036,7 @@ export default function App() {
         onSaveMarkdown={handleSaveMarkdown}
         onExportPdf={() => activeNote && exportToPdf(activeNote.title)}
         onOpenHistory={() => void openHistory()}
-        onToggleSidebar={() => setSidebarOpen((o) => !o)}
+        onToggleSidebar={toggleSidebar}
         onToggleFocus={toggleFocus}
         onOpenPalette={() => setPaletteOpen(true)}
         onOpenAssistant={toggleAssistant}
@@ -1019,13 +1119,14 @@ export default function App() {
         onClose={() => setExportOpen(false)}
       />
 
-      {/* Import pickers: one for loose files, one for a whole folder. Owned
-          here so both the sidebar and the command palette can open them. */}
+      {/* Import pickers: one for loose files (or a .zip), one for a whole
+          folder. Owned here so both the sidebar and the command palette can
+          open them. */}
       <input
         ref={fileInput}
         type="file"
         multiple
-        accept=".md,.markdown,.txt,.text,text/markdown,text/plain"
+        accept={IMPORT_ACCEPT}
         className="visually-hidden"
         onChange={(e) => {
           if (e.target.files?.length) handleImportFiles(e.target.files)
@@ -1040,6 +1141,14 @@ export default function App() {
         onChange={(e) => {
           if (e.target.files?.length) handleImportFiles(e.target.files)
         }}
+      />
+
+      <ImportModal
+        open={importOpen}
+        progress={importProgress}
+        outcome={importOutcome}
+        error={importError}
+        onClose={() => setImportOpen(false)}
       />
 
       <HistoryModal

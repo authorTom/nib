@@ -585,7 +585,7 @@ export default function Sidebar({
     },
     {
       id: 'import',
-      label: 'Import Markdown files…',
+      label: 'Import Markdown or a ZIP…',
       Icon: Upload,
       separated: true,
       run: onOpenImport,
@@ -713,7 +713,7 @@ export default function Sidebar({
           type="button"
           className="sidebar-footer-btn"
           onClick={onOpenImport}
-          title="Import Markdown files into this library"
+          title="Import Markdown files, or a ZIP of them, into this library"
         >
           <Upload size={15} />
           Import
