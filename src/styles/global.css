@@ -11,6 +11,24 @@ body,
   margin: 0;
 }
 
+/* A phone's URL bar makes `100%` taller than what's actually on screen, which
+   pushes the editor's bottom edge under the browser chrome. `dvh` tracks the
+   visible viewport instead; the `100%` above stays as the fallback. */
+@supports (height: 100dvh) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+  }
+}
+
+/* Stop the whole page rubber-banding sideways on iOS. The app is a fixed
+   shell — panes scroll, the document behind them does not. */
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
     Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
@@ -404,7 +422,10 @@ button {
     padding-right: 10px;
   }
 
-  .palette-trigger {
+  /* The theme toggle goes, not the palette. Both are in the overflow menu, but
+     only one of them is also the app's search and its whole command surface —
+     and on a phone there is no Cmd+K to fall back on. */
+  .topbar .theme-toggle {
     display: none;
   }
 }
@@ -776,33 +797,82 @@ button {
   background: var(--bg-hover);
 }
 
-/* ---------- Mobile drawer ---------- */
+/* ---------- Mobile & tablet drawers ----------
+   Above the breakpoint the three docks are columns: they own a width and push
+   the editor aside. Below it there isn't room to share, so every one of them
+   leaves the flow and slides over the editor as a drawer, with a scrim behind.
+
+   The whole dock moves, not the panel inside it. An earlier version fixed the
+   *panel* and left the dock in the flow at `width: 100%`, which squeezed the
+   editor to zero and reflowed the entire workspace every time the task list
+   was opened — the panel floated correctly over a workspace that had been
+   destroyed behind it. */
 .scrim {
   display: none;
 }
 
-@media (max-width: 768px) {
-  /* The dock becomes the drawer: it leaves the flow and slides over the
-     editor rather than squeezing it. */
-  .sidebar-dock {
+@media (max-width: 900px) {
+  .sidebar-dock,
+  .task-dock,
+  .assistant-dock {
     position: fixed;
     top: 0;
-    left: 0;
     bottom: 0;
     z-index: 30;
-    transform: translateX(-100%);
+    /* Beats the inline width the resize handles write, which is a desktop
+       measurement and has no meaning once these are drawers. */
+    width: min(86vw, 360px) !important;
+    opacity: 1;
     transition: transform var(--dur-slow) var(--ease-out);
+  }
+
+  /* Only once it's on screen — a shadow on a drawer parked off the edge
+     bleeds a grey band down the side of the editor. */
+  .sidebar-dock:has(.sidebar.open),
+  .task-dock.open,
+  .assistant-dock.open {
     box-shadow: var(--shadow-lg);
   }
 
-  .sidebar-dock:has(.sidebar.open) {
-    transform: translateX(0);
+  .sidebar-dock,
+  .task-dock {
+    left: 0;
+    transform: translateX(-100%);
   }
 
-  /* Panels take the whole width on a phone; there's nothing to share it with. */
+  .assistant-dock {
+    right: 0;
+    left: auto;
+    transform: translateX(100%);
+    /* Wider: it holds a conversation rather than a list. */
+    width: min(92vw, 420px) !important;
+  }
+
+  .sidebar-dock:has(.sidebar.open),
   .task-dock.open,
   .assistant-dock.open {
-    width: 100% !important;
+    transform: none;
+  }
+
+  /* Focus mode collapses the docks to zero width on a desktop; here they are
+     out of the flow already, so they just leave. */
+  .app.focus-mode .sidebar-dock,
+  .app.focus-mode .task-dock,
+  .app.focus-mode .assistant-dock {
+    transform: translateX(-100%);
+  }
+
+  .app.focus-mode .assistant-dock {
+    transform: translateX(100%);
+  }
+
+  /* A drawer is the full height of the screen, so its contents clear the
+     notch and the home indicator themselves. */
+  .sidebar,
+  .task-panel,
+  .assistant-panel {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .resize-handle {
@@ -827,8 +897,116 @@ button {
 
   .topbar,
   .toolbar {
-    padding-left: 12px;
-    padding-right: 12px;
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+
+  .topbar {
+    padding-top: max(10px, env(safe-area-inset-top));
+  }
+}
+
+/* ---------- Compact workspace ----------
+   Measured against the workspace container rather than the window, for the
+   same reason the outline is: three open panels can leave the editor phone-
+   width on a 27" display, and that is exactly when these apply. */
+
+/* A split is two columns of prose side by side. Below ~700px there isn't one
+   column's worth of room, never mind two, so they stack instead. */
+@container workspace (max-width: 700px) {
+  .panes.split {
+    flex-direction: column;
+  }
+
+  .panes.split .pane {
+    flex: 1 1 50%;
+    min-height: 0;
+  }
+
+  /* The rule between them turns with them. */
+  .panes.split > .pane-divider {
+    width: auto;
+    height: 1px;
+  }
+
+  /* The focused pane's marker moves to the edge that now faces the reader. */
+  .panes.split .pane.focused .pane-header {
+    box-shadow: inset 0 2px 0 var(--accent);
+  }
+}
+
+/* Twenty-odd formatting buttons wrap into three stacked rows on a phone, which
+   eats the document to say the same thing. One scrolling row instead. */
+@container workspace (max-width: 620px) {
+  .toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .toolbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ---------- Touch ----------
+   Keyed to the pointer, not the width: 36px is comfortable for a mouse at any
+   screen size and small for a fingertip at any screen size. */
+@media (pointer: coarse) {
+  .icon-btn {
+    width: 42px;
+    height: 42px;
+  }
+
+  .toolbar-btn {
+    min-width: 40px;
+    height: 40px;
+  }
+
+  .tree-row {
+    padding: 9px 8px;
+  }
+
+  .task-pill {
+    padding: 7px 12px;
+  }
+
+  .task-row {
+    padding: 10px 6px;
+  }
+
+  /* The tap target grows without the drawn circle changing size — the ring is
+     18px because that is what reads right beside the title. */
+  .task-check {
+    width: 24px;
+    height: 24px;
+    border-width: 2px;
+    margin-top: 0;
+  }
+
+  /* iOS zooms the page whenever a focused field is under 16px. Deckle's chrome
+     is deliberately denser than that, so lift the fields only, and only where
+     a finger is doing the tapping. */
+  input,
+  textarea,
+  select {
+    font-size: max(1rem, var(--fs-md));
+  }
+}
+
+/* ---------- Overlays on a small screen ----------
+   12vh of top padding is breathing room on a laptop and a third of a phone in
+   landscape. Sit them nearer the top and let them use the height. */
+@media (max-width: 640px) {
+  .palette-overlay,
+  .modal-overlay {
+    padding: 6vh 10px max(10px, env(safe-area-inset-bottom));
+  }
+
+  .palette,
+  .modal {
+    width: 100%;
+    max-height: 82vh;
   }
 }
 
@@ -1790,17 +1968,8 @@ button {
   margin: 0;
 }
 
-@media (max-width: 768px) {
-  .assistant-panel {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 50;
-    width: min(92vw, 380px);
-    box-shadow: var(--shadow-lg);
-  }
-}
+/* No mobile rule here: the assistant *dock* becomes the drawer (see "Mobile &
+   tablet drawers"), and the panel just fills whatever it's given. */
 
 /* ---------- Empty state ---------- */
 .empty-state {
@@ -2184,13 +2353,25 @@ button {
   font-size: var(--fs-ui);
 }
 
+/* Also the project headings in the Inbox, which carry the project's dot — so
+   it's a row rather than a bare line of text. */
 .task-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: var(--fs-label);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-faint);
   margin: 12px 0 4px;
+}
+
+/* The first heading sits directly under the quick-add field and doesn't need
+   the separation the ones between groups do. */
+.task-body > .task-section:first-child,
+.task-quickadd + .task-section {
+  margin-top: 4px;
 }
 
 .task-section.overdue {
@@ -2513,17 +2694,7 @@ button {
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
-@media (max-width: 768px) {
-  .task-panel {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    z-index: 50;
-    width: min(92vw, 340px);
-    box-shadow: var(--shadow-lg);
-  }
-}
+/* No mobile rule here either — the task *dock* is the drawer. */
 
 /* ---------- Panel tabs (Tasks | Bookmarks) ---------- */
 .panel-tabs {
@@ -2596,6 +2767,105 @@ button {
   font-size: var(--fs-sm);
   font-family: inherit;
   resize: vertical;
+}
+
+/* ---------- Task updates ----------
+   A dated log under the task's fields: what happened, in order, most recent
+   last. Set as prose rather than as more chrome — these are sentences someone
+   wrote, and the rest of the expanded row is controls. */
+.task-updates {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.task-updates-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+
+.task-comment {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 9px;
+}
+
+.task-comment-body {
+  font-size: var(--fs-ui);
+  line-height: var(--lh-ui);
+  color: var(--text);
+  /* Written with line breaks in it; keep them. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.task-comment-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 3px;
+}
+
+.task-comment-when {
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+}
+
+/* The delete sits quiet until the update is under the pointer — it is the one
+   destructive control in a block of read-only text. */
+.task-comment-del {
+  width: 26px;
+  height: 26px;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.task-comment:hover .task-comment-del,
+.task-comment-del:focus-visible {
+  opacity: 1;
+}
+
+/* No hover on a touch screen, so it can't be the thing that reveals a control. */
+@media (pointer: coarse) {
+  .task-comment-del {
+    opacity: 1;
+  }
+}
+
+.task-comment-input {
+  min-height: 52px;
+}
+
+.task-updates-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.task-comment-add {
+  font-size: var(--fs-sm);
+  padding: 5px 10px;
+}
+
+.task-comment-add:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The count on the collapsed row: there are updates in here worth opening. */
+.task-comment-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 /* ---------- Import / export ---------- */
@@ -2714,6 +2984,174 @@ button {
 /* Two buttons in the export footer, unlike the single-button modals. */
 .modal-footer {
   gap: 8px;
+}
+
+/* =========================================================================
+   Import progress
+   An import can run for a while on a folder or an archive, and the two things
+   a person needs from it are "is it moving" and "what didn't make it". The bar
+   answers the first; the skip list answers the second, by name and by reason,
+   rather than as a count that leaves you guessing.
+   ========================================================================= */
+.import-progress {
+  padding: 12px 10px 4px;
+}
+
+.import-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--fs-ui);
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.import-progress-count {
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+
+/* Filled by scaling, not by animating width: the bar advances many times over
+   a large import, and width would lay the page out again on every step. The
+   track clips and rounds it, so the scaled edge is never seen. */
+.progress-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+/* Reading a dropped folder has no total until the walk ends. A bar that
+   claimed a percentage there would be inventing one, so it sweeps instead. */
+.progress-track.indeterminate .progress-fill {
+  width: 35%;
+  transform: none;
+  animation: progress-sweep 1.1s var(--ease-in-out) infinite;
+}
+
+@keyframes progress-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+/* With motion off the sweep would freeze wherever it stopped — off the end of
+   the track, i.e. an empty bar during a running import. Rest it full and dimmed
+   instead: "working, amount unknown" said without moving. */
+@media (prefers-reduced-motion: reduce) {
+  .progress-track.indeterminate .progress-fill {
+    width: 100%;
+    transform: none;
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+.import-progress-file {
+  margin-top: 8px;
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.import-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: var(--fs-ui);
+  line-height: var(--lh-ui);
+  color: var(--text);
+}
+
+.import-result-done {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.import-result-error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.import-result-detail {
+  margin-top: 3px;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.import-skips {
+  margin: 0 10px 10px;
+}
+
+.import-skips-title {
+  font-size: var(--fs-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  margin-bottom: 6px;
+}
+
+.import-skip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.import-skip {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  font-size: var(--fs-sm);
+}
+
+.import-skip + .import-skip {
+  border-top: 1px solid var(--border);
+}
+
+.import-skip-name {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.import-skip-reason {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  font-size: var(--fs-meta);
+}
+
+.import-skips-more {
+  margin-top: 6px;
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
 }
 
 /* =========================================================================

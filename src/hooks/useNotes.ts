@@ -472,10 +472,21 @@ export function useNotes() {
   // Mirrors `pending`'s keys into state, so tabs can mark themselves unsaved.
   // The ref is the source of truth; this exists only to trigger a render.
   const [dirtyIds, setDirtyIds] = useState<string[]>([])
-  const syncDirty = useCallback(
-    () => setDirtyIds([...pending.current.keys()]),
-    [],
-  )
+  // Only publishes a *change* in which notes are dirty.
+  //
+  // This runs on every keystroke, and a fresh array every time meant a new
+  // `dirtyIds` identity every time — which re-rendered App, and through it the
+  // whole workspace, once per character typed. After the first keystroke on a
+  // note the set is the same set, so almost every one of those renders was
+  // React redrawing the app to tell it nothing had happened.
+  const syncDirty = useCallback(() => {
+    const next = [...pending.current.keys()]
+    setDirtyIds((prev) =>
+      prev.length === next.length && prev.every((id, i) => id === next[i])
+        ? prev
+        : next,
+    )
+  }, [])
 
   const flush = useCallback(async () => {
     if (timer.current) {
@@ -720,12 +731,16 @@ export function useNotes() {
    * report it — nothing is ever overwritten, so an import is always additive.
    */
   const importNotes = useCallback(
-    async (items: ImportItem[], targetFolder = ''): Promise<ImportedNote[]> => {
+    async (
+      items: ImportItem[],
+      targetFolder = '',
+      onProgress?: (done: number, total: number) => void,
+    ): Promise<ImportedNote[]> => {
       if (!dir || !items.length) return []
       // Buffered edits first: the import rebuilds the tree, and a pending save
       // landing afterwards would write against a stale view of it.
       await flush()
-      const imported = await library.importNotes(dir, items, targetFolder)
+      const imported = await library.importNotes(dir, items, targetFolder, onProgress)
       await refresh(dir)
       // Open the first imported note so the upload visibly did something.
       if (imported.length) setActiveId(imported[0].id)

@@ -96,8 +96,9 @@ function EmptyLibrary({
     <div className="empty-state">
       <h2>No notes yet</h2>
       <p>
-        Start one here, or bring in Markdown you already have — nested folders
-        keep their structure and nothing is overwritten.
+        Start one here, or bring in Markdown you already have — loose files, a
+        folder, or a ZIP. Nested folders keep their structure and nothing is
+        overwritten.
       </p>
       <div className="empty-actions">
         <button type="button" className="btn-primary" onClick={onNew}>
@@ -106,7 +107,7 @@ function EmptyLibrary({
         </button>
         <button type="button" className="btn-secondary" onClick={onImport}>
           <Upload size={16} />
-          Import Markdown…
+          Import Markdown or ZIP…
         </button>
       </div>
     </div>

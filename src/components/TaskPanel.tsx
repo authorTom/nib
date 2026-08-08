@@ -78,7 +78,8 @@ export default function TaskPanel({
   // Fall back to the inbox if the viewed project was deleted.
   const activeView = view.startsWith('project:') && !project ? 'inbox' : view
 
-  const inboxCount = openTasks.filter((t) => !t.projectId).length
+  // Counts what the Inbox now shows: everything outstanding, filed or not.
+  const inboxCount = openTasks.length
   const todayCount = openTasks.filter((t) => t.due && t.due <= today).length
 
   const renderList = (list: Task[], showProject = true): ReactNode =>
@@ -92,6 +93,8 @@ export default function TaskPanel({
         onUpdate={(patch) => tasks.updateTask(t.id, patch)}
         onDelete={() => tasks.deleteTask(t.id)}
         onOpenNote={onOpenNote}
+        onAddComment={(body) => tasks.addComment(t.id, body)}
+        onDeleteComment={(commentId) => tasks.deleteComment(t.id, commentId)}
       />
     ))
 
@@ -122,9 +125,38 @@ export default function TaskPanel({
 
   let content: ReactNode
   if (activeView === 'inbox') {
-    const list = sortTasks(openTasks.filter((t) => !t.projectId))
-    content = list.length ? (
-      renderList(list)
+    // Everything still to do, wherever it was filed. A task assigned to a
+    // project used to disappear from the Inbox entirely, which meant the one
+    // view called "everything outstanding" was the only view that couldn't
+    // show you everything outstanding. Filing now groups a task rather than
+    // hiding it, and the per-project views are still there for working inside
+    // one of them.
+    const unfiled = sortTasks(openTasks.filter((t) => !t.projectId))
+    const grouped = store.projects
+      .map((p) => ({
+        project: p,
+        list: sortTasks(openTasks.filter((t) => t.projectId === p.id)),
+      }))
+      .filter((g) => g.list.length > 0)
+
+    content = openTasks.length ? (
+      <>
+        {unfiled.length > 0 && (
+          <>
+            <div className="task-section">Unfiled</div>
+            {renderList(unfiled, false)}
+          </>
+        )}
+        {grouped.map(({ project: p, list }) => (
+          <div key={p.id}>
+            <div className="task-section">
+              <span className="task-project-dot" style={{ background: p.color }} />
+              {p.name}
+            </div>
+            {renderList(list, false)}
+          </div>
+        ))}
+      </>
     ) : (
       <div className="task-empty">
         Inbox zero 🎉 — capture tasks here with Ctrl/Cmd+Shift+A.

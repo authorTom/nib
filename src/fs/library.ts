@@ -154,6 +154,39 @@ function asAsyncEntries(
   }).values()
 }
 
+/**
+ * How many file operations to have in flight at once.
+ *
+ * Every one of these is I/O — a stat, a read, a write — and awaiting them one
+ * after another means the library spends its time waiting rather than working.
+ * Bounded rather than unbounded: `Promise.all` over a few thousand handles at
+ * once will exhaust file descriptors on a local library and flood the server
+ * library with simultaneous requests, which is slower than doing less at once.
+ */
+const IO_CONCURRENCY = 16
+
+/** Map over `items` with at most `limit` operations in flight, preserving order. */
+async function mapConcurrent<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length <= 1) {
+    return items.length ? [await fn(items[0], 0)] : []
+  }
+  const out = new Array<R>(items.length)
+  let next = 0
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (;;) {
+      const index = next++
+      if (index >= items.length) return
+      out[index] = await fn(items[index], index)
+    }
+  })
+  await Promise.all(workers)
+  return out
+}
+
 /** Recursively build the folder/file tree. Hidden entries (dotfiles) are
  *  skipped; empty folders are kept so newly created folders remain visible. */
 export async function buildTree(
@@ -166,27 +199,52 @@ export async function buildTree(
     return applyPrefix((await fetchRemoteTree(dir)) as TreeNode[], prefix)
   }
 
-  const folders: NoteFolder[] = []
-  const files: NoteFile[] = []
+  // Drain the directory first, then do the I/O.
+  //
+  // The walk used to `await` inside the iteration: one getFile() per note,
+  // strictly one at a time, plus a serial descent into every subfolder. The
+  // whole tree is rebuilt after every create, rename, move, delete and import,
+  // so that serial stat storm was the cost sitting behind "creating a note got
+  // slow" — and it grew with the size of the library rather than with the size
+  // of the change. The entries are independent, so they're gathered and then
+  // resolved concurrently.
+  const dirEntries: { id: string; handle: FileSystemDirectoryHandle }[] = []
+  const fileEntries: { id: string; name: string; handle: FileSystemFileHandle }[] = []
 
   for await (const entry of asAsyncEntries(dir)) {
     if (entry.name.startsWith('.')) continue // skip .git, other editors' config, etc.
     const id = joinPath(prefix, entry.name)
 
     if (entry.kind === 'directory') {
-      const children = await buildTree(entry as FileSystemDirectoryHandle, id)
-      folders.push({ kind: 'folder', id, name: entry.name, children })
+      dirEntries.push({ id, handle: entry as FileSystemDirectoryHandle })
     } else if (MD_EXT.test(entry.name)) {
-      const file = await (entry as FileSystemFileHandle).getFile()
-      files.push({
-        kind: 'file',
-        id,
-        name: entry.name,
-        title: baseName(entry.name),
-        updatedAt: file.lastModified,
-      })
+      fileEntries.push({ id, name: entry.name, handle: entry as FileSystemFileHandle })
     }
   }
+
+  const [folders, files] = await Promise.all([
+    mapConcurrent(
+      dirEntries,
+      IO_CONCURRENCY,
+      async ({ id, handle }): Promise<NoteFolder> => ({
+        kind: 'folder',
+        id,
+        name: handle.name,
+        children: await buildTree(handle, id),
+      }),
+    ),
+    mapConcurrent(
+      fileEntries,
+      IO_CONCURRENCY,
+      async ({ id, name, handle }): Promise<NoteFile> => ({
+        kind: 'file',
+        id,
+        name,
+        title: baseName(name),
+        updatedAt: (await handle.getFile()).lastModified,
+      }),
+    ),
+  ])
 
   folders.sort((a, b) => a.name.localeCompare(b.name))
   files.sort((a, b) => a.title.localeCompare(b.title))
@@ -227,20 +285,29 @@ export async function readNote(
   return await (await handle.getFile()).text()
 }
 
-/** Write content to a note file (creating folders/file if needed). */
+/**
+ * Write content to a note file (creating folders/file if needed).
+ *
+ * Deliberately returns nothing. It used to re-open the file it had just written
+ * and stat it for a `lastModified`, which put a second round trip on the
+ * autosave path — the one operation that runs every few hundred milliseconds
+ * while someone is typing — to produce a number the only caller threw away.
+ */
 export async function writeNote(
   dir: FileSystemDirectoryHandle,
   id: string,
   content: string,
-): Promise<number> {
+): Promise<void> {
   // The debounced save runs as you type, so it gets a single-request path
   // rather than write + re-open + download (see writeRemoteFile).
-  if (isRemoteHandle(dir)) return await writeRemoteFile(dir, id, content)
+  if (isRemoteHandle(dir)) {
+    await writeRemoteFile(dir, id, content)
+    return
+  }
 
   const { parentPath, name } = splitPath(id)
   const parent = await getDirByPath(dir, parentPath, true)
   await writeRaw(parent, name, content)
-  return (await (await parent.getFileHandle(name)).getFile()).lastModified
 }
 
 export async function deleteNote(
@@ -288,13 +355,15 @@ export async function createNote(
 ): Promise<NoteFile> {
   const parent = await getDirByPath(dir, folderPath, true)
   const name = await uniqueName(parent, 'Untitled.md')
-  const updatedAt = await writeNote(dir, joinPath(folderPath, name), '')
+  await writeRaw(parent, name, '')
   return {
     kind: 'file',
     id: joinPath(folderPath, name),
     name,
     title: baseName(name),
-    updatedAt,
+    // The caller refreshes the tree immediately, which reads the real mtime off
+    // disk; this is only what the note is stamped with in the meantime.
+    updatedAt: Date.now(),
   }
 }
 
@@ -527,30 +596,88 @@ function sanitizeImportPath(rawPath: string): { folder: string; name: string } |
  * folder structure. Existing notes are never overwritten — a collision gets a
  * " 1", " 2", … suffix, the same rule note creation uses.
  */
+/** Every file name already present in a directory, as one listing. */
+async function listFileNames(dir: FileSystemDirectoryHandle): Promise<Set<string>> {
+  const names = new Set<string>()
+  for await (const entry of asAsyncEntries(dir)) {
+    if (entry.kind === 'file') names.add(entry.name)
+  }
+  return names
+}
+
+/** The collision rule from `uniqueName`, applied against a name set in memory. */
+function uniqueNameIn(taken: Set<string>, desired: string): string {
+  if (!taken.has(desired)) return desired
+  const base = baseName(desired)
+  for (let i = 1; ; i++) {
+    const candidate = `${base} ${i}.md`
+    if (!taken.has(candidate)) return candidate
+  }
+}
+
 export async function importNotes(
   dir: FileSystemDirectoryHandle,
   items: ImportItem[],
   targetFolder = '',
   onProgress?: (done: number, total: number) => void,
 ): Promise<ImportedNote[]> {
-  const imported: ImportedNote[] = []
-  for (const [index, item] of items.entries()) {
+  // Resolve every destination first, then write.
+  //
+  // Naming used to probe the filesystem for each candidate — getFileHandle,
+  // catch, try the next suffix — which on an import into a folder that already
+  // holds the same notes is quadratic in probes and strictly serial. Listing
+  // each destination folder once and resolving collisions against that set in
+  // memory gives the same names for a fraction of the I/O, and leaves the
+  // writes independent of each other so they can go out concurrently.
+  interface Planned {
+    parent: FileSystemDirectoryHandle
+    target: string
+    id: string
+    renamed: boolean
+    content: string
+  }
+
+  const parents = new Map<string, FileSystemDirectoryHandle>()
+  const taken = new Map<string, Set<string>>()
+  const planned: Planned[] = []
+
+  for (const item of items) {
     const parts = sanitizeImportPath(item.path)
     if (!parts) continue
 
     const folderPath = joinPath(targetFolder, parts.folder)
-    const parent = await getDirByPath(dir, folderPath, true)
-    const target = await uniqueName(parent, parts.name)
-    await writeRaw(parent, target, item.content)
+    let parent = parents.get(folderPath)
+    if (!parent) {
+      parent = await getDirByPath(dir, folderPath, true)
+      parents.set(folderPath, parent)
+      taken.set(folderPath, await listFileNames(parent))
+    }
 
-    imported.push({
+    const names = taken.get(folderPath)!
+    const target = uniqueNameIn(names, parts.name)
+    // Claim it, so two files importing to the same name don't both take it.
+    names.add(target)
+
+    planned.push({
+      parent,
+      target,
       id: joinPath(folderPath, target),
-      title: baseName(target),
       renamed: target !== parts.name,
+      content: item.content,
     })
-    onProgress?.(index + 1, items.length)
   }
-  return imported
+
+  let done = 0
+  await mapConcurrent(planned, IO_CONCURRENCY, async (plan) => {
+    await writeRaw(plan.parent, plan.target, plan.content)
+    onProgress?.(++done, planned.length)
+  })
+
+  return planned.map(({ id, target, renamed }) => ({
+    id,
+    title: baseName(target),
+    renamed,
+  }))
 }
 
 // ---- Export ----------------------------------------------------------------
@@ -646,25 +773,40 @@ async function writeTrashIndex(
   await writeRaw(trash, TRASH_INDEX, JSON.stringify(items, null, 2))
 }
 
+/**
+ * Move one note into the bin folder and describe what moved. The index is the
+ * caller's business, so a bulk delete can rewrite it once instead of per note.
+ */
+async function moveIntoTrash(
+  dir: FileSystemDirectoryHandle,
+  trash: FileSystemDirectoryHandle,
+  taken: Set<string>,
+  id: string,
+): Promise<TrashItem> {
+  const { name } = splitPath(id)
+  const content = await readNote(dir, id)
+  const trashName = uniqueNameIn(taken, name)
+  taken.add(trashName)
+  await writeRaw(trash, trashName, content)
+  await deleteNote(dir, id)
+  return {
+    trashName,
+    originalPath: id,
+    title: baseName(name),
+    deletedAt: Date.now(),
+  }
+}
+
 /** Move a note into the recycle bin. */
 export async function trashNote(
   dir: FileSystemDirectoryHandle,
   id: string,
 ): Promise<void> {
-  const { name } = splitPath(id)
-  const content = await readNote(dir, id)
   const trash = await dir.getDirectoryHandle(TRASH_DIR, { create: true })
-  const trashName = await uniqueName(trash, name)
-  await writeRaw(trash, trashName, content)
-  await deleteNote(dir, id)
-
+  const taken = await listFileNames(trash)
+  const item = await moveIntoTrash(dir, trash, taken, id)
   const items = await readTrashIndex(dir)
-  items.push({
-    trashName,
-    originalPath: id,
-    title: baseName(name),
-    deletedAt: Date.now(),
-  })
+  items.push(item)
   await writeTrashIndex(dir, items)
 }
 
@@ -679,10 +821,10 @@ export async function listTrash(
     return []
   }
   const items = await readTrashIndex(dir)
-  const valid: TrashItem[] = []
-  for (const item of items) {
-    if (await fileExists(trash, item.trashName)) valid.push(item)
-  }
+  // One listing beats one existence probe per entry, and a full bin is exactly
+  // when this is opened.
+  const present = await listFileNames(trash)
+  const valid = items.filter((item) => present.has(item.trashName))
   valid.sort((a, b) => b.deletedAt - a.deletedAt)
   return valid
 }
@@ -753,9 +895,20 @@ export async function trashFolder(
 ): Promise<number> {
   const folderHandle = await getDirByPath(dir, folderPath)
   const notes = flattenFiles(await buildTree(folderHandle, folderPath))
+
+  // The index is read and rewritten once for the whole folder. Doing it inside
+  // the loop meant deleting a folder of 200 notes parsed and re-serialised the
+  // bin's JSON 200 times, each pass longer than the last.
+  const trash = await dir.getDirectoryHandle(TRASH_DIR, { create: true })
+  const taken = await listFileNames(trash)
+  const moved: TrashItem[] = []
   for (const note of notes) {
-    await trashNote(dir, note.id)
+    moved.push(await moveIntoTrash(dir, trash, taken, note.id))
   }
+  if (moved.length) {
+    await writeTrashIndex(dir, [...(await readTrashIndex(dir)), ...moved])
+  }
+
   const { parentPath, name } = splitPath(folderPath)
   const parent = await getDirByPath(dir, parentPath)
   await parent.removeEntry(name, { recursive: true })

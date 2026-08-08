@@ -3,7 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/deckle.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <!-- No maximum-scale / user-scalable=no: pinch-zoom is the one accessibility
+         affordance a phone always has, and a writing app is the last place to
+         take it away. viewport-fit=cover lets the layout reach under the notch,
+         which the safe-area padding in global.css then compensates for. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#ffffff" />
     <title>Deckle</title>
   </head>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EMPTY_STORE, loadTaskStore, saveTaskStore } from './store'
 import { nextOccurrence } from './dates'
 import { PALETTE } from '../lib/palette'
-import type { Priority, Recurrence, Task, TaskStore } from './types'
+import type { Priority, Recurrence, Task, TaskComment, TaskStore } from './types'
 
 let counter = 0
 const uid = (prefix: string) =>
@@ -109,6 +109,63 @@ export function useTasks(dir: FileSystemDirectoryHandle | null) {
       mutate((s) => ({
         ...s,
         tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+      }))
+    },
+    [mutate],
+  )
+
+  /** Append a free-text update to a task. Blank bodies are ignored. */
+  const addComment = useCallback(
+    (taskId: string, body: string) => {
+      // Trailing whitespace goes; interior newlines stay, because an update is
+      // prose and a paragraph break in it is meant.
+      const text = body.trim()
+      if (!text) return
+      const comment: TaskComment = {
+        id: uid('c'),
+        body: text,
+        createdAt: Date.now(),
+      }
+      mutate((s) => ({
+        ...s,
+        tasks: s.tasks.map((t) =>
+          t.id === taskId ? { ...t, comments: [...(t.comments ?? []), comment] } : t,
+        ),
+      }))
+    },
+    [mutate],
+  )
+
+  const updateComment = useCallback(
+    (taskId: string, commentId: string, body: string) => {
+      const text = body.trim()
+      if (!text) return
+      mutate((s) => ({
+        ...s,
+        tasks: s.tasks.map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                comments: (t.comments ?? []).map((c) =>
+                  c.id === commentId ? { ...c, body: text } : c,
+                ),
+              }
+            : t,
+        ),
+      }))
+    },
+    [mutate],
+  )
+
+  const deleteComment = useCallback(
+    (taskId: string, commentId: string) => {
+      mutate((s) => ({
+        ...s,
+        tasks: s.tasks.map((t) =>
+          t.id === taskId
+            ? { ...t, comments: (t.comments ?? []).filter((c) => c.id !== commentId) }
+            : t,
+        ),
       }))
     },
     [mutate],
@@ -226,6 +283,9 @@ export function useTasks(dir: FileSystemDirectoryHandle | null) {
       store,
       addTask,
       updateTask,
+      addComment,
+      updateComment,
+      deleteComment,
       toggleComplete,
       deleteTask,
       restoreTask,
@@ -240,6 +300,9 @@ export function useTasks(dir: FileSystemDirectoryHandle | null) {
       store,
       addTask,
       updateTask,
+      addComment,
+      updateComment,
+      deleteComment,
       toggleComplete,
       deleteTask,
       restoreTask,
