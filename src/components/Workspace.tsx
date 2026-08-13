@@ -54,6 +54,8 @@ interface WorkspaceProps {
   onNew: () => void
   onSaveMarkdown: () => void
   onExportPdf: () => void
+  /** Ask where the focused note should live. */
+  onMoveNote: (noteId: string) => void
   onOpenHistory: () => void
   onToggleSidebar: () => void
   onToggleFocus: () => void
@@ -155,6 +157,7 @@ export default function Workspace({
   onNew,
   onSaveMarkdown,
   onExportPdf,
+  onMoveNote,
   onOpenHistory,
   onToggleSidebar,
   onToggleFocus,
@@ -197,6 +200,7 @@ export default function Workspace({
         onNew={onNew}
         onSaveMarkdown={onSaveMarkdown}
         onExportPdf={onExportPdf}
+        onMoveNote={() => focusedNote && onMoveNote(focusedNote.id)}
         onOpenHistory={onOpenHistory}
         onToggleSidebar={onToggleSidebar}
         onToggleFocus={onToggleFocus}

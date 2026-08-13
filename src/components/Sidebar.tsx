@@ -6,6 +6,7 @@ import {
   FilePlus,
   FileText,
   Folder,
+  FolderInput,
   FolderOpen,
   FolderPlus,
   FolderUp,
@@ -47,6 +48,8 @@ interface SidebarProps {
   onRenameFolder: (folderPath: string, newName: string) => void
   onRenameNote: (id: string, newTitle: string) => void
   onMoveNote: (id: string, targetFolderPath: string) => void
+  /** Ask for a destination in a dialog, for when dragging isn't practical. */
+  onRequestMove: (id: string) => void
   onDelete: (id: string) => void
   onSwitchLibrary: () => void
   onOpenTrash: () => void
@@ -63,6 +66,9 @@ interface SidebarProps {
 const ROOT = '__root__'
 /** How long consecutive keystrokes count as one type-ahead search. */
 const TYPEAHEAD_MS = 700
+/** How long a shut folder must be hovered, mid-drag, before it springs open.
+ *  Long enough that passing over one on the way somewhere else doesn't. */
+const SPRING_MS = 550
 
 /** A row as actually drawn: the tree flattened down to what's currently visible. */
 interface Row {
@@ -153,6 +159,7 @@ export default function Sidebar({
   onRenameFolder,
   onRenameNote,
   onMoveNote,
+  onRequestMove,
   onDelete,
   onSwitchLibrary,
   onOpenTrash,
@@ -174,6 +181,11 @@ export default function Sidebar({
   const [focusedId, setFocusedId] = useState<string | null>(null)
   const treeRef = useRef<HTMLDivElement>(null)
   const typeahead = useRef({ buffer: '', at: 0 })
+  /** Shut folder currently being hovered with something in hand, and the timer
+   *  that will open it. See `armSpring`. */
+  const spring = useRef<{ id: string | null; timer?: ReturnType<typeof setTimeout> }>({
+    id: null,
+  })
 
   // Auto-expand the folders leading to the active note.
   useEffect(() => {
@@ -233,6 +245,48 @@ export default function Sidebar({
     setFocusedId(activeId ?? rows[0]?.id ?? null)
   }, [rows, focusedId, activeId])
 
+  const cancelSpring = useCallback(() => {
+    if (spring.current.timer) clearTimeout(spring.current.timer)
+    spring.current = { id: null }
+  }, [])
+
+  /**
+   * Spring-loaded folders: hold a dragged note over a shut folder and it opens,
+   * so a note can be carried down into a subfolder in one gesture instead of
+   * dropping it, expanding the folder, and picking it up again.
+   */
+  const armSpring = useCallback(
+    (folderId: string) => {
+      if (spring.current.id === folderId) return
+      cancelSpring()
+      spring.current = {
+        id: folderId,
+        timer: setTimeout(() => expand(folderId), SPRING_MS),
+      }
+    },
+    [cancelSpring, expand],
+  )
+
+  /**
+   * Unmark the drop target — but only once the drag has really left the tree.
+   *
+   * Every row a drag passes over fires its own `dragleave`, and `dragover`
+   * only keeps coming while the pointer is *moving*: a row that cleared the
+   * mark on its own leave would strobe it off and on all the way down a
+   * folder, and leave it off entirely wherever the drag paused. `relatedTarget`
+   * is the element being entered, so a leave that lands on another row of the
+   * tree is a step sideways, not a departure.
+   */
+  const onTreeDragLeave = useCallback((e: DragEvent) => {
+    const to = e.relatedTarget as Node | null
+    if (to && treeRef.current?.contains(to)) return
+    setDragOverId(null)
+  }, [])
+
+  // A drag can end anywhere — outside the window included — so never leave a
+  // timer running behind an unmounted tree.
+  useEffect(() => cancelSpring, [cancelSpring])
+
   const startCreateFolder = useCallback(
     (parentPath: string) => {
       if (parentPath) expand(parentPath)
@@ -263,6 +317,15 @@ export default function Sidebar({
     [onRenameFolder, onRenameNote],
   )
 
+  /**
+   * The folder a row stands for as a drop target.
+   *
+   * A note row means the folder it lives in — dropping onto a note used to fall
+   * through to the tree background and file the note at the library root, which
+   * is never what dropping it next to its new neighbours was meant to say.
+   */
+  const dropFolderOf = (row: Row) => (row.kind === 'folder' ? row.id : parentOf(row.id))
+
   /** A drop is either a note being dragged within the tree, or files from
    *  outside the browser — the same target folder receives both. */
   const handleDrop = (e: DragEvent, targetFolderPath: string) => {
@@ -270,6 +333,7 @@ export default function Sidebar({
     e.stopPropagation()
     setDragOverId(null)
     setDraggingId(null)
+    cancelSpring()
 
     if (dragHasFiles(e.dataTransfer)) {
       onDropFiles(e.dataTransfer, targetFolderPath)
@@ -367,6 +431,10 @@ export default function Sidebar({
     const indent = { paddingLeft: 8 + row.depth * 14 }
     const isFolder = row.kind === 'folder'
     const isOpen = isFolder && expanded.has(row.id)
+    // Where a drop on this row lands, and which row lights up to say so: a note
+    // row hands the drop to its folder, so that folder's row shows the target.
+    const dropFolder = dropFolderOf(row)
+    const dropId = dropFolder || ROOT
 
     if (renaming === row.id) {
       return (
@@ -422,22 +490,21 @@ export default function Sidebar({
           onDragEnd={() => {
             setDragOverId(null)
             setDraggingId(null)
+            cancelSpring()
           }}
-          onDragOver={
-            isFolder
-              ? (e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setDragOverId(row.id)
-                }
-              : undefined
-          }
-          onDragLeave={
-            isFolder
-              ? () => setDragOverId((cur) => (cur === row.id ? null : cur))
-              : undefined
-          }
-          onDrop={isFolder ? (e) => handleDrop(e, row.id) : undefined}
+          onDragOver={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setDragOverId(dropId)
+            if (isFolder && !isOpen) armSpring(row.id)
+            else cancelSpring()
+          }}
+          // The mark itself is cleared by the tree, not by the row: see
+          // onTreeDragLeave. All a row has to let go of is its spring.
+          onDragLeave={() => {
+            if (spring.current.id === row.id) cancelSpring()
+          }}
+          onDrop={(e) => handleDrop(e, dropFolder)}
         >
           <span className="tree-chevron">
             {isFolder && <ChevronRight size={15} className="chevron-icon" />}
@@ -485,6 +552,21 @@ export default function Sidebar({
                   <FilePlus size={15} />
                 </button>
               </>
+            )}
+            {!isFolder && (
+              <button
+                type="button"
+                className="tree-action"
+                tabIndex={-1}
+                title="Move to another folder"
+                aria-label={`Move ${row.label} to another folder`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRequestMove(row.id)
+                }}
+              >
+                <FolderInput size={14} />
+              </button>
             )}
             <button
               type="button"
@@ -540,16 +622,28 @@ export default function Sidebar({
     }
     return (
       <div className="note-tree">
+        {/* A row rather than a button, because it carries a button of its own:
+            having found a note by searching is exactly when moving it is
+            easiest to ask for, and a note nested inside a button is invalid. */}
         {results.map((r) => (
-          <button
+          <div
             key={r.id}
-            type="button"
+            role="button"
+            tabIndex={0}
             className={`tree-row file-row search-result${
               r.id === activeId ? ' active' : ''
             }`}
             onClick={(e) =>
               onSelect(r.id, rectOf(e.currentTarget.querySelector('.tree-label')))
             }
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return
+              e.preventDefault()
+              onSelect(
+                r.id,
+                rectOf((e.currentTarget as HTMLElement).querySelector('.tree-label')),
+              )
+            }}
           >
             <span className="tree-icon">
               <FileText size={15} />
@@ -563,7 +657,22 @@ export default function Sidebar({
                 <span className="search-result-snippet">{r.snippet}</span>
               )}
             </span>
-          </button>
+            <span className="tree-actions">
+              <button
+                type="button"
+                className="tree-action"
+                tabIndex={-1}
+                title="Move to another folder"
+                aria-label={`Move ${r.title} to another folder`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRequestMove(r.id)
+                }}
+              >
+                <FolderInput size={14} />
+              </button>
+            </span>
+          </div>
         ))}
       </div>
     )
@@ -682,7 +791,7 @@ export default function Sidebar({
             e.preventDefault()
             setDragOverId(ROOT)
           }}
-          onDragLeave={() => setDragOverId((cur) => (cur === ROOT ? null : cur))}
+          onDragLeave={onTreeDragLeave}
           onDrop={(e) => handleDrop(e, '')}
         >
           {rows.length === 0 && creatingIn === null ? (

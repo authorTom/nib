@@ -3,6 +3,7 @@ import {
   Bookmark,
   Columns2,
   FileDown,
+  FolderInput,
   FolderOpen,
   FolderPlus,
   History,
@@ -61,8 +62,10 @@ import {
 } from './lib/importMarkdown'
 import ImportModal, {
   type ImportOutcome,
+  type ImportPending,
   type ImportProgress,
 } from './components/ImportModal'
+import MoveNoteModal from './components/MoveNoteModal'
 import { useTheme } from './hooks/useTheme'
 import { useNotes } from './hooks/useNotes'
 import type { EnterFrom, FlightOrigin } from './lib/motion'
@@ -415,29 +418,20 @@ export default function App() {
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null)
   const [importOutcome, setImportOutcome] = useState<ImportOutcome | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
+  // Files that have been read and are waiting to be told where to go. Held here
+  // rather than in the modal because they are the import itself, and a dialog
+  // that owned them would lose them the moment it unmounted.
+  const [importSelection, setImportSelection] = useState<ImportSelection | null>(null)
 
   const onReadProgress = useCallback<ReadProgress>((done, total, label) => {
     setImportProgress({ phase: 'reading', done, total, label })
   }, [])
 
-  const runImport = useCallback(
-    async (pending: Promise<ImportSelection>, targetFolder: string) => {
-      setImportOutcome(null)
-      setImportError(null)
-      setImportProgress({ phase: 'reading', done: 0, total: 0 })
-      setImportOpen(true)
-      if (compact) closeOverlays()
-      else closeSidebar()
-
+  /** The writing half: everything from here on touches the library. */
+  const writeSelection = useCallback(
+    async (selection: ImportSelection, targetFolder: string) => {
+      setImportSelection(null)
       try {
-        const selection = await pending
-
-        if (!selection.items.length) {
-          setImportProgress(null)
-          setImportOutcome({ imported: 0, renamed: 0, skipped: selection.skipped })
-          return
-        }
-
         const total = selection.items.length
         setImportProgress({ phase: 'writing', done: 0, total })
         // One render per file would cost more than the write does on a large
@@ -458,6 +452,7 @@ export default function App() {
           imported: imported.length,
           renamed: imported.filter((n) => n.renamed).length,
           skipped: selection.skipped,
+          folder: targetFolder,
         })
       } catch (err) {
         setImportProgress(null)
@@ -466,12 +461,58 @@ export default function App() {
         )
       }
     },
-    [importNotes, closeSidebar, closeOverlays, compact],
+    [importNotes],
+  )
+
+  /**
+   * Read a selection, then write it.
+   *
+   * `targetFolder` of `null` means "ask": the files are read, and the modal
+   * offers the library's folders before anything is written. A drop already
+   * named its destination by landing on a folder, so it passes one and goes
+   * straight through.
+   */
+  const runImport = useCallback(
+    async (pending: Promise<ImportSelection>, targetFolder: string | null) => {
+      setImportOutcome(null)
+      setImportError(null)
+      setImportSelection(null)
+      setImportProgress({ phase: 'reading', done: 0, total: 0 })
+      setImportOpen(true)
+      if (compact) closeOverlays()
+      else closeSidebar()
+
+      let selection: ImportSelection
+      try {
+        selection = await pending
+      } catch (err) {
+        setImportProgress(null)
+        setImportError(
+          err instanceof Error ? err.message : 'Something went wrong during the import.',
+        )
+        return
+      }
+
+      setImportProgress(null)
+
+      if (!selection.items.length) {
+        setImportOutcome({ imported: 0, renamed: 0, skipped: selection.skipped })
+        return
+      }
+
+      if (targetFolder === null) {
+        setImportSelection(selection)
+        return
+      }
+
+      await writeSelection(selection, targetFolder)
+    },
+    [writeSelection, closeSidebar, closeOverlays, compact],
   )
 
   const handleImportFiles = useCallback(
     (files: FileList | File[]) => {
-      void runImport(selectionFromFiles(files, onReadProgress), '')
+      void runImport(selectionFromFiles(files, onReadProgress), null)
     },
     [runImport, onReadProgress],
   )
@@ -485,6 +526,26 @@ export default function App() {
     },
     [runImport, onReadProgress],
   )
+
+  /** What the destination step is choosing for, in numbers. */
+  const importPending = useMemo<ImportPending | null>(
+    () =>
+      importSelection
+        ? {
+            notes: importSelection.items.length,
+            skipped: importSelection.skipped.length,
+            nested: importSelection.items.some((i) => i.path.includes('/')),
+          }
+        : null,
+    [importSelection],
+  )
+
+  const closeImport = useCallback(() => {
+    setImportOpen(false)
+    // Cancelling at the destination step throws the read files away — nothing
+    // was written, so there is nothing to keep.
+    setImportSelection(null)
+  }, [])
 
   // AI assistant (right-side panel)
   const getDir = useCallback(() => libraryDir, [libraryDir])
@@ -624,6 +685,33 @@ export default function App() {
       void createFolder(parentPath, name)
     },
     [createFolder],
+  )
+
+  // ---- Moving a note between folders ----
+  // The note the move dialog is asking about. Held as an id, not the note
+  // itself, so a rename or a refresh underneath it can't leave the dialog
+  // talking about a note that no longer exists.
+  const [movingId, setMovingId] = useState<string | null>(null)
+  const movingNote = useMemo(
+    () => notes.find((n) => n.id === movingId) ?? null,
+    [notes, movingId],
+  )
+
+  /** Folder part of a note id — "Projects/idea.md" → "Projects". */
+  const folderOf = (id: string) => (id.includes('/') ? id.slice(0, id.lastIndexOf('/')) : '')
+
+  const handleMoveNote = useCallback(
+    (id: string, targetFolder: string) => {
+      if (folderOf(id) === targetFolder) return
+      void moveNote(id, targetFolder).then(() =>
+        showToast(
+          targetFolder
+            ? `Moved to ${targetFolder}`
+            : `Moved to ${libraryName ?? 'the library root'}`,
+        ),
+      )
+    },
+    [moveNote, showToast, libraryName],
   )
 
   const handleDeleteFolder = useCallback(
@@ -837,6 +925,13 @@ export default function App() {
         run: () => closeTab(activeNote.id),
       })
       list.push({
+        id: 'move-note',
+        label: 'Move current note to another folder…',
+        icon: FolderInput,
+        keywords: 'move relocate folder organise organize file into put',
+        run: () => setMovingId(activeNote.id),
+      })
+      list.push({
         id: 'history',
         label: 'Version history',
         icon: History,
@@ -959,7 +1054,8 @@ export default function App() {
           onDeleteFolder={handleDeleteFolder}
           onRenameFolder={handleRenameFolder}
           onRenameNote={handleRenameNote}
-          onMoveNote={(id, target) => void moveNote(id, target)}
+          onMoveNote={handleMoveNote}
+          onRequestMove={setMovingId}
           onDelete={handleDelete}
           onSwitchLibrary={() => void connect()}
           onOpenTrash={() => void openTrash()}
@@ -1035,6 +1131,7 @@ export default function App() {
         onNew={() => void createNote()}
         onSaveMarkdown={handleSaveMarkdown}
         onExportPdf={() => activeNote && exportToPdf(activeNote.title)}
+        onMoveNote={setMovingId}
         onOpenHistory={() => void openHistory()}
         onToggleSidebar={toggleSidebar}
         onToggleFocus={toggleFocus}
@@ -1146,9 +1243,25 @@ export default function App() {
       <ImportModal
         open={importOpen}
         progress={importProgress}
+        pending={importPending}
         outcome={importOutcome}
         error={importError}
-        onClose={() => setImportOpen(false)}
+        tree={tree}
+        libraryName={libraryName}
+        onImportInto={(folder) => {
+          if (importSelection) void writeSelection(importSelection, folder)
+        }}
+        onClose={closeImport}
+      />
+
+      <MoveNoteModal
+        open={movingNote !== null}
+        noteTitle={movingNote?.title ?? ''}
+        currentFolder={movingNote ? folderOf(movingNote.id) : ''}
+        tree={tree}
+        libraryName={libraryName}
+        onMove={(folder) => movingNote && handleMoveNote(movingNote.id, folder)}
+        onClose={() => setMovingId(null)}
       />
 
       <HistoryModal
