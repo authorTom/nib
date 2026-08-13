@@ -3,6 +3,7 @@ import {
   Columns2,
   FileDown,
   FileText,
+  FolderInput,
   History,
   Maximize2,
   Menu,
@@ -31,6 +32,8 @@ interface TopBarProps {
   onNew: () => void
   onSaveMarkdown: () => void
   onExportPdf: () => void
+  /** Open the dialog that files this note in another folder. */
+  onMoveNote: () => void
   onOpenHistory: () => void
   onToggleSidebar: () => void
   onToggleFocus: () => void
@@ -63,6 +66,7 @@ export default function TopBar({
   onNew,
   onSaveMarkdown,
   onExportPdf,
+  onMoveNote,
   onOpenHistory,
   onToggleSidebar,
   onToggleFocus,
@@ -126,11 +130,18 @@ export default function TopBar({
       run: onOpenAppearance,
     },
     {
+      id: 'move',
+      label: 'Move to another folder…',
+      Icon: FolderInput,
+      disabled: !hasNote,
+      separated: true,
+      run: onMoveNote,
+    },
+    {
       id: 'history',
       label: 'Version history',
       Icon: History,
       disabled: !hasNote,
-      separated: true,
       run: onOpenHistory,
     },
     {

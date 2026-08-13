@@ -2943,6 +2943,137 @@ button {
 }
 
 /* =========================================================================
+   Folder picker
+   The one place "where should this go" is answered — by the move dialog and
+   by an import alike. It is a list rather than a tree you walk down: the
+   whole library is short enough to show, and a destination you can see is
+   quicker to pick than one you have to open your way to. The filter takes
+   over when it isn't, and doubles as the field that names a folder that
+   doesn't exist yet.
+   ========================================================================= */
+.folder-picker {
+  margin: 0 10px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.folder-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-faint);
+}
+
+.folder-picker-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: var(--fs-md);
+  color: var(--text);
+  outline: none;
+}
+
+.folder-picker-list {
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.folder-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 7px;
+  color: var(--text);
+  text-align: left;
+  font-size: var(--fs-md);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.folder-picker-row:hover {
+  background: var(--bg-hover);
+}
+
+/* The chosen row, not merely the hovered one — the arrow keys move this, and
+   it is what the footer button will act on. */
+.folder-picker-row.selected {
+  background: var(--accent-soft);
+}
+
+.folder-picker-row.selected .folder-picker-icon {
+  color: var(--accent);
+}
+
+.folder-picker-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+.folder-picker-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-picker-path {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-picker-meta {
+  margin-left: auto;
+  padding-left: 8px;
+  flex-shrink: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+}
+
+/* A folder that will be created by the very act of putting something in it,
+   coloured so it doesn't read as one that is already there. */
+.folder-picker-row.is-new .folder-picker-icon,
+.folder-picker-row.is-new .folder-picker-meta {
+  color: var(--accent);
+}
+
+.folder-picker-empty {
+  padding: 18px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--fs-sm);
+}
+
+.modal-footer .btn-primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* A search result is two or three lines tall, so its actions sit with the
+   title rather than floating in the middle of the snippet. */
+.search-result .tree-actions {
+  align-self: flex-start;
+  margin-top: 1px;
+}
+
+/* =========================================================================
    Docked panels
    The dock owns the width so it can animate between zero and the user's
    chosen size; the panel inside just fills it.

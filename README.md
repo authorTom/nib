@@ -49,7 +49,15 @@ never leave your browser.
   volume on your own server instead, password protected, reachable from any
   browser or device with nothing stored locally.
 - **Folder tree** — browse nested subfolders, create folders, and
-  **drag-and-drop** notes between them.
+  **drag-and-drop** notes between them: drop onto a folder, onto any note
+  already inside one, or hold over a shut folder and it springs open so you can
+  carry a note further down in one go.
+- **Move to another folder…** — when dragging isn't practical (a long tree, a
+  collapsed destination, a phone), move a note by naming its destination
+  instead: from the note's row in the tree, from a search result, from the
+  editor menu, or from the command palette. Pick a folder from the whole
+  library, or type a name — including a nested one like `Archive/2026` — and it
+  is created on the way.
 - **Command palette** — `Ctrl`/`Cmd`+`K` opens a fast, fully keyboard-driven
   palette for commands, formatting, and jumping to any note.
 - **Search across the library** — find notes by title, path, or file contents.
@@ -92,6 +100,9 @@ never leave your browser.
 - **Responsive** — desktop, tablet and mobile (collapsible note drawer).
 - **Import** — drop `.md` files, or a whole folder of them, anywhere on the note
   tree; nested folders keep their structure and nothing is ever overwritten.
+  Importing from the picker asks where the notes should go first — any folder in
+  the library, or a new one you name — and tells you how many it found before
+  writing anything.
 - **Export** — download a note as `.md`, export it to PDF via a clean print
   layout, or take the whole knowledge base as a ZIP: every note in its folder
   structure plus your tasks and bookmarks, optionally with the recycle bin and

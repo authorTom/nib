@@ -1,6 +1,9 @@
-import { AlertTriangle, Check, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { AlertTriangle, Check, Upload, X } from 'lucide-react'
+import FolderPicker from './FolderPicker'
 import { useEnterExit } from '../hooks/useEnterExit'
 import { OVERLAY_EXIT_MS } from '../lib/motion'
+import type { TreeNode } from '../fs/library'
 import type { ImportSkip } from '../lib/importMarkdown'
 
 /**
@@ -25,13 +28,36 @@ export interface ImportOutcome {
   /** Landed under a different name because something was already there. */
   renamed: number
   skipped: ImportSkip[]
+  /** Where they landed ("" = the library root); absent if nothing was written. */
+  folder?: string
+}
+
+/**
+ * Files that have been read and are waiting to be told where to go.
+ *
+ * The destination is asked *after* the read rather than before it, because
+ * only then is there anything worth saying: how many notes were found, and
+ * whether the selection carried folders of its own.
+ */
+export interface ImportPending {
+  notes: number
+  skipped: number
+  /** True when the files bring folder structure with them. */
+  nested: boolean
 }
 
 interface ImportModalProps {
   open: boolean
   progress: ImportProgress | null
+  /** Set while the destination is being chosen; nothing has been written yet. */
+  pending: ImportPending | null
   outcome: ImportOutcome | null
   error: string | null
+  /** The library's folders, to choose a destination from. */
+  tree: TreeNode[]
+  libraryName: string | null
+  /** Go ahead and write the read files into this folder ("" = library root). */
+  onImportInto: (targetFolder: string) => void
   onClose: () => void
 }
 
@@ -41,17 +67,33 @@ const MAX_LISTED_SKIPS = 40
 export default function ImportModal({
   open,
   progress,
+  pending,
   outcome,
   error,
+  tree,
+  libraryName,
+  onImportInto,
   onClose,
 }: ImportModalProps) {
   const anim = useEnterExit(open, OVERLAY_EXIT_MS)
+  /** Where this import will land. Every import starts at the root: it is the
+   *  one destination that is never a surprise. */
+  const [target, setTarget] = useState('')
+
+  useEffect(() => {
+    if (pending) setTarget('')
+  }, [pending])
+
   if (!anim.render) return null
 
   const running = progress !== null
   const close = () => {
     if (running) return // don't walk away from a half-written import
     onClose()
+  }
+  const start = () => {
+    if (!pending) return
+    onImportInto(target)
   }
 
   // Reading a drop has no total until the walk finishes, so the bar runs
@@ -90,6 +132,35 @@ export default function ImportModal({
         </div>
 
         <div className="modal-body">
+          {pending && (
+            <>
+              <p className="modal-note">
+                <strong>
+                  {pending.notes} note{pending.notes === 1 ? '' : 's'} ready to
+                  import
+                </strong>
+                {pending.skipped > 0 && (
+                  <>
+                    {' '}
+                    ({pending.skipped} file{pending.skipped === 1 ? '' : 's'} will
+                    be skipped)
+                  </>
+                )}
+                . Choose where {pending.notes === 1 ? 'it goes' : 'they go'} —{' '}
+                {pending.nested
+                  ? 'the folders they came in are kept inside it, and nothing is overwritten.'
+                  : 'nothing is ever overwritten.'}
+              </p>
+              <FolderPicker
+                tree={tree}
+                rootLabel={libraryName ?? 'Library root'}
+                value={target}
+                onChange={setTarget}
+                onSubmit={start}
+              />
+            </>
+          )}
+
           {running && (
             <div className="import-progress">
               <div className="import-progress-head">
@@ -156,7 +227,7 @@ export default function ImportModal({
                     {outcome.imported
                       ? `Imported ${outcome.imported} note${
                           outcome.imported === 1 ? '' : 's'
-                        }`
+                        } into ${outcome.folder || libraryName || 'the library root'}`
                       : 'Nothing was imported'}
                   </strong>
                   {outcome.renamed > 0 && (
@@ -201,14 +272,26 @@ export default function ImportModal({
         </div>
 
         <div className="modal-footer">
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={close}
-            disabled={running}
-          >
-            {running ? 'Importing…' : 'Done'}
-          </button>
+          {pending ? (
+            <>
+              <button type="button" className="btn-quiet" onClick={close}>
+                Cancel
+              </button>
+              <button type="button" className="btn-primary" onClick={start}>
+                <Upload size={15} />
+                Import {pending.notes} note{pending.notes === 1 ? '' : 's'}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={close}
+              disabled={running}
+            >
+              {running ? 'Importing…' : 'Done'}
+            </button>
+          )}
         </div>
       </div>
     </div>

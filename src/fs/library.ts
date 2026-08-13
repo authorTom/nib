@@ -128,8 +128,18 @@ function splitPath(id: string): { parentPath: string; name: string } {
   return { parentPath: id.slice(0, idx), name: id.slice(idx + 1) }
 }
 
+/**
+ * Join two path parts, tolerating an empty one on either side.
+ *
+ * Either half can legitimately be empty — the library root has no name, and an
+ * imported file that came with no folder of its own contributes nothing to the
+ * middle — and a naive join turns those into "Projects/" and then
+ * "Projects//idea.md", an id that matches no note in the tree.
+ */
 function joinPath(parentPath: string, name: string): string {
-  return parentPath ? `${parentPath}/${name}` : name
+  if (!parentPath) return name
+  if (!name) return parentPath
+  return `${parentPath}/${name}`
 }
 
 async function getDirByPath(
@@ -140,6 +150,9 @@ async function getDirByPath(
   if (!path) return dir
   let cur = dir
   for (const segment of path.split('/')) {
+    // An empty segment is not a directory called "" — it is a stray slash, and
+    // asking a backend for it is undefined at best.
+    if (!segment) continue
     cur = await cur.getDirectoryHandle(segment, { create })
   }
   return cur
