@@ -1,0 +1,46 @@
+# Build every pull request, and main.
+#
+# `npm run build` is `tsc -b && vite build`, so this type-checks the whole app
+# and then proves the bundle actually builds — the two ways a change lands
+# broken without anyone noticing locally. It is deliberately the same command a
+# person runs, not a CI-only variant that can drift away from it.
+#
+# This matters more now that builds are released under a version number: a bad
+# merge used to be a bad :latest, which the next push replaced. It is now a
+# published 1.x that someone may already have pulled.
+#
+# The image build (docker.yml) stays separate. It runs on main and on tags —
+# after this has had its say — because building two architectures under QEMU
+# takes minutes, and that is too slow to want on every push to a branch.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A second push to the same branch makes the first run irrelevant; stop it
+# rather than pay for it. Never cancels a run on main.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the Dockerfile's build stage, so a build that passes here
+          # is a build that passes in the image.
+          node-version: 22
+          cache: npm
+
+      # `ci`, not `install`: it installs exactly what package-lock.json pins and
+      # fails if the two have drifted, which is the point of running it here.
+      - run: npm ci
+
+      - run: npm run build
