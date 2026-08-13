@@ -19,6 +19,10 @@ WORKDIR /app
 
 COPY server ./server
 COPY --from=build /app/dist ./dist
+# Not for its dependencies — there are none to install — but for its version
+# field, which server/version.mjs reads at boot to report which Deckle this is.
+# Without it the API's health check and the startup log say "unknown".
+COPY package.json ./package.json
 
 # Where the server library lives when DECKLE_SERVER_LIBRARY=true. Created here (owned
 # by the unprivileged "node" user the server runs as) so a named volume mounted

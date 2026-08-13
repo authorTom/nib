@@ -8,6 +8,8 @@
 // Descriptions are written for a model reading them cold: what the endpoint is
 // for and when to reach for it, not just what its fields are called.
 
+import { VERSION } from './version.mjs'
+
 const NOTE_PATH_DESCRIPTION =
   'Note path relative to the library root, using "/" separators, e.g. "Projects/idea.md". ' +
   'The ".md" extension is added if missing. Hidden (dot) folders are reserved by Deckle and rejected.'
@@ -46,7 +48,9 @@ export function buildOpenApi(libraryName) {
     openapi: '3.1.0',
     info: {
       title: 'Deckle API',
-      version: '1.0.0',
+      // The build serving the document, not the contract it describes. The
+      // contract is the `/api/v1` path, and it moves only when it breaks.
+      version: VERSION,
       summary: 'Read and write a Deckle knowledge base over HTTP.',
       description:
         'Deckle stores a knowledge base as plain Markdown files in folders, plus a task planner ' +
