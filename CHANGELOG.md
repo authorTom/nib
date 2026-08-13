@@ -8,7 +8,27 @@ here.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **A queue for the assistant.** Give it a job and it works in the background
+  while you carry on writing: *Assistant queue* in the command palette, or the
+  third tab beside Tasks and Bookmarks. Runs execute one at a time by default,
+  or up to four at once if you'd rather several went in parallel.
+
+  Every run writes into an **Assistant inbox** folder, which is the safety
+  boundary: inside it the assistant works freely, and anything outside stops the
+  run and shows you the same diff the chat panel would. Deleting always stops,
+  wherever it is. A run that genuinely can't proceed can ask you a question and
+  park until you answer it.
+
+  The queue makes it plain which runs need you — a badge on the tab counts only
+  those, because "three things are running" is not something you have to act on.
+  Finished runs list the notes they wrote, and any run can be resumed (carrying
+  on with what it had already done) or run again from scratch. A run interrupted
+  by closing the tab says so, and offers to carry on.
+
+  Runs are stored in your library under `.deckle/runs/`, so they survive a
+  reload and travel with your notes.
 
 ## [1.2.0] — 2026-08-13
 

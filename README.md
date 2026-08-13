@@ -86,6 +86,14 @@ its memory of how you work, which is Markdown you can read and delete.
   Anthropic, OpenAI or [OpenRouter](https://openrouter.ai) API key, or fully
   locally via [LM Studio](https://lmstudio.ai). Reasoning models show a
   collapsible "Thought process"; API keys are stored only in your browser.
+- **Assistant queue** — hand the assistant a job and carry on writing: it runs
+  in the background, one at a time or several at once, and its output lands in
+  an **Assistant inbox** folder. That folder is the safety boundary — inside it
+  the assistant writes freely; anything outside stops the run and asks you to
+  approve the exact change, and deletions always ask. A run that needs a
+  decision can ask you a question and wait. The tab badges only the runs that
+  need you; finished runs list what they wrote, and any run can be resumed or
+  re-run. Runs live in `.deckle/runs/` inside the library.
 - **Assistant memory** — the assistant keeps what it learns about how you work
   as ordinary Markdown in a hidden `.deckle/memory/` folder: one file per fact,
   with a one-line index. Only that index is sent with every message; the rest is
@@ -457,6 +465,7 @@ src/
   hooks/                 # Theme, notes tree, autosave, move, search, history
   components/            # Sidebar, editor, palette, assistant, panels, modals
   memory/                # Assistant memory (.deckle/memory/*.md)
+  queue/                 # Background run queue (.deckle/runs/), executed in the browser
   lib/                   # Markdown, PDF and ZIP export; Markdown import; BM25
   styles/                # theme / global / editor / print CSS
 ```
@@ -492,6 +501,10 @@ Relevant when you enable the server library.
   the note to the same recycle bin, and overwriting snapshots the replaced
   version into the same history — so a bad agent run is undone from the app's
   own dialogs rather than from a backup.
+- **Queued runs are fenced into one folder.** A background run may write freely
+  only inside the Assistant inbox; anything outside it stops and waits for you
+  to approve the exact change, and deletions stop wherever they are. Everything
+  it does is still snapshotted to `.history` and recoverable from `.trash`.
 - **The assistant writes without asking in exactly one place.** Its own memory,
   under `.deckle/memory/`, which touches no note. Everything that changes a note
   still goes through the diff. The memory is plain Markdown you can read, edit
