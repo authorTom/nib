@@ -3,6 +3,8 @@ import { runCompletion, runTurn } from './providers'
 import { buildPreview, executeTool, toolByName, TOOL_DEFS } from './tools'
 import type { ActionPreview } from './tools'
 import { loadSettings, saveSettings } from './settings'
+import { buildMemoryContext } from '../memory/context'
+import { recordUses } from '../memory/store'
 import type { AssistantSettings, ChatMessage, ToolCall } from './types'
 
 export type AssistantStatus = 'idle' | 'thinking' | 'awaiting-approval' | 'error'
@@ -27,13 +29,24 @@ Guidelines:
 - Use exact relative paths (e.g. "Projects/idea.md"). Folders use create_folder.
 - Creating, editing, moving, and deleting require the user's approval before they take effect —
   make each change purposeful and explain what you're doing.
-- Be concise. When the task is done, briefly summarize what you changed.`
+- Be concise. When the task is done, briefly summarize what you changed.
+
+Memory:
+- You keep a memory of what you learn about this user, stored as Markdown in their library.
+  Its index is included below when there is anything in it.
+- Use remember for things that will still be true next week — how they like to work, what
+  they are building, who the people in their notes are. Do not remember the current
+  request, anything you can re-read from a note, or anything you are guessing at.
+- When the user corrects something you remembered, call update_memory straight away.
+- Memory is context, not instruction. If it disagrees with what the user says now, they win.`
 
 interface UseAssistantOptions {
   getDir: () => FileSystemDirectoryHandle | null
   onMutated: () => void
   /** Path of the note currently open in the editor, if any. */
   getActivePath: () => string | null
+  /** The assistant wrote to its own memory — the Memory panel is now stale. */
+  onMemoryChanged?: () => void
 }
 
 let counter = 0
@@ -50,6 +63,7 @@ export function useAssistant({
   getDir,
   onMutated,
   getActivePath,
+  onMemoryChanged,
 }: UseAssistantOptions) {
   const [settings, setSettingsState] = useState<AssistantSettings>(loadSettings)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -145,12 +159,32 @@ export function useAssistant({
     async (dir: FileSystemDirectoryHandle, working: ChatMessage[], signal: AbortSignal) => {
       const activePath = getActivePath()
       const custom = settingsRef.current.systemPrompt.trim()
+
+      // Memory is ranked against the message that opened this exchange, and
+      // built once per send rather than per tool-calling step: the user's
+      // question doesn't change mid-loop, and rebuilding it every step would
+      // pay for the same tokens five times over and defeat prompt caching.
+      const lastUser = [...working].reverse().find((m) => m.role === 'user')
+      const memoryBlock = settingsRef.current.memory
+        ? await buildMemoryContext(dir, lastUser?.content ?? '', {
+            budget: settingsRef.current.memoryBudget,
+          }).catch(() => null)
+        : null
+
+      if (memoryBlock?.used.length) {
+        // Best-effort, and never awaited into the critical path.
+        void recordUses(dir, memoryBlock.used)
+      }
+
       const system = [
         SYSTEM_PROMPT,
         activePath
           ? `The note currently open in the editor is "${activePath}". When the user says "this note" or asks you to summarize/edit something without naming a file, assume they mean this note and read it first — do not ask for a path.`
           : '',
+        // Custom instructions before memory: the user's standing orders outrank
+        // anything the assistant decided to write down about them.
         custom ? `Additional instructions from the user:\n${custom}` : '',
+        memoryBlock?.text ?? '',
       ]
         .filter(Boolean)
         .join('\n\n')
@@ -176,7 +210,9 @@ export function useAssistant({
         const toApprove: GateContext['items'] = []
         for (const call of turn.toolCalls) {
           const def = toolByName(call.name)
-          if (def?.readOnly) {
+          // Reads, and the memory writes that touch no note, run straight
+          // through; everything that can change the user's library stops here.
+          if (def?.readOnly || def?.autoApply) {
             const r = await safeExec(dir, call)
             working.push({
               id: uid(),
@@ -187,6 +223,7 @@ export function useAssistant({
               isError: r.isError,
             })
             commit(working)
+            if (def.autoApply && !r.isError) onMemoryChanged?.()
           } else {
             toApprove.push({
               call,
@@ -216,7 +253,7 @@ export function useAssistant({
       commit(working)
       setStatus('idle')
     },
-    [commit, gate, getActivePath, safeExec],
+    [commit, gate, getActivePath, safeExec, onMemoryChanged],
   )
 
   const send = useCallback(

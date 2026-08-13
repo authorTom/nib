@@ -85,6 +85,13 @@ never leave your browser.
   Anthropic, OpenAI or [OpenRouter](https://openrouter.ai) API key, or fully
   locally via [LM Studio](https://lmstudio.ai). Reasoning models show a
   collapsible "Thought process"; API keys are stored only in your browser.
+- **Assistant memory** — the assistant keeps what it learns about how you work
+  as ordinary Markdown in a hidden `.deckle/memory/` folder: one file per fact,
+  with a one-line index. Only that index is sent with every message; the rest is
+  fetched when it is relevant to what you asked, inside a token budget, and
+  recording something it already knows updates that memory rather than adding a
+  near-duplicate. Read, edit, pin or delete any of it from *Assistant memory* in
+  the command palette — or open the files in any editor. Off with one tick box.
 - **Semantic library search (optional)** — enable embeddings in the assistant
   settings (OpenAI or a local LM Studio embedding model) and library search
   matches by meaning, not just keywords. Vectors are cached locally and only
@@ -445,7 +452,8 @@ src/
   bookmarks/             # Bookmark state and persistence (.deckle/bookmarks.json)
   hooks/                 # Theme, notes tree, autosave, move, search, history
   components/            # Sidebar, editor, palette, assistant, panels, modals
-  lib/                   # Markdown, PDF and ZIP export; Markdown import
+  memory/                # Assistant memory (.deckle/memory/*.md)
+  lib/                   # Markdown, PDF and ZIP export; Markdown import; BM25
   styles/                # theme / global / editor / print CSS
 ```
 
@@ -480,6 +488,10 @@ Relevant when you enable the server library.
   the note to the same recycle bin, and overwriting snapshots the replaced
   version into the same history — so a bad agent run is undone from the app's
   own dialogs rather than from a backup.
+- **The assistant writes without asking in exactly one place.** Its own memory,
+  under `.deckle/memory/`, which touches no note. Everything that changes a note
+  still goes through the diff. The memory is plain Markdown you can read, edit
+  and delete — from *Assistant memory* in the command palette, or in any editor.
 
 > **HTTPS matters in production.** The File System Access API and OPFS require a
 > secure context — `http://localhost` is fine for local use, but anything served

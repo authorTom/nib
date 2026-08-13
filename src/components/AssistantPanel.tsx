@@ -321,6 +321,21 @@ function SettingsView({
         </>
       )}
 
+      <label className="field-row">
+        <input
+          type="checkbox"
+          checked={draft.memory}
+          onChange={(e) => set({ memory: e.target.checked })}
+        />
+        <span>Memory — remember what it learns about you</span>
+      </label>
+      <span className="assistant-note">
+        Kept as Markdown in <code>.deckle/memory/</code> inside your library, so it
+        syncs and backs up with your notes. Only a one-line index is sent on every
+        message; the rest is fetched when it's relevant. Read, edit and delete it
+        from the Memory panel.
+      </span>
+
       {(draft.provider === 'anthropic' || draft.provider === 'lmstudio') && (
         <label className="field-row">
           <input

@@ -20,6 +20,10 @@ export interface AssistantSettings {
   embeddingModel: string
   /** Optional custom instructions appended to the system prompt. */
   systemPrompt: string
+  /** Let the assistant keep a memory in `.deckle/memory/`. */
+  memory: boolean
+  /** Ceiling for the memory block, in estimated tokens. */
+  memoryBudget: number
 }
 
 export interface ToolCall {
@@ -66,4 +70,13 @@ export interface ToolDef {
   parameters: Record<string, unknown>
   /** Read-only tools run without asking; the rest go through the approval gate. */
   readOnly: boolean
+  /**
+   * Writes that run without approval anyway.
+   *
+   * The gate exists to protect the user's notes. The assistant's own memory
+   * lives in `.deckle/memory/`, touches no note, and is reviewable and
+   * deletable in the Memory panel — gating it would put a dialog between the
+   * assistant and its own scratch paper.
+   */
+  autoApply?: boolean
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bookmark,
+  Brain,
   Columns2,
   FileDown,
   FolderInput,
@@ -40,6 +41,7 @@ import LibraryGate from './components/LibraryGate'
 import InkFilter from './components/InkFilter'
 import ShortcutsModal from './components/ShortcutsModal'
 import AboutModal, { type StorageKind } from './components/AboutModal'
+import MemoryModal from './components/MemoryModal'
 import { useAssistant } from './ai/useAssistant'
 import { useTasks } from './tasks/useTasks'
 import { useBookmarks } from './bookmarks/useBookmarks'
@@ -197,6 +199,11 @@ export default function App() {
   const [themePickerOpen, setThemePickerOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [memoryOpen, setMemoryOpen] = useState(false)
+  // Bumped whenever the assistant writes to its memory, so an open panel
+  // refetches rather than showing what it read a minute ago.
+  const [memoryRevision, setMemoryRevision] = useState(0)
+  const bumpMemory = useCallback(() => setMemoryRevision((n) => n + 1), [])
 
   /**
    * Which backend is holding the notes, for the About box to name.
@@ -571,6 +578,7 @@ export default function App() {
     getDir,
     onMutated: onAssistantMutated,
     getActivePath,
+    onMemoryChanged: bumpMemory,
   })
 
   // Keyboard shortcuts: Ctrl/Cmd+K opens the palette,
@@ -879,6 +887,13 @@ export default function App() {
         hint: '?',
         keywords: 'keys keyboard shortcuts bindings help reference cheatsheet',
         run: () => setShortcutsOpen(true),
+      },
+      {
+        id: 'memory',
+        label: 'Assistant memory',
+        icon: Brain,
+        keywords: 'memory remember context assistant learned facts forget',
+        run: () => setMemoryOpen(true),
       },
       {
         id: 'about',
@@ -1339,6 +1354,13 @@ export default function App() {
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
         mod={MOD_KEY}
+      />
+
+      <MemoryModal
+        open={memoryOpen}
+        dir={libraryDir}
+        revision={memoryRevision}
+        onClose={() => setMemoryOpen(false)}
       />
 
       <AboutModal

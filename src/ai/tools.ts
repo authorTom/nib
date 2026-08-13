@@ -1,6 +1,10 @@
 import * as library from '../fs/library'
 import * as history from '../fs/history'
 import { searchLibrary } from './retrieval'
+import * as memory from '../memory/store'
+import { findDuplicate } from '../memory/context'
+import { rankBm25, tokenize, toRankDoc } from '../lib/bm25'
+import type { MemoryKind } from '../memory/types'
 import type { TreeNode } from '../fs/library'
 import type { AssistantSettings, ToolCall, ToolDef } from './types'
 
@@ -107,6 +111,107 @@ export const TOOL_DEFS: ToolDef[] = [
     },
     readOnly: false,
   },
+
+  // ---- Memory -------------------------------------------------------------
+  // Descriptions are written for a model reading them cold, and say when *not*
+  // to reach for the tool as well as when to: a memory store fills with noise
+  // far more easily than it fills with anything useful.
+  {
+    name: 'search_memory',
+    description:
+      'Search your memory for what you have learned about this user and their library. The memory index is already in your context — use this when the index hints at something and you want the details, or to check whether you already know a fact before remembering it again.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'What you are trying to recall.' },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    },
+    readOnly: true,
+  },
+  {
+    name: 'read_memory',
+    description:
+      'Read one memory in full, by the path shown in the memory index (e.g. "preferences/british-spelling.md").',
+    parameters: {
+      type: 'object',
+      properties: { path: { type: 'string', description: 'Memory path.' } },
+      required: ['path'],
+      additionalProperties: false,
+    },
+    readOnly: true,
+  },
+  {
+    name: 'remember',
+    description:
+      'Store something worth knowing next time: a stable preference, a convention the user works by, an ongoing project, or a fact about a person. Remember durable things, not passing ones — not what was just asked, not the contents of a note you can re-read, and not anything you are guessing at. Say why you believe it in the body. If a memory of this already exists it is updated rather than duplicated.',
+    parameters: {
+      type: 'object',
+      properties: {
+        summary: {
+          type: 'string',
+          description:
+            'One line, the whole point of the memory. This is what you will see in the index every turn, so make it stand on its own.',
+        },
+        body: {
+          type: 'string',
+          description:
+            'The detail, as Markdown. Include why you believe it — the evidence, not just the claim.',
+        },
+        kind: {
+          type: 'string',
+          enum: ['preference', 'project', 'person', 'fact', 'convention'],
+          description: 'Which bucket this belongs in. Defaults to "fact".',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'A few short tags, for grouping and retrieval.',
+        },
+        pinned: {
+          type: 'boolean',
+          description:
+            'True only for things true on every single turn — who the user is, how they want to be written to. Pinned memories cost tokens on every request, so pin sparingly.',
+        },
+      },
+      required: ['summary', 'body'],
+      additionalProperties: false,
+    },
+    readOnly: false,
+    autoApply: true,
+  },
+  {
+    name: 'update_memory',
+    description:
+      'Correct or extend a memory you already hold. Prefer this to remembering a near-duplicate, and use it the moment the user contradicts something you have stored.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Memory path from the index.' },
+        summary: { type: 'string', description: 'Replacement one-line summary.' },
+        body: { type: 'string', description: 'Replacement body.' },
+        pinned: { type: 'boolean', description: 'Change whether it is always in context.' },
+      },
+      required: ['path'],
+      additionalProperties: false,
+    },
+    readOnly: false,
+    autoApply: true,
+  },
+  {
+    name: 'forget',
+    description:
+      'Delete a memory that is wrong, stale, or was never worth keeping. The file is removed from the library; the user can also do this from the Memory panel.',
+    parameters: {
+      type: 'object',
+      properties: { path: { type: 'string', description: 'Memory path from the index.' } },
+      required: ['path'],
+      additionalProperties: false,
+    },
+    readOnly: false,
+    autoApply: true,
+  },
 ]
 
 export function toolByName(name: string): ToolDef | undefined {
@@ -179,6 +284,67 @@ export async function executeTool(
     case 'delete_folder':
       await library.trashFolder(dir, str(a, 'path'))
       return `Moved folder ${str(a, 'path')} to the recycle bin`
+
+    // ---- Memory -----------------------------------------------------------
+    case 'search_memory': {
+      const all = await memory.loadMemories(dir)
+      if (!all.length) return 'Nothing remembered yet.'
+      const docs = all.map((m) =>
+        toRankDoc(m, [
+          ...tokenize(m.summary).flatMap((t) => [t, t, t]),
+          ...tokenize(m.tags.join(' ')).flatMap((t) => [t, t]),
+          ...tokenize(m.body),
+        ]),
+      )
+      const hits = rankBm25(docs, str(a, 'query')).slice(0, 5)
+      if (!hits.length) return 'No memory matches that.'
+      return hits
+        .map(({ item }) => `${item.path} — ${item.summary}\n${item.body}`)
+        .join('\n\n---\n\n')
+    }
+    case 'read_memory': {
+      const path = str(a, 'path')
+      const all = await memory.loadMemories(dir)
+      const found = all.find((m) => m.path === path)
+      if (!found) return `No memory at ${path}. Check the index for the exact path.`
+      return `${found.summary}\n\n${found.body}`
+    }
+    case 'remember': {
+      const summary = str(a, 'summary')
+      const body = str(a, 'body')
+      // Update rather than duplicate. The model is told this happens, so a
+      // "remembered" result for something it already knew is not a surprise.
+      const existing = findDuplicate(await memory.loadMemories(dir), summary, body)
+      if (existing) {
+        const merged = await memory.updateMemory(dir, existing.path, { summary, body })
+        // Both outcomes end with the path and nothing after it, so a model that
+        // wants to pin or amend what it just wrote doesn't have to parse prose
+        // to find out where it went.
+        return `You already knew this, so it was updated rather than duplicated: ${merged.path}`
+      }
+      const created = await memory.createMemory(dir, {
+        summary,
+        body,
+        kind: (a.kind as MemoryKind) ?? undefined,
+        tags: Array.isArray(a.tags) ? (a.tags as string[]) : undefined,
+        pinned: a.pinned === true,
+      })
+      return `Remembered: ${created.path}`
+    }
+    case 'update_memory': {
+      const path = str(a, 'path')
+      const patch: Parameters<typeof memory.updateMemory>[2] = {}
+      if (typeof a.summary === 'string') patch.summary = a.summary
+      if (typeof a.body === 'string') patch.body = a.body
+      if (typeof a.pinned === 'boolean') patch.pinned = a.pinned
+      await memory.updateMemory(dir, path, patch)
+      return `Updated ${path}`
+    }
+    case 'forget': {
+      const path = str(a, 'path')
+      await memory.deleteMemory(dir, path)
+      return `Forgot ${path}`
+    }
     default:
       throw new Error(`Unknown tool: ${call.name}`)
   }

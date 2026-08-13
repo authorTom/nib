@@ -43,6 +43,20 @@ export async function readDataJson(
   return null
 }
 
+/**
+ * A folder inside the metadata folder — `.deckle/memory`, and whatever comes
+ * next. Reading a missing one throws, which callers read as "nothing stored
+ * yet"; pass `create` only when about to write.
+ */
+export async function dataSubdir(
+  dir: FileSystemDirectoryHandle,
+  name: string,
+  create = false,
+): Promise<FileSystemDirectoryHandle> {
+  const folder = await dir.getDirectoryHandle(DATA_DIR, { create })
+  return await folder.getDirectoryHandle(name, { create })
+}
+
 /** Write a JSON file into the metadata folder, creating the folder if needed. */
 export async function writeDataJson(
   dir: FileSystemDirectoryHandle,

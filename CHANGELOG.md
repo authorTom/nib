@@ -8,7 +8,21 @@ here.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Assistant memory.** The assistant can now remember what it learns about how
+  you work — kept as ordinary Markdown files in `.deckle/memory/` inside your
+  library, so it syncs, backs up and exports with your notes, and opens in any
+  editor. Read, edit, pin and delete any of it from **Assistant memory** in the
+  command palette; turn the whole thing off in the assistant's settings.
+
+  Only a one-line index goes into every message. Bodies are fetched when they
+  are relevant to what you asked, within a token budget, so a large memory does
+  not quietly become a large bill. Recording something it already knows updates
+  the existing memory instead of adding a near-duplicate.
+
+  Memory writes are the one kind of write the assistant makes without asking:
+  they touch no note, and the panel is the receipt.
 
 ## [1.1.0] — 2026-08-13
 
