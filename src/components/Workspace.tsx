@@ -65,6 +65,7 @@ interface WorkspaceProps {
   onOpenImport: () => void
   onOpenExport: () => void
   onOpenAppearance: () => void
+  onOpenAbout: () => void
   onInlineAsk: (
     instruction: string,
     selectedText: string,
@@ -167,6 +168,7 @@ export default function Workspace({
   onOpenImport,
   onOpenExport,
   onOpenAppearance,
+  onOpenAbout,
   onInlineAsk,
   onAddTask,
   onAddBookmark,
@@ -210,6 +212,7 @@ export default function Workspace({
         onOpenImport={onOpenImport}
         onOpenExport={onOpenExport}
         onOpenAppearance={onOpenAppearance}
+        onOpenAbout={onOpenAbout}
         onToggleSplit={onToggleSplit}
         isSplit={split}
         saveState={saveState}

@@ -7,6 +7,7 @@ import {
   FolderOpen,
   FolderPlus,
   History,
+  Info,
   ListTodo,
   Maximize2,
   Minimize2,
@@ -38,6 +39,7 @@ import TaskPanel from './components/TaskPanel'
 import LibraryGate from './components/LibraryGate'
 import InkFilter from './components/InkFilter'
 import ShortcutsModal from './components/ShortcutsModal'
+import AboutModal, { type StorageKind } from './components/AboutModal'
 import { useAssistant } from './ai/useAssistant'
 import { useTasks } from './tasks/useTasks'
 import { useBookmarks } from './bookmarks/useBookmarks'
@@ -194,6 +196,20 @@ export default function App() {
 
   const [themePickerOpen, setThemePickerOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
+
+  /**
+   * Which backend is holding the notes, for the About box to name.
+   *
+   * Derived the same way startup chooses one: a remote handle is the server
+   * library, and of the two local backends only Chromium gets the folder
+   * picker — everywhere else falls back to the browser's private storage.
+   */
+  const storageKind: StorageKind = usingServerLibrary
+    ? 'server'
+    : supportsDiskPicker()
+      ? 'disk'
+      : 'browser'
 
   // Tasks & bookmarks share a tabbed panel docked on the left (beside the
   // note list); the assistant stays on the right.
@@ -864,6 +880,13 @@ export default function App() {
         keywords: 'keys keyboard shortcuts bindings help reference cheatsheet',
         run: () => setShortcutsOpen(true),
       },
+      {
+        id: 'about',
+        label: 'About Deckle',
+        icon: Info,
+        keywords: 'about version build release licence license credits info',
+        run: () => setAboutOpen(true),
+      },
     ]
 
     // Every unlocked theme is reachable by name, but hidden so six extra rows
@@ -1141,6 +1164,7 @@ export default function App() {
         onOpenImport={openImport}
         onOpenExport={() => setExportOpen(true)}
         onOpenAppearance={() => setThemePickerOpen(true)}
+        onOpenAbout={() => setAboutOpen(true)}
         onInlineAsk={assistant.complete}
         onAddTask={addTaskFromText}
         onAddBookmark={captureSelectionBookmark}
@@ -1315,6 +1339,13 @@ export default function App() {
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
         mod={MOD_KEY}
+      />
+
+      <AboutModal
+        open={aboutOpen}
+        onClose={() => setAboutOpen(false)}
+        libraryName={libraryName}
+        storage={storageKind}
       />
 
       <InkFilter />

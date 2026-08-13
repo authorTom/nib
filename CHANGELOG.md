@@ -8,7 +8,13 @@ here.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **An About box.** The version was only in the keyboard sheet, which is no help
+  unless you already know the shortcut. *About Deckle* — in the editor menu and
+  the command palette — names the version, the library you have open, and which
+  of the three backends is holding it, with links to this changelog and the
+  source.
 
 ## [1.0.0] — 2026-08-13
 
