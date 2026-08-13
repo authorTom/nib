@@ -2956,6 +2956,124 @@ button {
 }
 
 /* =========================================================================
+   About
+   Three questions and no more: what this is, which version, and where the
+   notes are. Narrower than the working dialogs because it holds a paragraph,
+   not a list — a 560px box around six lines reads as an empty room.
+   ========================================================================= */
+.about-modal {
+  width: min(92vw, 400px);
+}
+
+.about-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 20px 8px;
+}
+
+.about-masthead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.about-mark {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.about-names {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.about-wordmark {
+  font-size: var(--fs-lg);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+/* The one string in here anyone needs to copy, so it is selectable and set in
+   lining figures rather than shrunk into decoration. */
+.about-version {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+}
+
+.about-lede {
+  margin: 0;
+  font-size: var(--fs-ui);
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.about-facts {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.about-fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: var(--fs-sm);
+}
+
+.about-fact dt {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.about-fact dd {
+  margin: 0;
+  color: var(--text);
+  text-align: right;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.about-links {
+  display: flex;
+  gap: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.about-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-sm);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.about-link:hover {
+  text-decoration: underline;
+}
+
+.about-footer {
+  justify-content: flex-start;
+}
+
+.about-licence {
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+}
+
+/* =========================================================================
    Folder picker
    The one place "where should this go" is answered — by the move dialog and
    by an import alike. It is a list rather than a tree you walk down: the

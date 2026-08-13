@@ -5,6 +5,7 @@ import {
   FileText,
   FolderInput,
   History,
+  Info,
   Maximize2,
   Menu,
   Moon,
@@ -43,6 +44,8 @@ interface TopBarProps {
   onOpenImport: () => void
   onOpenExport: () => void
   onOpenAppearance: () => void
+  /** Open the About box — what this is, and which version. */
+  onOpenAbout: () => void
   onToggleSplit: () => void
   isSplit: boolean
   saveState: SaveState
@@ -76,6 +79,7 @@ export default function TopBar({
   onOpenImport,
   onOpenExport,
   onOpenAppearance,
+  onOpenAbout,
   onToggleSplit,
   isSplit,
   saveState,
@@ -177,6 +181,12 @@ export default function TopBar({
       Icon: Trash,
       separated: true,
       run: onOpenTrash,
+    },
+    {
+      id: 'about',
+      label: 'About Deckle',
+      Icon: Info,
+      run: onOpenAbout,
     },
   ]
 
