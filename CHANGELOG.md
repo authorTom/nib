@@ -10,6 +10,24 @@ here.
 
 Nothing yet.
 
+## [1.2.0] — 2026-08-13
+
+### Added
+
+- **Assistant memory.** The assistant can now remember what it learns about how
+  you work — kept as ordinary Markdown files in `.deckle/memory/` inside your
+  library, so it syncs, backs up and exports with your notes, and opens in any
+  editor. Read, edit, pin and delete any of it from **Assistant memory** in the
+  command palette; turn the whole thing off in the assistant's settings.
+
+  Only a one-line index goes into every message. Bodies are fetched when they
+  are relevant to what you asked, within a token budget, so a large memory does
+  not quietly become a large bill. Recording something it already knows updates
+  the existing memory instead of adding a near-duplicate.
+
+  Memory writes are the one kind of write the assistant makes without asking:
+  they touch no note, and the panel is the receipt.
+
 ## [1.1.0] — 2026-08-13
 
 ### Added
@@ -70,6 +88,7 @@ a command palette; light and dark mode with seven palettes; a responsive layout
 with drawers on a phone; and a token-authenticated REST API at `/api/v1`
 described by a self-served OpenAPI 3.1 document.
 
-[Unreleased]: https://github.com/authorTom/deckle/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/authorTom/deckle/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/authorTom/deckle/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/authorTom/deckle/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/authorTom/deckle/releases/tag/v1.0.0

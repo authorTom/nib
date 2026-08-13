@@ -19,6 +19,8 @@ export const DEFAULT_SETTINGS: AssistantSettings = {
   semanticSearch: false,
   embeddingModel: '',
   systemPrompt: '',
+  memory: true,
+  memoryBudget: 1500,
 }
 
 export function loadSettings(): AssistantSettings {

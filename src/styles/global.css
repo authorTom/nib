@@ -2956,6 +2956,152 @@ button {
 }
 
 /* =========================================================================
+   Memory
+   The assistant's own notes about the user, and the means to disagree with
+   them. Denser than the note tree because it is read rarely and in full: each
+   entry states its claim, its evidence, and where it lives on disk.
+   ========================================================================= */
+.memory-modal {
+  width: min(94vw, 640px);
+  max-height: 78vh;
+}
+
+.memory-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.memory-group {
+  margin: 0 4px 18px;
+}
+
+.memory-group-title {
+  margin: 0 6px 6px;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.memory-item {
+  padding: 10px 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: var(--bg-elevated);
+}
+
+.memory-item-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.memory-summary {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-md);
+  font-weight: 500;
+}
+
+.memory-actions {
+  display: inline-flex;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+/* Always visible, unlike the tree's: this dialog exists to be acted on, and
+   hiding the delete behind a hover would be coy about the one thing people
+   open it to do. */
+.memory-item .tree-action {
+  opacity: 1;
+  transform: none;
+}
+
+.memory-item .tree-action.active {
+  color: var(--accent);
+}
+
+/* The body doubles as the edit affordance, so it is a button that doesn't
+   look like one until you reach for it. */
+.memory-body {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+  text-align: left;
+  white-space: pre-wrap;
+  cursor: text;
+}
+
+.memory-body:hover {
+  border-color: var(--border);
+  background: var(--bg);
+}
+
+.memory-textarea {
+  width: 100%;
+  min-height: 96px;
+  margin-top: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+  resize: vertical;
+  outline: none;
+}
+
+.memory-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.memory-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 0 6px;
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+}
+
+.memory-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.memory-tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+
+/* No auto margin on the date: pushed right, it orphans onto a line of its own
+   the moment the path and tags fill the row. Flowing with everything else
+   wraps tidily and reads the same. */
+.memory-uses,
+.memory-date {
+  font-variant-numeric: tabular-nums;
+}
+
+/* =========================================================================
    About
    Three questions and no more: what this is, which version, and where the
    notes are. Narrower than the working dialogs because it holds a paragraph,
