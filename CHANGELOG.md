@@ -8,6 +8,10 @@ here.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.1.0] — 2026-08-13
+
 ### Added
 
 - **An About box.** The version was only in the keyboard sheet, which is no help
@@ -66,5 +70,6 @@ a command palette; light and dark mode with seven palettes; a responsive layout
 with drawers on a phone; and a token-authenticated REST API at `/api/v1`
 described by a self-served OpenAPI 3.1 document.
 
-[Unreleased]: https://github.com/authorTom/deckle/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/authorTom/deckle/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/authorTom/deckle/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/authorTom/deckle/releases/tag/v1.0.0
