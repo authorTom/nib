@@ -3243,12 +3243,16 @@ button {
   border-color: var(--accent);
 }
 
+/* Bordered all the way round and coloured through, which is how every other
+   error in the app is drawn (.import-result-error, .library-login-error). It
+   arrived here as a left-edge accent bar — a shape used nowhere else in this
+   stylesheet, so it read as imported rather than designed. */
 .run-error {
   padding: 10px 12px;
-  border-left: 3px solid var(--danger);
-  border-radius: 0 8px 8px 0;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
   background: var(--bg-elevated);
-  color: var(--text-muted);
+  color: var(--danger);
   font-size: var(--fs-ui);
   line-height: var(--lh-ui);
 }
