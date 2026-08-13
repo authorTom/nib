@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bookmark,
+  Bot,
   Brain,
   Columns2,
   FileDown,
@@ -36,12 +37,14 @@ import ThemePicker from './components/ThemePicker'
 import ResizeCrew from './components/ResizeCrew'
 import { EASTER_EGG_KEYWORDS } from './themes/themes'
 import AssistantPanel from './components/AssistantPanel'
-import TaskPanel from './components/TaskPanel'
+import TaskPanel, { type PanelTab } from './components/TaskPanel'
 import LibraryGate from './components/LibraryGate'
 import InkFilter from './components/InkFilter'
 import ShortcutsModal from './components/ShortcutsModal'
 import AboutModal, { type StorageKind } from './components/AboutModal'
 import MemoryModal from './components/MemoryModal'
+import RunModal from './components/RunModal'
+import { useQueue } from './queue/useQueue'
 import { useAssistant } from './ai/useAssistant'
 import { useTasks } from './tasks/useTasks'
 import { useBookmarks } from './bookmarks/useBookmarks'
@@ -222,7 +225,7 @@ export default function App() {
   // note list); the assistant stays on the right.
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [tasksOpen, setTasksOpen] = useState(false)
-  const [panelTab, setPanelTab] = useState<'tasks' | 'bookmarks'>('tasks')
+  const [panelTab, setPanelTab] = useState<PanelTab>('tasks')
 
   /** Shut every drawer — what the scrim does, and what a phone needs on open. */
   const closeOverlays = useCallback(() => {
@@ -245,7 +248,7 @@ export default function App() {
 
   /** Open the panel on a tab; clicking the active tab's button closes it. */
   const openPanelTab = useCallback(
-    (which: 'tasks' | 'bookmarks') => {
+    (which: PanelTab) => {
       if (tasksOpen && panelTab === which) {
         setTasksOpen(false)
         return
@@ -264,6 +267,7 @@ export default function App() {
     () => openPanelTab('bookmarks'),
     [openPanelTab],
   )
+  const toggleQueue = useCallback(() => openPanelTab('queue'), [openPanelTab])
 
   // Docked panels stay mounted for the length of their slide-out, so closing
   // one animates instead of vanishing. Matches --dur-slow.
@@ -581,6 +585,22 @@ export default function App() {
     onMemoryChanged: bumpMemory,
   })
 
+  // The assistant's background queue. It executes here, in the browser, with
+  // the key already in this browser; the run records it writes are the contract
+  // a server-side worker will later read.
+  const [openRunId, setOpenRunId] = useState<string | null>(null)
+  const queue = useQueue({
+    dir: libraryDir,
+    settings: assistant.settings,
+    onMutated: onAssistantMutated,
+  })
+
+  /** Has a provider actually been configured? Queueing without one just fails. */
+  const assistantReady =
+    assistant.settings.provider === 'lmstudio'
+      ? !!assistant.settings.lmstudioUrl
+      : !!assistant.settings[`${assistant.settings.provider}Key` as const]
+
   // Keyboard shortcuts: Ctrl/Cmd+K opens the palette,
   // Ctrl/Cmd+Shift+F toggles focus, Ctrl/Cmd+\ splits, Escape exits focus.
   useEffect(() => {
@@ -889,6 +909,13 @@ export default function App() {
         run: () => setShortcutsOpen(true),
       },
       {
+        id: 'queue',
+        label: 'Assistant queue',
+        icon: Bot,
+        keywords: 'queue background job run agent task assistant batch',
+        run: toggleQueue,
+      },
+      {
         id: 'memory',
         label: 'Assistant memory',
         icon: Brain,
@@ -1038,6 +1065,7 @@ export default function App() {
     toggleAssistant,
     toggleTasks,
     toggleBookmarks,
+    toggleQueue,
     captureSelectionBookmark,
     activeNote,
     handleDelete,
@@ -1115,6 +1143,10 @@ export default function App() {
           open={renderTasks}
           tab={panelTab}
           onTabChange={setPanelTab}
+          queue={queue}
+          onOpenRun={setOpenRunId}
+          activePath={activeNote?.id ?? null}
+          assistantReady={assistantReady}
           onClose={() => setTasksOpen(false)}
           tasks={tasks}
           bookmarks={bookmarks}
@@ -1354,6 +1386,13 @@ export default function App() {
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
         mod={MOD_KEY}
+      />
+
+      <RunModal
+        runId={openRunId}
+        queue={queue}
+        onClose={() => setOpenRunId(null)}
+        onOpenNote={(path) => handleSelect(path)}
       />
 
       <MemoryModal
