@@ -171,6 +171,20 @@ Updating:
 docker compose pull && docker compose up -d
 ```
 
+That takes the newest release. To decide for yourself how far each pull moves
+you, set `DECKLE_IMAGE` in `.env` to whichever tag matches your appetite:
+
+| Tag | What you get |
+| --- | --- |
+| `:latest` | The newest release. The default |
+| `:1` | Newest `1.x` — fixes and new features, never a breaking change |
+| `:1.4` | Newest `1.4.x` — fixes only |
+| `:1.4.2` | Exactly that release. Never moves, so a rollback is a one-line edit |
+| `:edge` | The tip of `main`, unreleased. For trying things, not for deployments |
+
+Every release is described in the [changelog](CHANGELOG.md), and what those
+numbers promise is spelled out under [Versioning](#versioning).
+
 **Running the image directly**, without compose. Note that the image itself
 ships with the server library **off**, so this is a static file server with notes
 on your device:
@@ -246,7 +260,8 @@ Everything else — theme, AI provider, embeddings — is set in the app itself.
 This app was called Nib, and its configuration was named `NIB_*` — `NIB_PASSWORD`,
 `NIB_SERVER_VAULT`, and so on. Those names are still read, so pulling a new image
 over an existing `.env` keeps working, and the server logs which deprecated names
-it honoured at startup. Rename them at your convenience.
+it honoured at startup. Rename them at your convenience — they are read for the
+whole of 1.x and removed no earlier than 2.0.0.
 
 Two things deliberately keep their old names, because changing them would move
 data rather than rename it:
@@ -263,6 +278,40 @@ On first load with a server library available, pick **On this server** and enter
 the password. To switch away later, open the command palette → *Sign out of the
 server library* (or *Leave the server library* when no password is set). The same
 entry reads *Switch to the server library* when you're using a local one.
+
+## Versioning
+
+Deckle follows [Semantic Versioning](https://semver.org). The number exists to
+answer one question before you pull: **do I need to read anything first?**
+
+- **Major** (`1.4.2` → `2.0.0`) — something you depend on changed. A removed or
+  incompatibly changed `/api/v1` endpoint, a configuration name dropped rather
+  than aliased, a library layout an older Deckle can no longer read, a storage
+  backend or browser no longer supported, or a change to the container's volume
+  path or port. If an upgrade needs you to do something, it is a major.
+- **Minor** (`1.4.2` → `1.5.0`) — new things; your deployment keeps working
+  untouched. New endpoints and fields, new configuration with safe defaults, new
+  features and UI.
+- **Patch** (`1.4.2` → `1.4.3`) — bug fixes, performance, accessibility, docs,
+  and security fixes that need no configuration change.
+
+A redesign is not a breaking change. What is promised is the API, the
+configuration names, the on-disk layout and the shape of the deployment —
+not that the app looks the same.
+
+Three numbers move independently, and it's worth knowing which is which:
+
+| Number | Where you see it | Moves when |
+| --- | --- | --- |
+| The app's version | `?` in the app, the startup log, `GET /api/v1/health` | Every release |
+| The API version | The `/api/v1` path itself | Only when the API contract breaks |
+| Data-format versions | `version` inside `.deckle/tasks.json` and `bookmarks.json` | Only when that file's shape changes |
+
+So a 2.0.0 does not renumber your task file, and a new task-file format does not
+force a major — each says only what it is about.
+
+Every release is in the [changelog](CHANGELOG.md), and on
+[Releases](https://github.com/authorTom/deckle/releases).
 
 ## API
 
@@ -322,7 +371,7 @@ curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
 
 | Method | Path | What it does |
 | --- | --- | --- |
-| `GET` | `/health` | Liveness, and which library is served |
+| `GET` | `/health` | Liveness, the Deckle version, and which library is served |
 | `GET` | `/openapi.json` | This API's OpenAPI 3.1 description |
 | `GET` | `/notes` | List notes (`folder`, `limit`, `offset`, `sort`, `include_content`) |
 | `POST` | `/notes` | Create a note; collisions get a numbered name rather than overwriting |

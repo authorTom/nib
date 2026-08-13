@@ -150,6 +150,10 @@ export default function ShortcutsModal({ open, onClose, mod }: Props) {
             Markdown works as you type it — the shorthand above is the whole
             trick, and it goes to disk as the same characters you typed.
           </span>
+          {/* This sheet is the closest thing Deckle has to an About box, and a
+              version nobody can read is a version nobody can quote in a bug
+              report. Selectable, so it can be copied into one. */}
+          <span className="shortcut-version">Deckle {__APP_VERSION__}</span>
         </div>
       </div>
     </div>

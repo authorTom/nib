@@ -1059,12 +1059,25 @@ button {
 
 .shortcuts-footer {
   justify-content: flex-start;
+  align-items: baseline;
+  gap: 16px;
 }
 
 .shortcut-footnote {
   font-size: var(--fs-sm);
   line-height: var(--lh-ui);
   color: var(--text-muted);
+}
+
+/* Which Deckle this is. Pushed to the far end and dimmed: it earns its place by
+   being findable when someone files a bug, not by being read every time. */
+.shortcut-version {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 @media (max-width: 620px) {

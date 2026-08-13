@@ -37,6 +37,7 @@ import { createLibraryApi, TooLargeError } from './library-api.mjs'
 import { createLibraryStore } from './library-store.mjs'
 import { BadPathError } from './paths.mjs'
 import { resolveLegacyEnv } from './legacy-env.mjs'
+import { VERSION } from './version.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 
@@ -307,6 +308,10 @@ if (LIBRARY_ENABLED) {
 }
 
 server.listen(PORT, () => {
+  // First line, before anything else: whoever is reading these logs is usually
+  // reading them because something is wrong, and the first question is always
+  // which build this is.
+  console.log(`[deckle] Deckle ${VERSION}`)
   console.log(`[deckle] listening on http://0.0.0.0:${PORT}`)
   console.log(`[deckle] serving ${PUBLIC_DIR}`)
 

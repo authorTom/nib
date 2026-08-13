@@ -25,6 +25,7 @@ import {
   normalizeNotePath,
 } from './library-store.mjs'
 import { buildOpenApi } from './openapi.mjs'
+import { VERSION } from './version.mjs'
 import { writeZip } from './zip.mjs'
 
 const PREFIX = '/api/v1'
@@ -554,9 +555,19 @@ export function createApi({
 
     // -- service ---------------------------------------------------------
     if (!head || head === 'health') {
+      // Two version numbers, deliberately: `api` is the contract this caller is
+      // written against and only moves when that contract breaks, `version` is
+      // the build serving it. A client needs the first to know it still fits,
+      // and the second to say what it was talking to.
       return {
         status: 200,
-        body: { ok: true, service: 'deckle', api: 'v1', library: libraryName },
+        body: {
+          ok: true,
+          service: 'deckle',
+          version: VERSION,
+          api: 'v1',
+          library: libraryName,
+        },
       }
     }
 
