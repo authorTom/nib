@@ -33,8 +33,9 @@ browser. Self-host it and the same library is reachable from a laptop, a phone o
 Safari with nothing stored on the device.
 
 The AI assistant follows the same principle: it can read and rewrite your whole
-library, but every change is shown as a diff you approve first, and your API keys
-never leave your browser.
+library, but every change to a note is shown as a diff you approve first, and
+your API keys never leave your browser. The one thing it writes on its own is
+its memory of how you work, which is Markdown you can read and delete.
 
 ## What it does
 
@@ -80,7 +81,7 @@ never leave your browser.
   restored or permanently removed.
 - **AI assistant** — an optional right-side chat panel that can search and read
   your whole library and create, edit, move or delete notes and folders. Every
-  change is shown as a diff and must be approved before it runs. Ask questions
+  change to a note is shown as a diff and must be approved before it runs. Ask questions
   about your notes and it finds and cites the relevant ones. Works with an
   Anthropic, OpenAI or [OpenRouter](https://openrouter.ai) API key, or fully
   locally via [LM Studio](https://lmstudio.ai). Reasoning models show a
@@ -103,6 +104,9 @@ never leave your browser.
   strikethrough, inline code, headings (H1–H3), lists and quotes.
 - **Focus mode** — hide all chrome for distraction-free writing
   (`Ctrl`/`Cmd`+`Shift`+`F`, or `Esc` to exit).
+- **About** — *About Deckle* in the editor menu or the command palette names the
+  version you are running, the library you have open, and which of the three
+  backends is holding it.
 - **Light and dark mode** — defaults to your system preference; choice persists.
 - **Responsive** — desktop, tablet and mobile (collapsible note drawer).
 - **Import** — drop `.md` files, or a whole folder of them, anywhere on the note
@@ -112,8 +116,8 @@ never leave your browser.
   writing anything.
 - **Export** — download a note as `.md`, export it to PDF via a clean print
   layout, or take the whole knowledge base as a ZIP: every note in its folder
-  structure plus your tasks and bookmarks, optionally with the recycle bin and
-  version history for a full backup.
+  structure plus your tasks, bookmarks and the assistant's memory, optionally
+  with the recycle bin and version history for a full backup.
 - **REST API (optional)** — a token-authenticated API at `/api/v1` so an agent
   or script can search, read, write and organise your knowledge base, described
   by an OpenAPI 3.1 document the server publishes itself. See
@@ -310,7 +314,7 @@ Three numbers move independently, and it's worth knowing which is which:
 
 | Number | Where you see it | Moves when |
 | --- | --- | --- |
-| The app's version | `?` in the app, the startup log, `GET /api/v1/health` | Every release |
+| The app's version | *About Deckle* in the app (also the `?` sheet), the startup log, `GET /api/v1/health` | Every release |
 | The API version | The `/api/v1` path itself | Only when the API contract breaks |
 | Data-format versions | `version` inside `.deckle/tasks.json` and `bookmarks.json` | Only when that file's shape changes |
 
@@ -521,7 +525,8 @@ docker run --rm -v nib-vault:/data -v "$PWD:/out" \
   alpine tar czf /out/deckle-backup.tar.gz -C /data .
 ```
 
-That includes the hidden `.deckle` (tasks, bookmarks), `.history` and `.trash`
+That includes the hidden `.deckle` (tasks, bookmarks, assistant memory),
+`.history` and `.trash`
 folders, so it is a complete library. Or mount a host directory instead of the
 named volume (`./notes:/data`, which must be writable by uid 1000) and point
 your editor or existing backup tool straight at it.
