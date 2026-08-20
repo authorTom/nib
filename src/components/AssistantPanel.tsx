@@ -4,15 +4,27 @@ import {
   Brain,
   CheckCheck,
   FileText,
+  ListPlus,
   Settings2,
   Sparkles,
   Square,
   SquarePen,
   X,
 } from 'lucide-react'
+import { MOD_KEY } from '../lib/platform'
 import type { AssistantStatus, PendingAction } from '../ai/useAssistant'
 import { ApprovalCard } from './ApprovalCard'
 import type { AssistantSettings, ChatMessage, Provider } from '../ai/types'
+import type { Sharing } from '../ai/remoteSettings'
+import ModelPicker, {
+  ModelField,
+  PROVIDER_LABEL,
+  currentSelection,
+  isConfigured,
+} from './ModelPicker'
+import QueueView, { QueueTicker, groupRuns } from './QueueView'
+import type { QueueApi } from '../queue/useQueue'
+import { hasThinkingToggle } from '../ai/models'
 
 interface AssistantPanelProps {
   open: boolean
@@ -21,6 +33,13 @@ interface AssistantPanelProps {
   activePath: string | null
   settings: AssistantSettings
   onUpdateSettings: (s: AssistantSettings) => void
+  /** Which half of the panel is showing: the conversation, or the queue. */
+  view: 'chat' | 'queue'
+  onViewChange: (view: 'chat' | 'queue') => void
+  /** Whether these settings belong to this browser or to the server. */
+  sharing: Sharing
+  /** Set when the server wouldn't keep the last save. */
+  settingsError: string | null
   messages: ChatMessage[]
   status: AssistantStatus
   pending: PendingAction[]
@@ -30,14 +49,14 @@ interface AssistantPanelProps {
   onApproveAll: () => void
   onStop: () => void
   onClear: () => void
-}
-
-// Insertion order is the dropdown order.
-const PROVIDER_LABEL: Record<Provider, string> = {
-  lmstudio: 'Local (LM Studio)',
-  anthropic: 'Anthropic (Claude)',
-  openai: 'OpenAI',
-  openrouter: 'OpenRouter',
+  /**
+   * Background work. The queue lives in here rather than in a panel of its own:
+   * asking and delegating are the same act, so they share one composer.
+   */
+  queue: QueueApi
+  onOpenRun: (id: string) => void
+  /** Open a note a run wrote, straight from the queue. */
+  onOpenNote: (path: string) => void
 }
 
 /**
@@ -58,10 +77,14 @@ function ToolChip({ message }: { message: ChatMessage }) {
 function SettingsView({
   settings,
   onUpdateSettings,
+  sharing,
+  settingsError,
   onDone,
 }: {
   settings: AssistantSettings
   onUpdateSettings: (s: AssistantSettings) => void
+  sharing: Sharing
+  settingsError: string | null
   onDone: () => void
 }) {
   const [draft, setDraft] = useState(settings)
@@ -101,13 +124,12 @@ function SettingsView({
               placeholder="sk-ant-..."
             />
           </label>
-          <label className="field">
-            <span>Model</span>
-            <input
-              value={draft.models.anthropic}
-              onChange={(e) => setModel('anthropic', e.target.value)}
-            />
-          </label>
+          <ModelField
+            settings={draft}
+            provider="anthropic"
+            value={draft.models.anthropic}
+            onChange={(model) => setModel('anthropic', model)}
+          />
         </>
       )}
 
@@ -122,13 +144,12 @@ function SettingsView({
               placeholder="sk-..."
             />
           </label>
-          <label className="field">
-            <span>Model</span>
-            <input
-              value={draft.models.openai}
-              onChange={(e) => setModel('openai', e.target.value)}
-            />
-          </label>
+          <ModelField
+            settings={draft}
+            provider="openai"
+            value={draft.models.openai}
+            onChange={(model) => setModel('openai', model)}
+          />
         </>
       )}
 
@@ -143,20 +164,16 @@ function SettingsView({
               placeholder="sk-or-..."
             />
           </label>
-          <label className="field">
-            <span>Model</span>
-            <input
-              value={draft.models.openrouter}
-              onChange={(e) => setModel('openrouter', e.target.value)}
-              placeholder="openrouter/auto"
-            />
-            <span className="assistant-note">
-              Any model slug from openrouter.ai/models, e.g.{' '}
-              <code>anthropic/claude-sonnet-4</code> or{' '}
-              <code>openai/gpt-4o</code>. <code>openrouter/auto</code> picks one
-              for you.
-            </span>
-          </label>
+          <ModelField
+            settings={draft}
+            provider="openrouter"
+            value={draft.models.openrouter}
+            onChange={(model) => setModel('openrouter', model)}
+          />
+          <span className="assistant-note">
+            Custom takes any slug from openrouter.ai/models, e.g.{' '}
+            <code>anthropic/claude-opus-5</code>.
+          </span>
         </>
       )}
 
@@ -170,13 +187,12 @@ function SettingsView({
               placeholder="http://localhost:1234/v1"
             />
           </label>
-          <label className="field">
-            <span>Model</span>
-            <input
-              value={draft.models.lmstudio}
-              onChange={(e) => setModel('lmstudio', e.target.value)}
-            />
-          </label>
+          <ModelField
+            settings={draft}
+            provider="lmstudio"
+            value={draft.models.lmstudio}
+            onChange={(model) => setModel('lmstudio', model)}
+          />
         </>
       )}
 
@@ -195,7 +211,7 @@ function SettingsView({
         from the Memory panel.
       </span>
 
-      {(draft.provider === 'anthropic' || draft.provider === 'lmstudio') && (
+      {hasThinkingToggle(draft.provider, draft.models[draft.provider]) && (
         <label className="field-row">
           <input
             type="checkbox"
@@ -205,7 +221,9 @@ function SettingsView({
           <span>
             {draft.provider === 'anthropic'
               ? 'Extended thinking (Claude reasons before answering)'
-              : 'Thinking (for reasoning models, e.g. Qwen3 / DeepSeek-R1)'}
+              : draft.provider === 'openrouter'
+                ? 'Reasoning (for models that support it, e.g. DeepSeek / Qwen)'
+                : 'Thinking (for reasoning models, e.g. Qwen3 / DeepSeek-R1)'}
           </span>
         </label>
       )}
@@ -257,10 +275,29 @@ function SettingsView({
 
       {draft.provider !== 'lmstudio' && (
         <p className="assistant-note">
-          Your API key is stored only in this browser and sent directly to the provider.
-          For maximum privacy, use the local LM Studio option.
+          {sharing === 'server' ? (
+            <>
+              Your API key is kept on your Deckle server, so every device that signs in
+              to this library can use it, and sent to the provider from this browser.
+              For maximum privacy, use the local LM Studio option.
+            </>
+          ) : sharing === 'needs-password' ? (
+            <>
+              Your API key is stored only in this browser and sent directly to the
+              provider. To share it with your other devices, set{' '}
+              <code>DECKLE_PASSWORD</code> on your server — without one, anyone who can
+              reach it could read the key back.
+            </>
+          ) : (
+            <>
+              Your API key is stored only in this browser and sent directly to the
+              provider. For maximum privacy, use the local LM Studio option.
+            </>
+          )}
         </p>
       )}
+
+      {settingsError && <p className="assistant-error">{settingsError}</p>}
 
       <button className="btn-primary" onClick={save}>
         Save
@@ -291,6 +328,10 @@ export default function AssistantPanel({
   activePath,
   settings,
   onUpdateSettings,
+  view,
+  onViewChange,
+  sharing,
+  settingsError,
   messages,
   status,
   pending,
@@ -300,9 +341,13 @@ export default function AssistantPanel({
   onApproveAll,
   onStop,
   onClear,
+  queue,
+  onOpenRun,
+  onOpenNote,
 }: AssistantPanelProps) {
   const [input, setInput] = useState('')
   const [showSettings, setShowSettings] = useState(false)
+  const setView = onViewChange
   const [mention, setMention] = useState<{ start: number; query: string } | null>(null)
   const [mentionIndex, setMentionIndex] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -344,33 +389,203 @@ export default function AssistantPanel({
     })
   }
 
+  // A job queued without a provider fails alone in the background, where the
+  // error is easy to miss — so the button says no instead.
+  const configured = isConfigured(settings, settings.provider)
+  const queueCounts = groupRuns(queue.runs)
+
   const submit = () => {
     if (!input.trim() || busy) return
     onSend(input)
     setInput('')
     setMention(null)
+    // The answer arrives in the conversation, so that is where to be.
+    setView('chat')
   }
+
+  /**
+   * The same words, handed to the background instead of the conversation.
+   *
+   * Deliberately not disabled while a chat turn is in flight: "this is taking
+   * a while, put the next one in the queue" is exactly when it's wanted. The
+   * job is pinned to whichever model the bar above is showing.
+   */
+  const queueJob = () => {
+    if (!input.trim() || !configured) return
+    void queue.enqueue(input.trim(), activePath ?? undefined, currentSelection(settings))
+    setInput('')
+    setMention(null)
+    // Show it landing. Queueing something and staying on the conversation is
+    // how the queue became invisible in the first place.
+    setView('queue')
+  }
+
+  const composer = (
+    <div className="assistant-input">
+      {mention && suggestions.length > 0 && (
+        <div className="mention-pop">
+          {suggestions.map((path, i) => (
+            <button
+              key={path}
+              type="button"
+              className={`mention-item${i === mentionIndex ? ' active' : ''}`}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                pickFile(path)
+              }}
+            >
+              <FileText size={14} />
+              <span>{path}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <textarea
+        ref={textareaRef}
+        value={input}
+        onChange={(e) => {
+          setInput(e.target.value)
+          refreshMention(e.target.value, e.target.selectionStart ?? e.target.value.length)
+        }}
+        onClick={(e) =>
+          refreshMention(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
+        }
+        onKeyUp={(e) => {
+          if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+            refreshMention(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
+          }
+        }}
+        onKeyDown={(e) => {
+          if (mention && suggestions.length > 0) {
+            if (e.key === 'ArrowDown') {
+              e.preventDefault()
+              setMentionIndex((i) => (i + 1) % suggestions.length)
+              return
+            }
+            if (e.key === 'ArrowUp') {
+              e.preventDefault()
+              setMentionIndex((i) => (i - 1 + suggestions.length) % suggestions.length)
+              return
+            }
+            if (e.key === 'Enter' || e.key === 'Tab') {
+              e.preventDefault()
+              pickFile(suggestions[mentionIndex])
+              return
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault()
+              // Don't let the global handler also exit focus mode.
+              e.stopPropagation()
+              setMention(null)
+              return
+            }
+          }
+          // Enter sends, Cmd/Ctrl+Enter queues — the chord the queue's
+          // own box used before it moved in here.
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault()
+            queueJob()
+            return
+          }
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            submit()
+          }
+        }}
+        placeholder="Ask the assistant…  (type / to reference a note)"
+        rows={2}
+        disabled={status === 'awaiting-approval'}
+      />
+      <div className="assistant-actions">
+        <button
+          type="button"
+          className="assistant-queue"
+          onClick={queueJob}
+          disabled={!input.trim() || !configured}
+          title={
+            configured
+              ? `Run in the background and write into ${queue.settings.inbox} (${MOD_KEY} ⏎)`
+              : 'Add a provider key in settings first'
+          }
+        >
+          <ListPlus size={15} />
+          Queue
+        </button>
+        {status === 'thinking' ? (
+          <button className="assistant-send stop" onClick={onStop} title="Stop">
+            <Square size={16} />
+          </button>
+        ) : (
+          <button
+            className="assistant-send"
+            onClick={submit}
+            disabled={!input.trim() || busy}
+            title="Send (⏎)"
+          >
+            <ArrowUp size={18} />
+          </button>
+        )}
+      </div>
+    </div>
+  )
 
   return (
     <aside className="assistant-panel">
       <div className="assistant-header">
-        <span className="assistant-title">
-          <Sparkles size={16} /> Assistant
-        </span>
+        {/* The queue is not a mode of the chat, it is the other half of the
+            same panel — so it gets a tab, a count, and equal billing. */}
+        <div className="assistant-views" role="tablist" aria-label="Assistant">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'chat' && !showSettings}
+            className={`assistant-view-tab${
+              view === 'chat' && !showSettings ? ' active' : ''
+            }`}
+            onClick={() => {
+              setView('chat')
+              setShowSettings(false)
+            }}
+          >
+            <Sparkles size={14} /> Chat
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'queue' && !showSettings}
+            className={`assistant-view-tab${
+              view === 'queue' && !showSettings ? ' active' : ''
+            }`}
+            onClick={() => {
+              setView('queue')
+              setShowSettings(false)
+            }}
+          >
+            <ListPlus size={14} /> Queue
+            {queueCounts.live > 0 && (
+              <span className="assistant-view-count">{queueCounts.live}</span>
+            )}
+            {queueCounts.parked.length > 0 && (
+              <span className="assistant-view-dot" aria-hidden="true" />
+            )}
+          </button>
+        </div>
         <div className="assistant-header-actions">
-          {(settings.provider === 'anthropic' || settings.provider === 'lmstudio') && (
-            <button
-              className={`icon-btn${settings.thinking ? ' active' : ''}`}
-              onClick={() =>
-                onUpdateSettings({ ...settings, thinking: !settings.thinking })
-              }
-              title={settings.thinking ? 'Thinking: on' : 'Thinking: off'}
-              aria-label="Toggle thinking"
-              aria-pressed={settings.thinking}
-            >
-              <Brain size={17} />
-            </button>
-          )}
+          {/* Hidden, not disabled, on a model that predates adaptive thinking:
+              a switch that can only produce an error is worse than no switch. */}
+          {hasThinkingToggle(settings.provider, settings.models[settings.provider]) && (
+              <button
+                className={`icon-btn${settings.thinking ? ' active' : ''}`}
+                onClick={() =>
+                  onUpdateSettings({ ...settings, thinking: !settings.thinking })
+                }
+                title={settings.thinking ? 'Thinking: on' : 'Thinking: off'}
+                aria-label="Toggle thinking"
+                aria-pressed={settings.thinking}
+              >
+                <Brain size={17} />
+              </button>
+            )}
           <button
             className="icon-btn"
             onClick={onClear}
@@ -393,12 +608,37 @@ export default function AssistantPanel({
         </div>
       </div>
 
+      {!showSettings && (
+        <div className="assistant-modelbar">
+          <ModelPicker
+            settings={settings}
+            value={currentSelection(settings)}
+            onChange={({ provider, model }) =>
+              onUpdateSettings({
+                ...settings,
+                provider,
+                models: { ...settings.models, [provider]: model },
+              })
+            }
+            onOpenSettings={() => setShowSettings(true)}
+            label="Model for this chat"
+          />
+        </div>
+      )}
+
       {showSettings ? (
         <SettingsView
           settings={settings}
           onUpdateSettings={onUpdateSettings}
+          sharing={sharing}
+          settingsError={settingsError}
           onDone={() => setShowSettings(false)}
         />
+      ) : view === 'queue' ? (
+        <>
+          <QueueView queue={queue} onOpenRun={onOpenRun} onOpenNote={onOpenNote} />
+          {composer}
+        </>
       ) : (
         <>
           <div className="assistant-messages" ref={scrollRef}>
@@ -418,7 +658,8 @@ export default function AssistantPanel({
                   )}
                 </p>
                 <p className="assistant-note">
-                  Using <strong>{PROVIDER_LABEL[settings.provider]}</strong>.
+                  Or <strong>Queue</strong> it instead of sending, and I'll work in the
+                  background while you write — into <code>{queue.settings.inbox}</code>.
                 </p>
               </div>
             )}
@@ -466,89 +707,11 @@ export default function AssistantPanel({
             {status === 'thinking' && <div className="assistant-thinking">Thinking…</div>}
           </div>
 
-          <div className="assistant-input">
-            {mention && suggestions.length > 0 && (
-              <div className="mention-pop">
-                {suggestions.map((path, i) => (
-                  <button
-                    key={path}
-                    type="button"
-                    className={`mention-item${i === mentionIndex ? ' active' : ''}`}
-                    onMouseDown={(e) => {
-                      e.preventDefault()
-                      pickFile(path)
-                    }}
-                  >
-                    <FileText size={14} />
-                    <span>{path}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value)
-                refreshMention(e.target.value, e.target.selectionStart ?? e.target.value.length)
-              }}
-              onClick={(e) =>
-                refreshMention(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
-              }
-              onKeyUp={(e) => {
-                if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
-                  refreshMention(e.currentTarget.value, e.currentTarget.selectionStart ?? 0)
-                }
-              }}
-              onKeyDown={(e) => {
-                if (mention && suggestions.length > 0) {
-                  if (e.key === 'ArrowDown') {
-                    e.preventDefault()
-                    setMentionIndex((i) => (i + 1) % suggestions.length)
-                    return
-                  }
-                  if (e.key === 'ArrowUp') {
-                    e.preventDefault()
-                    setMentionIndex((i) => (i - 1 + suggestions.length) % suggestions.length)
-                    return
-                  }
-                  if (e.key === 'Enter' || e.key === 'Tab') {
-                    e.preventDefault()
-                    pickFile(suggestions[mentionIndex])
-                    return
-                  }
-                  if (e.key === 'Escape') {
-                    e.preventDefault()
-                    // Don't let the global handler also exit focus mode.
-                    e.stopPropagation()
-                    setMention(null)
-                    return
-                  }
-                }
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  submit()
-                }
-              }}
-              placeholder="Ask the assistant…  (type / to reference a note)"
-              rows={2}
-              disabled={status === 'awaiting-approval'}
-            />
-            {status === 'thinking' ? (
-              <button className="assistant-send stop" onClick={onStop} title="Stop">
-                <Square size={16} />
-              </button>
-            ) : (
-              <button
-                className="assistant-send"
-                onClick={submit}
-                disabled={!input.trim() || busy}
-                title="Send"
-              >
-                <ArrowUp size={18} />
-              </button>
-            )}
-          </div>
+          {/* Ambient, not intrusive: while you are chatting, one line is enough
+              to know the background is busy — and the way through to it. */}
+          <QueueTicker queue={queue} onShow={() => setView('queue')} />
+
+          {composer}
         </>
       )}
     </aside>

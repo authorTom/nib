@@ -38,7 +38,45 @@ function toSummary(run: Run): RunSummary {
 export async function loadIndex(dir: FileSystemDirectoryHandle): Promise<RunIndex> {
   const parsed = (await readDataJson(dir, INDEX_FILE)) as RunIndex | null
   if (parsed?.version === 1 && Array.isArray(parsed.runs)) return parsed
-  return EMPTY_INDEX
+  // No readable index. The run records are the real data — the index is only a
+  // listing built from them — so rebuild it rather than declaring the queue
+  // empty. This is how runs written while the index could not be saved come
+  // back instead of being lost.
+  return await rebuildIndex(dir)
+}
+
+/**
+ * Reconstruct the listing from the run records themselves.
+ *
+ * Newest first, matching the order saveRun maintains.
+ */
+async function rebuildIndex(dir: FileSystemDirectoryHandle): Promise<RunIndex> {
+  // values() is an async iterable not present in older TS DOM libs; the same
+  // shim the library walker uses.
+  const asAsyncEntries = (d: FileSystemDirectoryHandle) =>
+    (d as unknown as { values: () => AsyncIterable<FileSystemHandle> }).values()
+  const runs: RunSummary[] = []
+  try {
+    const folder = await runsDir(dir, false)
+    for await (const entry of asAsyncEntries(folder)) {
+      if (entry.kind !== 'file') continue
+      if (!entry.name.endsWith('.json') || entry.name === 'index.json') continue
+      try {
+        const handle = entry as FileSystemFileHandle
+        const run = JSON.parse(await (await handle.getFile()).text()) as Run
+        if (run?.id && run.status) runs.push(toSummary(run))
+      } catch {
+        // One unreadable record shouldn't cost the rest of the list.
+      }
+    }
+  } catch {
+    // No runs folder yet — a queue that has never been used.
+    return EMPTY_INDEX
+  }
+  if (!runs.length) return EMPTY_INDEX
+  runs.sort((a, b) => b.createdAt - a.createdAt)
+  console.info(`[deckle] run index missing; rebuilt it from ${runs.length} record(s)`)
+  return { version: 1, runs }
 }
 
 async function saveIndex(

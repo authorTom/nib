@@ -75,6 +75,17 @@ function describeSaveError(err: unknown): string {
 /** Which of the two editor panes has the user's attention. */
 export type Pane = 'primary' | 'split'
 
+/**
+ * A pane's loaded markdown, carrying the id it was read for.
+ *
+ * The id travels with the text because the two arrive at different moments:
+ * making a note active is synchronous, reading its file is not. Holding a bare
+ * string meant that for one render the incoming note was paired with the
+ * outgoing note's markdown — long enough for an editor to mount on the pair,
+ * load the wrong text, and attribute it to the wrong file.
+ */
+type PaneDoc = { id: string; text: string } | null
+
 function readStoredList(key: string): string[] {
   try {
     const raw = localStorage.getItem(key)
@@ -108,10 +119,14 @@ export function useNotes() {
   const [dir, setDir] = useState<FileSystemDirectoryHandle | null>(null)
   const [tree, setTree] = useState<TreeNode[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
-  const [activeContent, setActiveContent] = useState<string | null>(null)
   // The optional second pane, shown to the right of the primary one.
   const [splitId, setSplitId] = useState<string | null>(null)
-  const [splitContent, setSplitContent] = useState<string | null>(null)
+  const [activeDoc, setActiveDoc] = useState<PaneDoc>(null)
+  const [splitDoc, setSplitDoc] = useState<PaneDoc>(null)
+  // A pane is given content only while it belongs to the note that pane is
+  // showing; mid-switch it gets null and renders its skeleton instead.
+  const activeContent = activeDoc && activeDoc.id === activeId ? activeDoc.text : null
+  const splitContent = splitDoc && splitDoc.id === splitId ? splitDoc.text : null
   const [focusedPane, setFocusedPane] = useState<Pane>('primary')
   // Open tabs, in strip order. The active note is always a member.
   const [openIds, setOpenIds] = useState<string[]>(() => readStoredList(TABS_KEY))
@@ -184,6 +199,29 @@ export function useNotes() {
     return library.flattenFiles(t)
   }, [])
 
+  // ---- One library mutation at a time ----
+  // A note's id is its path, and a path is free the instant its file is gone:
+  // rename "Untitled.md" to "Meeting.md" and the next new note is handed
+  // "Untitled.md" again. Overlapping mutations therefore fight over one id.
+  // The case that bit: clicking New while the open note is still called
+  // Untitled renames it after its heading (the blur does that) and creates a
+  // note in the same breath. The create sees the freed name and takes it, and
+  // the rename — still finishing — then remaps "Untitled.md" to "Meeting.md",
+  // dragging the tab, the pane and the buffered edits off the brand-new note
+  // and onto the old one. The new note appeared under the last note's name.
+  //
+  // Queuing the mutations means each one's bookkeeping is complete before the
+  // next one runs, so no id is ever reissued while a remap is still pending.
+  // Reads (refresh, search, history listing) stay outside the queue: they
+  // don't move files, and making them wait would only add latency.
+  const mutations = useRef<Promise<unknown>>(Promise.resolve())
+  const queue = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
+    const run = mutations.current.then(task, task)
+    // A failed mutation must not wedge the queue for everything behind it.
+    mutations.current = run.catch(() => undefined)
+    return run
+  }, [])
+
   // ---- Load note list once the library is ready ----
   useEffect(() => {
     if (status !== 'ready' || !dir) return
@@ -208,18 +246,18 @@ export function useNotes() {
   // ---- Load each pane's content from disk ----
   useEffect(() => {
     if (!dir || !activeId) {
-      setActiveContent(null)
+      setActiveDoc(null)
       return
     }
     let cancelled = false
-    setActiveContent(null)
-    store(ACTIVE_KEY, activeId)
+    const id = activeId
+    store(ACTIVE_KEY, id)
     void (async () => {
       try {
-        const text = await library.readNote(dir, activeId)
-        if (!cancelled) setActiveContent(text)
+        const text = await library.readNote(dir, id)
+        if (!cancelled) setActiveDoc({ id, text })
       } catch {
-        if (!cancelled) setActiveContent('')
+        if (!cancelled) setActiveDoc({ id, text: '' })
       }
     })()
     return () => {
@@ -229,17 +267,17 @@ export function useNotes() {
 
   useEffect(() => {
     if (!dir || !splitId) {
-      setSplitContent(null)
+      setSplitDoc(null)
       return
     }
     let cancelled = false
-    setSplitContent(null)
+    const id = splitId
     void (async () => {
       try {
-        const text = await library.readNote(dir, splitId)
-        if (!cancelled) setSplitContent(text)
+        const text = await library.readNote(dir, id)
+        if (!cancelled) setSplitDoc({ id, text })
       } catch {
-        if (!cancelled) setSplitContent('')
+        if (!cancelled) setSplitDoc({ id, text: '' })
       }
     })()
     return () => {
@@ -366,12 +404,12 @@ export function useNotes() {
     }
     setTree([])
     setActiveId(null)
-    setActiveContent(null)
+    setActiveDoc(null)
     // A different library means different notes at the same paths.
     clearContentCache()
     setOpenIds([])
     setSplitId(null)
-    setSplitContent(null)
+    setSplitDoc(null)
     setFocusedPane('primary')
     setDir(handle)
     setStatus('ready')
@@ -392,12 +430,12 @@ export function useNotes() {
     }
     setTree([])
     setActiveId(null)
-    setActiveContent(null)
+    setActiveDoc(null)
     // A different library means different notes at the same paths.
     clearContentCache()
     setOpenIds([])
     setSplitId(null)
-    setSplitContent(null)
+    setSplitDoc(null)
     setFocusedPane('primary')
     setDir(remote.openServerLibrary(info.name))
     setStatus('ready')
@@ -436,12 +474,12 @@ export function useNotes() {
     setServerLibrary((info) => (info ? { ...info, authenticated: false } : info))
     setTree([])
     setActiveId(null)
-    setActiveContent(null)
+    setActiveDoc(null)
     // A different library means different notes at the same paths.
     clearContentCache()
     setOpenIds([])
     setSplitId(null)
-    setSplitContent(null)
+    setSplitDoc(null)
     setFocusedPane('primary')
     setDir(null)
     setStatus('no-library')
@@ -600,34 +638,36 @@ export function useNotes() {
   }, [justCreatedId])
 
   const createNote = useCallback(
-    async (folderPath = '') => {
-      if (!dir) return
-      const note = await library.createNote(dir, folderPath)
-      await refresh(dir)
-      setActiveId(note.id)
-      setJustCreatedId(note.id)
-    },
-    [dir, refresh],
+    (folderPath = '') =>
+      queue(async () => {
+        if (!dir) return
+        const note = await library.createNote(dir, folderPath)
+        await refresh(dir)
+        setActiveId(note.id)
+        setJustCreatedId(note.id)
+      }),
+    [dir, refresh, queue],
   )
 
   // Deleting moves the note to the recycle bin (.trash) rather than erasing it.
   const deleteNote = useCallback(
-    async (id: string) => {
-      if (!dir) return
-      // Flush buffered edits first so the trashed copy is current, and so the
-      // pending timer can't recreate the note after it's moved to the bin.
-      await flush()
-      pending.current.delete(id) // don't let a buffered edit recreate the file
-      await library.trashNote(dir, id)
-      const list = await refresh(dir)
-      closeTab(id)
-      // closeTab only reassigns the active note when there's a tab to fall back
-      // on; with the strip empty, land on whatever the library still has.
-      setActiveId((cur) =>
-        cur === null || cur === id ? list[0]?.id ?? null : cur,
-      )
-    },
-    [dir, flush, refresh, closeTab],
+    (id: string) =>
+      queue(async () => {
+        if (!dir) return
+        // Flush buffered edits first so the trashed copy is current, and so the
+        // pending timer can't recreate the note after it's moved to the bin.
+        await flush()
+        pending.current.delete(id) // don't let a buffered edit recreate the file
+        await library.trashNote(dir, id)
+        const list = await refresh(dir)
+        closeTab(id)
+        // closeTab only reassigns the active note when there's a tab to fall
+        // back on; with the strip empty, land on whatever the library still has.
+        setActiveId((cur) =>
+          cur === null || cur === id ? list[0]?.id ?? null : cur,
+        )
+      }),
+    [dir, flush, refresh, closeTab, queue],
   )
 
   /** Point tabs, panes and buffers at a note's new path after it moves. */
@@ -645,83 +685,88 @@ export function useNotes() {
 
   // Rename a note's file to match a new title (commit on blur/Enter).
   const renameNote = useCallback(
-    async (id: string, newTitle: string) => {
-      if (!dir || !id) return undefined
-      await flush() // ensure latest content is on disk before moving the file
-      const newId = await library.renameNote(dir, id, newTitle)
-      if (newId !== id) await history.retargetHistory(dir, id, newId)
-      await refresh(dir)
-      remapId(id, newId)
-      // Returned so callers can tell a real rename from a no-op, and know the
-      // id the note now answers to.
-      return newId
-    },
-    [dir, flush, refresh, remapId],
+    (id: string, newTitle: string) =>
+      queue(async () => {
+        if (!dir || !id) return undefined
+        await flush() // ensure latest content is on disk before moving the file
+        const newId = await library.renameNote(dir, id, newTitle)
+        if (newId !== id) await history.retargetHistory(dir, id, newId)
+        await refresh(dir)
+        remapId(id, newId)
+        // Returned so callers can tell a real rename from a no-op, and know the
+        // id the note now answers to.
+        return newId
+      }),
+    [dir, flush, refresh, remapId, queue],
   )
 
   const createFolder = useCallback(
-    async (parentPath: string, name: string) => {
-      if (!dir) return undefined
-      const id = await library.createFolder(dir, parentPath, name)
-      await refresh(dir)
-      return id
-    },
-    [dir, refresh],
+    (parentPath: string, name: string) =>
+      queue(async () => {
+        if (!dir) return undefined
+        const id = await library.createFolder(dir, parentPath, name)
+        await refresh(dir)
+        return id
+      }),
+    [dir, refresh, queue],
   )
 
   const deleteFolder = useCallback(
-    async (folderPath: string) => {
-      if (!dir) return
-      await flush() // persist any buffered edits to a note inside the folder
-      await library.trashFolder(dir, folderPath)
-      const list = await refresh(dir)
-      const survives = (id: string) => list.some((n) => n.id === id)
-      // Tabs and panes showing notes from the deleted folder close with it.
-      setOpenIds((prev) => prev.filter(survives))
-      setSplitId((cur) => (cur && survives(cur) ? cur : null))
-      setActiveId((cur) => (cur && survives(cur) ? cur : list[0]?.id ?? null))
-      for (const id of [...pending.current.keys()]) {
-        if (!survives(id)) pending.current.delete(id)
-      }
-    },
-    [dir, flush, refresh],
+    (folderPath: string) =>
+      queue(async () => {
+        if (!dir) return
+        await flush() // persist any buffered edits to a note inside the folder
+        await library.trashFolder(dir, folderPath)
+        const list = await refresh(dir)
+        const survives = (id: string) => list.some((n) => n.id === id)
+        // Tabs and panes showing notes from the deleted folder close with it.
+        setOpenIds((prev) => prev.filter(survives))
+        setSplitId((cur) => (cur && survives(cur) ? cur : null))
+        setActiveId((cur) => (cur && survives(cur) ? cur : list[0]?.id ?? null))
+        for (const id of [...pending.current.keys()]) {
+          if (!survives(id)) pending.current.delete(id)
+        }
+      }),
+    [dir, flush, refresh, queue],
   )
 
   const renameFolder = useCallback(
-    async (folderPath: string, newName: string) => {
-      if (!dir) return
-      await flush() // persist any buffered edits before moving files
-      const newPath = await library.renameFolder(dir, folderPath, newName)
-      await refresh(dir)
-      // Every note that lived inside the folder just changed path — rewrite the
-      // prefix wherever an id is held: tabs, both panes, and unwritten buffers.
-      const rewrite = (id: string) =>
-        id.startsWith(`${folderPath}/`)
-          ? newPath + id.slice(folderPath.length)
-          : id
-      setOpenIds((prev) => prev.map(rewrite))
-      setActiveId((cur) => (cur ? rewrite(cur) : cur))
-      setSplitId((cur) => (cur ? rewrite(cur) : cur))
-      for (const [id, content] of [...pending.current]) {
-        const next = rewrite(id)
-        if (next === id) continue
-        pending.current.delete(id)
-        pending.current.set(next, content)
-      }
-    },
-    [dir, flush, refresh],
+    (folderPath: string, newName: string) =>
+      queue(async () => {
+        if (!dir) return
+        await flush() // persist any buffered edits before moving files
+        const newPath = await library.renameFolder(dir, folderPath, newName)
+        await refresh(dir)
+        // Every note that lived inside the folder just changed path — rewrite
+        // the prefix wherever an id is held: tabs, panes, unwritten buffers.
+        const rewrite = (id: string) =>
+          id.startsWith(`${folderPath}/`)
+            ? newPath + id.slice(folderPath.length)
+            : id
+        setOpenIds((prev) => prev.map(rewrite))
+        setActiveId((cur) => (cur ? rewrite(cur) : cur))
+        setSplitId((cur) => (cur ? rewrite(cur) : cur))
+        for (const [id, content] of [...pending.current]) {
+          const next = rewrite(id)
+          if (next === id) continue
+          pending.current.delete(id)
+          pending.current.set(next, content)
+        }
+      }),
+    [dir, flush, refresh, queue],
   )
 
   const moveNote = useCallback(
-    async (id: string, targetFolderPath: string) => {
-      if (!dir) return
-      if (id === activeId) await flush() // persist edits before moving the file
-      const newId = await library.moveNote(dir, id, targetFolderPath)
-      if (newId !== id) await history.retargetHistory(dir, id, newId)
-      await refresh(dir)
-      remapId(id, newId)
-    },
-    [dir, activeId, flush, refresh, remapId],
+    (id: string, targetFolderPath: string) =>
+      queue(async () => {
+        if (!dir) return
+        if (id === activeId) await flush() // persist edits before moving the file
+        const newId = await library.moveNote(dir, id, targetFolderPath)
+        if (newId !== id) await history.retargetHistory(dir, id, newId)
+        await refresh(dir)
+        remapId(id, newId)
+      }),
+    [dir, activeId, flush, refresh, remapId, queue],
   )
 
   // ---- Import ----
@@ -731,22 +776,23 @@ export function useNotes() {
    * report it — nothing is ever overwritten, so an import is always additive.
    */
   const importNotes = useCallback(
-    async (
+    (
       items: ImportItem[],
       targetFolder = '',
       onProgress?: (done: number, total: number) => void,
-    ): Promise<ImportedNote[]> => {
-      if (!dir || !items.length) return []
-      // Buffered edits first: the import rebuilds the tree, and a pending save
-      // landing afterwards would write against a stale view of it.
-      await flush()
-      const imported = await library.importNotes(dir, items, targetFolder, onProgress)
-      await refresh(dir)
-      // Open the first imported note so the upload visibly did something.
-      if (imported.length) setActiveId(imported[0].id)
-      return imported
-    },
-    [dir, flush, refresh],
+    ): Promise<ImportedNote[]> =>
+      queue(async () => {
+        if (!dir || !items.length) return []
+        // Buffered edits first: the import rebuilds the tree, and a pending save
+        // landing afterwards would write against a stale view of it.
+        await flush()
+        const imported = await library.importNotes(dir, items, targetFolder, onProgress)
+        await refresh(dir)
+        // Open the first imported note so the upload visibly did something.
+        if (imported.length) setActiveId(imported[0].id)
+        return imported
+      }),
+    [dir, flush, refresh, queue],
   )
 
   // ---- Recycle bin ----
@@ -761,17 +807,18 @@ export function useNotes() {
   }, [dir])
 
   const restoreFromTrash = useCallback(
-    async (trashName: string) => {
-      if (!dir) return
-      const newId = await library.restoreTrash(dir, trashName)
-      await refresh(dir)
-      setTrashItems(await library.listTrash(dir))
-      if (newId) {
-        setActiveId(newId)
-        setJustPlacedId(newId)
-      }
-    },
-    [dir, refresh],
+    (trashName: string) =>
+      queue(async () => {
+        if (!dir) return
+        const newId = await library.restoreTrash(dir, trashName)
+        await refresh(dir)
+        setTrashItems(await library.listTrash(dir))
+        if (newId) {
+          setActiveId(newId)
+          setJustPlacedId(newId)
+        }
+      }),
+    [dir, refresh, queue],
   )
 
   const deleteFromTrash = useCallback(
@@ -829,9 +876,9 @@ export function useNotes() {
       }
       lastSnapshotAt.current.set(activeId, Date.now())
       await library.writeNote(dir, activeId, snapContent)
-      setActiveContent(snapContent)
+      setActiveDoc({ id: activeId, text: snapContent })
       // The same note may also be open in the split pane; keep them in step.
-      if (splitId === activeId) setSplitContent(snapContent)
+      if (splitId === activeId) setSplitDoc({ id: activeId, text: snapContent })
       await refresh(dir)
       // The note's text came back: settle it like any other placed thing.
       setJustPlacedId(activeId)
@@ -932,9 +979,9 @@ export function useNotes() {
     // buffer wins — deterministic, and the editor never diverges from disk.
     await flush()
     try {
-      setActiveContent(await library.readNote(dir, activeId))
+      setActiveDoc({ id: activeId, text: await library.readNote(dir, activeId) })
       if (splitId && survives(splitId)) {
-        setSplitContent(await library.readNote(dir, splitId))
+        setSplitDoc({ id: splitId, text: await library.readNote(dir, splitId) })
       }
     } catch {
       // Transient read failure — keep showing the current content.

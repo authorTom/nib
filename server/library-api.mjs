@@ -30,6 +30,24 @@ import {
 
 const MD_EXT = /\.md$/i
 
+/**
+ * A folder inside the library root that this API pretends does not exist.
+ *
+ * The server keeps its own state there (the shared assistant settings, and the
+ * API key in them), and it sits under the library directory only because that
+ * is the volume a self-hoster actually mounts — not because it is part of the
+ * library. Every way out of this module passes through `safePath` or `list`,
+ * so denying it in those two places is what keeps it out of: the file API, the
+ * client's export walk (which lists its way through the remote handle), the
+ * server's own export walk, the machine API, and the assistant's read_note
+ * tool — none of which have any business reading a key.
+ *
+ * Set DECKLE_STATE_DIR to move the state somewhere else entirely; this name
+ * stays reserved either way, so a library can't grow a folder that would
+ * later collide with it.
+ */
+export const RESERVED_DIR = '.deckle-state'
+
 /** Notes are text; this cap stops a single request filling the volume. */
 const MAX_FILE_BYTES = 32 * 1024 * 1024
 
@@ -52,8 +70,12 @@ function limitBytes(limit) {
 }
 
 export function createLibraryApi(root) {
-  /** Resolve + symlink-check in one step. */
+  /** Resolve + symlink-check in one step, refusing the reserved folder. */
   async function safePath(rel) {
+    const first = String(rel ?? '').replace(/\\/g, '/').split('/')[0]
+    if (first === RESERVED_DIR) {
+      throw new BadPathError(`${RESERVED_DIR} is reserved`)
+    }
     const abs = resolveLibraryPath(root, rel)
     await assertRealPathInside(root, abs)
     return abs
@@ -126,6 +148,9 @@ export function createLibraryApi(root) {
       const entries = await fs.readdir(abs, { withFileTypes: true })
       const out = []
       for (const entry of entries) {
+        // Reserved at the root only: a note folder deeper in the tree may
+        // legitimately carry any name.
+        if (!rel && entry.name === RESERVED_DIR) continue
         if (entry.isDirectory()) {
           out.push({ name: entry.name, kind: 'directory' })
         } else if (entry.isFile()) {

@@ -5,7 +5,7 @@
 // assistant work is a **run**, and running it again makes another run.
 
 import type { ActionPreview } from '../ai/tools'
-import type { ChatMessage, ToolCall } from '../ai/types'
+import type { ChatMessage, Provider, ToolCall } from '../ai/types'
 
 export type RunStatus =
   /** Waiting for a slot. */
@@ -52,6 +52,18 @@ export interface Run {
   finishedAt?: number
   /** The note that was open when this was queued, if any. */
   contextPath?: string
+
+  /**
+   * The model this run was queued against, pinned at that moment.
+   *
+   * Runs used to read whichever model the settings happened to hold when each
+   * turn fired, so switching model in the chat panel silently re-pointed
+   * everything still waiting, and a finished run could not say what produced
+   * it. Both are recorded here instead. Optional because runs written before
+   * this existed have neither, and those fall back to the current settings.
+   */
+  provider?: Provider
+  model?: string
 
   messages: ChatMessage[]
   /**

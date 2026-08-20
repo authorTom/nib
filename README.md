@@ -12,6 +12,10 @@ choose where: on your own computer, or — if you self-host with Docker — in a
 volume on your own server, which makes Deckle fully web based and leaves nothing
 on the device you're using. No third-party account, no lock-in.
 
+**[deckle.redacre.net](https://deckle.redacre.net/)** — the project website: what
+Deckle does, how to install it, and the questions people ask first. There is no
+hosted version to sign up for; you run it yourself.
+
 ![Markdown notes with a folder tree, editor tabs, live WYSIWYG editing, and a backlinks panel](docs/screenshots/editor.png)
 
 | Task planner — Inbox, Today, Upcoming with a mini calendar | Bookmarks — collections and per-bookmark comments |
@@ -34,8 +38,10 @@ Safari with nothing stored on the device.
 
 The AI assistant follows the same principle: it can read and rewrite your whole
 library, but every change to a note is shown as a diff you approve first, and
-your API keys never leave your browser. The one thing it writes on its own is
-its memory of how you work, which is Markdown you can read and delete.
+your API keys go nowhere except the provider — held in your browser, or, if you
+self-host behind a password, on your own server so your other devices are
+already set up. The one thing it writes on its own is its memory of how you
+work, which is Markdown you can read and delete.
 
 ## What it does
 
@@ -85,15 +91,25 @@ its memory of how you work, which is Markdown you can read and delete.
   about your notes and it finds and cites the relevant ones. Works with an
   Anthropic, OpenAI or [OpenRouter](https://openrouter.ai) API key, or fully
   locally via [LM Studio](https://lmstudio.ai). Reasoning models show a
-  collapsible "Thought process"; API keys are stored only in your browser.
-- **Assistant queue** — hand the assistant a job and carry on writing: it runs
-  in the background, one at a time or several at once, and its output lands in
-  an **Assistant inbox** folder. That folder is the safety boundary — inside it
-  the assistant writes freely; anything outside stops the run and asks you to
+  collapsible "Thought process". The model it is using is named above the
+  conversation and switches from there — provider included, so moving between a
+  local model and Claude is one click, not a trip to a settings screen. Your API
+  key stays in your browser — or, on a password-protected server library, on the
+  server, so every device you sign in from is configured already.
+- **Send it, or queue it** — the assistant's composer has two buttons. *Send*
+  answers in the conversation; *Queue* hands the same words to the background
+  and gives you the box back. The panel has a **Queue** tab beside Chat holding
+  everything in flight — what needs you, what is working, what is waiting its
+  turn — and one line above the composer keeps you posted while you chat. Jobs run one at a time or several at once, and their
+  output lands in an **Assistant inbox** folder. Each is pinned to the model you
+  queued it against — send the long one to Opus and the tidy-up to Haiku, and
+  see which ran what. That folder is the safety boundary — inside it the
+  assistant writes freely; anything outside stops the run and asks you to
   approve the exact change, and deletions always ask. A run that needs a
-  decision can ask you a question and wait. The tab badges only the runs that
-  need you; finished runs list what they wrote, and any run can be resumed or
-  re-run. Runs live in `.deckle/runs/` inside the library.
+  decision can ask you a question and wait: only those are badged, on the
+  assistant button itself, so a parked run is visible with the panel closed.
+  Finished runs list what they wrote, and any run can be resumed or re-run.
+  Runs live in `.deckle/runs/` inside the library.
 - **Assistant memory** — the assistant keeps what it learns about how you work
   as ordinary Markdown in a hidden `.deckle/memory/` folder: one file per fact,
   with a one-line index. Only that index is sent with every message; the rest is
@@ -268,11 +284,45 @@ Only relevant when the server library is enabled.
 | `DECKLE_SESSION_SECRET` | *(random)* | Fixed cookie-signing key, so restarts don't sign everyone out |
 | `DECKLE_SESSION_TTL_DAYS` | `30` | How long a sign-in lasts |
 | `DECKLE_LIBRARY_DIR` | `/data` | Where the notes live inside the container |
+| `DECKLE_STATE_DIR` | `<library>/.deckle-state` | Deckle's own state — the shared assistant settings. Never served as part of the library |
 | `DECKLE_API_TOKENS` | *(none)* | Bearer tokens for the [API](#api). Blank leaves it switched off |
 | `DECKLE_API_CORS_ORIGINS` | *(none)* | Origins allowed to call `/api/v1` from a browser |
 | `DECKLE_PORT` | `8080` | Host port (compose only) |
 
-Everything else — theme, AI provider, embeddings — is set in the app itself.
+Everything else — theme, AI provider, embeddings — is set in the app itself. On
+a server library with a password, the assistant's settings (including the API
+key) are kept by the server rather than by one browser, so signing in from a new
+device finds the assistant already configured. See
+[Assistant settings across devices](#assistant-settings-across-devices).
+
+### Assistant settings across devices
+
+The assistant's settings — provider, model, custom instructions and the API key
+— normally live in the browser you typed them into. That is the right home for a
+library on your own disk, but not for a server library, which exists precisely
+so the same notes are reachable from a laptop, a phone and a borrowed machine.
+
+So a **password-protected** server library keeps one copy of them for everyone
+who signs in:
+
+- Sign in on a new device and the assistant is already configured. Nothing to
+  turn on.
+- The first device to save seeds the server with what it already has, so
+  switching to a server library never loses a key you had entered.
+- Everything travels except the **LM Studio URL** — that usually points at
+  `localhost`, which is a different machine's localhost on every device.
+- Signing out of the server library forgets the settings it lent that browser.
+
+They are stored in `DECKLE_STATE_DIR` (by default `.deckle-state` inside the
+library directory, mode `0600`), which is *not* part of the library: the file
+API refuses to read it, it never appears in a tree, a listing, or an export, and
+the assistant's own tools cannot reach it. Only a request holding a valid
+session cookie can read it back.
+
+**Without `DECKLE_PASSWORD` the server declines to hold a key at all**, and says
+so in the settings panel. An open server would hand it to anyone who could reach
+the port, and that is the user's decision to make deliberately, not a default to
+inherit.
 
 ### Upgrading from before the rename
 
@@ -486,8 +536,14 @@ Relevant when you enable the server library.
   failures from one address are throttled (10 per 15 minutes). Sessions last
   `DECKLE_SESSION_TTL_DAYS`; if one expires while the app is open, Deckle returns to
   the unlock screen rather than failing saves silently.
-- **AI keys stay in your browser.** The server never sees them and never proxies
-  AI requests.
+- **AI keys.** The server never proxies AI requests — your browser always calls
+  the provider itself. Where the key is *kept* depends on the deployment: with a
+  password set, the server holds one copy for every device that signs in, stored
+  outside the library (`DECKLE_STATE_DIR`, mode `0600`) and served only to a
+  request carrying a valid session. The library API refuses to read it, so it
+  cannot leave in an export, through `/api/v1`, or via the assistant's own
+  file-reading tools. With no password set the server declines to hold a key at
+  all, and each browser keeps its own.
 - **API tokens are passwords.** A read-write token can read, rewrite and delete
   every note. Give each consumer its own so one can be revoked alone, and start
   anything new on a read-only (`r`) token until its behaviour looks sane.

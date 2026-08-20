@@ -24,6 +24,8 @@ interface WorkspaceProps {
   backlinks: Backlink[]
   splitBacklinks: Backlink[]
   saveState: SaveState
+  /** Background runs parked on a question, badged on the assistant button. */
+  runsNeedingYou: number
   saveError: string | null
   lastSavedAt: number | null
   isDirty: (id: string) => boolean
@@ -136,6 +138,7 @@ export default function Workspace({
   backlinks,
   splitBacklinks,
   saveState,
+  runsNeedingYou,
   saveError,
   lastSavedAt,
   isDirty,
@@ -195,10 +198,9 @@ export default function Workspace({
   return (
     <div className="main">
       <TopBar
+        noteId={focusedNote?.id ?? null}
         title={focusedNote?.title ?? ''}
-        onTitleCommit={(title) => {
-          if (focusedNote) onTitleCommit(focusedNote.id, title)
-        }}
+        onTitleCommit={onTitleCommit}
         onNew={onNew}
         onSaveMarkdown={onSaveMarkdown}
         onExportPdf={onExportPdf}
@@ -216,6 +218,7 @@ export default function Workspace({
         onToggleSplit={onToggleSplit}
         isSplit={split}
         saveState={saveState}
+        runsNeedingYou={runsNeedingYou}
         saveError={saveError}
         lastSavedAt={lastSavedAt}
         theme={theme}
