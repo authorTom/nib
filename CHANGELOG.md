@@ -10,6 +10,112 @@ here.
 
 Nothing yet.
 
+## [1.4.0] — 2026-08-20
+
+### Added
+
+- **See and switch the model without leaving what you're doing.** The assistant
+  names its model above the conversation, and that name is the switch: it lists
+  every provider you have configured, so moving from a local model to Claude —
+  or from Opus to Haiku for something small — is one click. Providers you
+  haven't set up don't appear. The shortlist is a shortlist, not a limit:
+  **Custom…** in settings still takes any model id the provider accepts, and for
+  LM Studio the list is whatever your local server says it is actually serving.
+
+  Deckle also stops offering extended thinking on models that don't support it,
+  instead of letting a stored preference turn every message into an error.
+
+- **Queued jobs carry their own model.** Pick one when you queue a job and it is
+  pinned there: the list shows what ran each job, a re-run goes to the same
+  model, and a job that stopped can be pointed at a bigger model before you
+  resume it. Previously every run read whichever model the settings held at the
+  moment each turn fired, so changing your model silently changed work that was
+  already waiting.
+
+- **The assistant's settings follow you between devices.** Sign in to a
+  password-protected server library on a phone, a second laptop, a borrowed
+  machine, and the assistant is already configured — provider, model, custom
+  instructions and API key. The first device to save hands the server what it
+  already had, so nothing is lost on the way in, and the LM Studio URL stays
+  behind on each machine, since `localhost` means something different on each
+  one. Signing out of the library forgets what it lent that browser.
+
+  The key is kept outside the library (`DECKLE_STATE_DIR`, mode `0600`) and
+  served only to a request carrying a valid session, so it cannot leave in an
+  export, through the API, or via the assistant's own file-reading tools. A
+  server with no `DECKLE_PASSWORD` refuses to hold one at all and says why —
+  open to the port is open to the key.
+
+- **A background job says what it is doing.** Each step as it happens —
+  *Thinking…*, *Reading Weekly review.md*, *Writing Assistant inbox/Poem.md* —
+  instead of a spinner and a title for two minutes. Finished runs list the notes
+  they produced as buttons: click one to open it, rather than opening the run to
+  find out what it made. A run that stops without finishing raises a toast,
+  since the panel is often closed by then.
+
+### Changed
+
+- **The assistant queue moved into the assistant.** It used to be a third tab
+  beside Tasks and Bookmarks, which made background work look like a different
+  feature from the assistant you were already talking to. It isn't — one is
+  answered now and the other later.
+
+  So the panel has two tabs, **Chat** and **Queue**, sharing one composer with
+  two buttons: *Send* answers in the conversation, *Queue* (`Cmd/Ctrl ⏎`) hands
+  the same words to the background. The Queue tab carries a live count, shows
+  the list in full — Needs you, Working, Waiting its turn, Didn't finish,
+  Finished — and says so when it is empty. While you are chatting, one line
+  above the composer says what the background is doing. A run parked on a
+  question badges the assistant's toolbar button, so it stays visible with
+  everything closed. The old tab is gone; *Assistant queue* in the command
+  palette opens the assistant on the Queue tab.
+
+### Fixed
+
+- **The queue did not work at all on a local or in-browser library.** Its index
+  is stored at `.deckle/runs/index.json`, and the helper that reads and writes
+  Deckle's own data files passed that whole string to `getFileHandle`, which
+  takes a *name*, not a path — so the File System Access API rejected it with
+  "Name is not allowed". Every index write threw and every index read quietly
+  returned nothing, which is why queued jobs refused to start, vanished on
+  reload, and left runs stuck showing "Working". A server library resolves paths
+  by URL and never hit it.
+
+  Nested paths now walk their directories, and a queue whose index is missing is
+  rebuilt from the run records themselves — so jobs written while the index
+  could not be saved come back rather than being lost.
+
+- **Queued jobs could sit at "Waiting its turn" for ever.** Starting a run read
+  its record and wrote it back before any of that was wrapped in error handling.
+  One refused write — a permission that lapsed on reload, a server that blinked,
+  a full disk — and the failure escaped as an unhandled rejection *while the run
+  still held its slot in the scheduler*. Every later pass then saw the job as
+  already executing and skipped it, so it sat untouched for the rest of the
+  session with nothing in the interface and nothing in the console to say why.
+
+  A run's slot is now released on every path out, a job that fails to start
+  stays queued instead of being recorded as a run that failed, and the app says
+  so rather than failing mutely. The scheduler also runs on a timer as well as
+  on a render, so a job that couldn't start a moment ago is tried again when the
+  library recovers.
+
+- **A new note could open under the last note's name.** Making a note while the
+  one you were reading still had its invented name — and a heading to take a
+  real name from — set two things going at once: the rename of the old file and
+  the creation of the new one. The rename frees `Untitled.md` the moment it
+  moves the file, the new note is handed that very name, and the rename then
+  finishes by pointing the tab, the pane and any unsaved edits at where *it*
+  ended up. The new note vanished behind the old one. Library changes now happen
+  one at a time, so a name is never reissued while a rename is still settling.
+
+- **The thinking toggle appears on OpenRouter.** It was only ever shown for
+  Claude and LM Studio, because those were the only two whose request it
+  changed — so switching to OpenRouter made the button disappear. OpenRouter's
+  unified `reasoning` parameter is now sent when the toggle is on, and the
+  reasoning that comes back was already being rendered as *Thought process*. It
+  stays hidden for OpenAI, whose `reasoning_effort` is accepted only by its
+  reasoning models and is an error on the rest.
+
 ## [1.3.0] — 2026-08-13
 
 ### Added
@@ -112,7 +218,8 @@ a command palette; light and dark mode with seven palettes; a responsive layout
 with drawers on a phone; and a token-authenticated REST API at `/api/v1`
 described by a self-served OpenAPI 3.1 document.
 
-[Unreleased]: https://github.com/authorTom/deckle/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/authorTom/deckle/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/authorTom/deckle/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/authorTom/deckle/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/authorTom/deckle/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/authorTom/deckle/compare/v1.0.0...v1.1.0
