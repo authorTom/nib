@@ -1,4 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { supportsThinking } from './models'
+import type { Provider } from './types'
 import type {
   AssistantSettings,
   ChatMessage,
@@ -104,7 +106,7 @@ async function runAnthropic(
 ): Promise<ProviderTurn> {
   const client = anthropicClient(settings)
   const params: Record<string, unknown> = {
-    model: settings.models.anthropic || 'claude-opus-4-8',
+    model: settings.models.anthropic || 'claude-opus-5',
     max_tokens: 8000,
     system,
     tools: tools.map((t) => ({
@@ -117,7 +119,13 @@ async function runAnthropic(
   // Extended ("adaptive") thinking — omit entirely when toggled off. Without
   // display: 'summarized', recent models return thinking blocks with empty
   // text (display defaults to "omitted"), leaving the reasoning UI blank.
-  if (settings.thinking) params.thinking = { type: 'adaptive', display: 'summarized' }
+  //
+  // Also omitted for models that predate adaptive thinking: they reject the
+  // parameter outright, and a stored preference should not turn every message
+  // on such a model into a 400 just because it was switched on for another.
+  if (settings.thinking && supportsThinking('anthropic', settings.models.anthropic)) {
+    params.thinking = { type: 'adaptive', display: 'summarized' }
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const resp: any = await client.messages.create(params as any, { signal })
   let text = ''
@@ -157,6 +165,25 @@ interface CompatibleConfig {
 
 /** Resolve the OpenAI-compatible endpoint config for the active provider
  *  (everything except Anthropic, which uses its own SDK). */
+/**
+ * How each OpenAI-compatible provider is asked to think, or not to.
+ *
+ * LM Studio takes a flag every time — it is how the local model's chat template
+ * decides whether to reason at all. OpenRouter's unified `reasoning` object is
+ * sent only when the toggle is on, so a model that doesn't reason is never
+ * asked to. OpenAI gets nothing: see hasThinkingToggle.
+ */
+function thinkingParams(
+  provider: Provider,
+  thinking: boolean,
+): Record<string, unknown> | undefined {
+  if (provider === 'lmstudio') {
+    return { chat_template_kwargs: { enable_thinking: thinking } }
+  }
+  if (provider === 'openrouter' && thinking) return { reasoning: { enabled: true } }
+  return undefined
+}
+
 function resolveCompatible(settings: AssistantSettings): CompatibleConfig {
   switch (settings.provider) {
     case 'openai':
@@ -300,12 +327,14 @@ export async function runCompletion(
   if (settings.provider === 'anthropic') {
     const client = anthropicClient(settings)
     const params: Record<string, unknown> = {
-      model: settings.models.anthropic || 'claude-opus-4-8',
+      model: settings.models.anthropic || 'claude-opus-5',
       max_tokens: 2000,
       system,
       messages: [{ role: 'user', content: userText }],
     }
-    if (settings.thinking) params.thinking = { type: 'adaptive' }
+    if (settings.thinking && supportsThinking('anthropic', settings.models.anthropic)) {
+      params.thinking = { type: 'adaptive' }
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const resp: any = await client.messages.create(params as any, { signal })
     return (resp.content ?? [])
@@ -327,9 +356,7 @@ export async function runCompletion(
     [], // no tools — one-shot completion
     signal,
     {
-      extra: cfg.isLocal
-        ? { chat_template_kwargs: { enable_thinking: settings.thinking } }
-        : undefined,
+      extra: thinkingParams(settings.provider, settings.thinking),
       stripThink: cfg.stripThink,
       extraHeaders: cfg.extraHeaders,
     },
@@ -362,9 +389,7 @@ export async function runTurn(
     tools,
     signal,
     {
-      extra: cfg.isLocal
-        ? { chat_template_kwargs: { enable_thinking: settings.thinking } }
-        : undefined,
+      extra: thinkingParams(settings.provider, settings.thinking),
       stripThink: cfg.stripThink,
       extraHeaders: cfg.extraHeaders,
     },

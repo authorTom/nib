@@ -15,13 +15,18 @@ import {
 import { useEnterExit } from '../hooks/useEnterExit'
 import { OVERLAY_EXIT_MS } from '../lib/motion'
 import { ApprovalCard } from './ApprovalCard'
+import ModelPicker, { currentSelection } from './ModelPicker'
+import { modelLabel } from '../ai/models'
 import { FINISHED, type Run } from '../queue/types'
 import type { QueueApi } from '../queue/useQueue'
+import type { AssistantSettings } from '../ai/types'
 
 interface RunModalProps {
   /** Which run to show; null closes the dialog. */
   runId: string | null
   queue: QueueApi
+  /** Providers and models, for changing what this run will use. */
+  settings: AssistantSettings
   onClose: () => void
   onOpenNote: (path: string) => void
 }
@@ -29,6 +34,7 @@ interface RunModalProps {
 export default function RunModal({
   runId,
   queue,
+  settings,
   onClose,
   onOpenNote,
 }: RunModalProps) {
@@ -103,6 +109,35 @@ export default function RunModal({
         </div>
 
         <div className="modal-body run-body">
+          {/* Which model, and — while nothing is in flight — which model
+              instead. A run that failed on a small local model is exactly the
+              one you want to send to a bigger one before resuming it. */}
+          <div className="run-model-row">
+            {run.status === 'running' ? (
+              <span className="assistant-note">
+                Running on{' '}
+                <strong>
+                  {run.provider && run.model
+                    ? modelLabel(run.provider, run.model)
+                    : 'the current model'}
+                </strong>
+              </span>
+            ) : (
+              <ModelPicker
+                settings={settings}
+                value={
+                  run.provider && run.model
+                    ? { provider: run.provider, model: run.model }
+                    : currentSelection(settings)
+                }
+                onChange={(selection) => {
+                  void queue.setRunModel(run.id, selection).then(load)
+                }}
+                label="Model for this run"
+              />
+            )}
+          </div>
+
           {/* The title is the prompt's first line, trimmed. Repeating it in
               full underneath is only worth the space when there is more of it
               than the header already showed. */}

@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
-  Bot,
   Bookmark,
   CalendarDays,
   CheckCircle2,
@@ -17,11 +16,9 @@ import {
   X,
 } from 'lucide-react'
 import BookmarkList from './BookmarkList'
-import QueuePanel from './QueuePanel'
-import type { QueueApi } from '../queue/useQueue'
 
 /** The three things the left panel can be showing. */
-export type PanelTab = 'tasks' | 'bookmarks' | 'queue'
+export type PanelTab = 'tasks' | 'bookmarks'
 import MiniCalendar from './MiniCalendar'
 import TaskItem from './TaskItem'
 import { timeAgo } from '../lib/format'
@@ -34,13 +31,6 @@ interface TaskPanelProps {
   open: boolean
   tab: PanelTab
   onTabChange: (tab: PanelTab) => void
-  /** The assistant's background queue, shown as a third tab. */
-  queue: QueueApi
-  onOpenRun: (id: string) => void
-  /** Note open in the editor, attached to anything queued from here. */
-  activePath: string | null
-  /** False when no provider is configured, so queueing would fail at once. */
-  assistantReady: boolean
   onClose: () => void
   tasks: TasksApi
   bookmarks: BookmarksApi
@@ -60,10 +50,6 @@ function sortTasks(list: Task[]): Task[] {
 export default function TaskPanel({
   open,
   tab,
-  queue,
-  onOpenRun,
-  activePath,
-  assistantReady,
   onTabChange,
   onClose,
   tasks,
@@ -410,18 +396,6 @@ export default function TaskPanel({
           >
             <Bookmark size={15} /> Bookmarks
           </button>
-          <button
-            type="button"
-            className={`panel-tab${tab === 'queue' ? ' active' : ''}`}
-            onClick={() => onTabChange('queue')}
-          >
-            <Bot size={15} /> Queue
-            {/* The count is only ever the runs that cannot finish without a
-                person — a badge for "three things are running" would be noise. */}
-            {queue.counts.waiting > 0 && (
-              <span className="panel-tab-badge">{queue.counts.waiting}</span>
-            )}
-          </button>
         </div>
         <button
           type="button"
@@ -436,15 +410,6 @@ export default function TaskPanel({
 
       {tab === 'bookmarks' && (
         <BookmarkList bookmarks={bookmarks} onOpenNote={onOpenNote} />
-      )}
-
-      {tab === 'queue' && (
-        <QueuePanel
-          queue={queue}
-          activePath={activePath}
-          onOpenRun={onOpenRun}
-          ready={assistantReady}
-        />
       )}
 
       {tab === 'tasks' && (

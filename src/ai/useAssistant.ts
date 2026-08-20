@@ -1,8 +1,15 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { runCompletion, runTurn } from './providers'
 import { buildPreview, executeTool, toolByName, TOOL_DEFS } from './tools'
 import type { ActionPreview } from './tools'
-import { loadSettings, saveSettings } from './settings'
+import { DEFAULT_SETTINGS, loadSettings, saveSettings } from './settings'
+import {
+  loadShared,
+  mergeShared,
+  pickShared,
+  saveShared,
+  type Sharing,
+} from './remoteSettings'
 import { SYSTEM_PROMPT } from './prompt'
 import { buildMemoryContext } from '../memory/context'
 import { recordUses } from '../memory/store'
@@ -25,10 +32,26 @@ interface UseAssistantOptions {
   getActivePath: () => string | null
   /** The assistant wrote to its own memory — the Memory panel is now stale. */
   onMemoryChanged?: () => void
+  /**
+   * Whether the settings (the API key above all) belong to this browser or to
+   * the server every device signs in to. See src/ai/remoteSettings.ts.
+   */
+  sharing?: Sharing
 }
 
 let counter = 0
 const uid = () => `m${Date.now()}_${counter++}`
+
+/**
+ * Is there anything here worth putting on the server?
+ *
+ * Only asked when the server has no settings of its own. A browser that has
+ * never been given a key has nothing to seed with, and pushing its defaults up
+ * would just overwrite the next device's real settings with blanks.
+ */
+function hasKey(settings: AssistantSettings): boolean {
+  return !!(settings.anthropicKey || settings.openaiKey || settings.openrouterKey)
+}
 
 interface GateContext {
   dir: FileSystemDirectoryHandle
@@ -42,6 +65,7 @@ export function useAssistant({
   onMutated,
   getActivePath,
   onMemoryChanged,
+  sharing = 'local',
 }: UseAssistantOptions) {
   const [settings, setSettingsState] = useState<AssistantSettings>(loadSettings)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -50,16 +74,95 @@ export function useAssistant({
 
   const settingsRef = useRef(settings)
   settingsRef.current = settings
+  // Read inside updateSettings, which is created once and would otherwise
+  // capture whichever backend was open when the panel first rendered.
+  const sharingRef = useRef(sharing)
+  sharingRef.current = sharing
   const messagesRef = useRef(messages)
   messagesRef.current = messages
   const abortRef = useRef<AbortController | null>(null)
   const gateRef = useRef<GateContext | null>(null)
   const mutatedRef = useRef(false)
 
-  const updateSettings = useCallback((next: AssistantSettings) => {
+  // Says so when the server wouldn't take the settings, rather than leaving
+  // the user to discover on their next device that the key never travelled.
+  const [settingsError, setSettingsError] = useState<string | null>(null)
+
+  const updateSettings = useCallback(
+    (next: AssistantSettings) => {
+      setSettingsState(next)
+      // localStorage is written either way: it is this browser's cache of the
+      // shared settings, so a reload comes up configured without waiting for a
+      // round trip, and a server that is down doesn't take the assistant with it.
+      saveSettings(next)
+      if (sharingRef.current !== 'server') {
+        setSettingsError(null)
+        return
+      }
+      void saveShared(pickShared(next)).then(
+        () => setSettingsError(null),
+        (err: unknown) =>
+          setSettingsError(
+            err instanceof Error
+              ? `Saved here, but not on the server: ${err.message}`
+              : 'Saved here, but the server did not take a copy.',
+          ),
+      )
+    },
+    [],
+  )
+
+  /**
+   * Give back the settings the server lent this browser.
+   *
+   * Called when signing out of a server library. The key came from the server
+   * and every device that signs in gets it again, so there is no reason for it
+   * to outlive the session here — and on a borrowed or shared machine, every
+   * reason for it not to. Settings that were only ever local are left alone.
+   */
+  const forgetSharedSettings = useCallback(() => {
+    if (sharingRef.current !== 'server') return
+    const next = {
+      ...DEFAULT_SETTINGS,
+      // Never came from the server, so it isn't the server's to take back.
+      lmstudioUrl: settingsRef.current.lmstudioUrl,
+    }
     setSettingsState(next)
     saveSettings(next)
+    setSettingsError(null)
   }, [])
+
+  // Adopt the server's settings when a server library opens, and seed the
+  // server from this browser when it has none yet — the first device to sign in
+  // brings the key with it rather than finding an empty box.
+  useEffect(() => {
+    if (sharing !== 'server') return
+    let cancelled = false
+    void (async () => {
+      try {
+        const shared = await loadShared()
+        if (cancelled) return
+        if (shared) {
+          const merged = mergeShared(settingsRef.current, shared)
+          setSettingsState(merged)
+          saveSettings(merged)
+        } else if (hasKey(settingsRef.current)) {
+          await saveShared(pickShared(settingsRef.current))
+        }
+        if (!cancelled) setSettingsError(null)
+      } catch (err: unknown) {
+        if (cancelled) return
+        setSettingsError(
+          err instanceof Error
+            ? `Couldn't read the settings this server keeps: ${err.message}`
+            : "Couldn't read the settings this server keeps.",
+        )
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [sharing])
 
   const commit = useCallback((working: ChatMessage[]) => {
     setMessages([...working])
@@ -312,6 +415,8 @@ export function useAssistant({
   return {
     settings,
     updateSettings,
+    settingsError,
+    forgetSharedSettings,
     messages,
     status,
     pending,

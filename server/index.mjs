@@ -15,6 +15,8 @@
 //   PORT                     port to listen on                  (default 8080)
 //   DECKLE_SERVER_LIBRARY    "true" enables the server library     (default off)
 //   DECKLE_LIBRARY_DIR       directory holding the server library (default /data)
+//   DECKLE_STATE_DIR         Deckle's own state, outside the library
+//                            (default <DECKLE_LIBRARY_DIR>/.deckle-state)
 //   DECKLE_LIBRARY_NAME      display name shown in the app  (default "My Notes")
 //   DECKLE_PASSWORD          password gating the library; unset = open access
 //   DECKLE_SESSION_SECRET    keeps sessions valid across restarts
@@ -35,6 +37,7 @@ import { createSearch } from './search.mjs'
 import { createStaticHandler, SECURITY_HEADERS } from './static.mjs'
 import { createLibraryApi, TooLargeError } from './library-api.mjs'
 import { createLibraryStore } from './library-store.mjs'
+import { createSettingsStore, InvalidSettingsError, MAX_SETTINGS_BYTES } from './settings-store.mjs'
 import { BadPathError } from './paths.mjs'
 import { resolveLegacyEnv } from './legacy-env.mjs'
 import { VERSION } from './version.mjs'
@@ -50,9 +53,22 @@ const PUBLIC_DIR = path.resolve(ENV.DECKLE_PUBLIC_DIR || path.join(here, '..', '
 const LIBRARY_DIR = path.resolve(ENV.DECKLE_LIBRARY_DIR || '/data')
 const LIBRARY_NAME = ENV.DECKLE_LIBRARY_NAME || 'My Notes'
 const LIBRARY_ENABLED = ENV.DECKLE_SERVER_LIBRARY === 'true'
+// Deckle's own state — not notes, and not part of the library, but kept under
+// the library directory by default because that is the volume people mount.
+// The library API refuses to serve it; see RESERVED_DIR in library-api.mjs.
+const STATE_DIR = path.resolve(
+  ENV.DECKLE_STATE_DIR || path.join(LIBRARY_DIR, '.deckle-state'),
+)
 
 const auth = createAuth(ENV)
 const library = createLibraryApi(LIBRARY_DIR)
+const settingsStore = createSettingsStore(STATE_DIR)
+
+// Shared assistant settings are offered only behind a password. Without one the
+// API is open by design (the deployment guide assumes a VPN or an
+// authenticating proxy in front), and an open endpoint handing out a provider
+// key is not a trade this server gets to make on the user's behalf.
+const SHARED_SETTINGS = LIBRARY_ENABLED && auth.required
 const serveStatic = createStaticHandler(PUBLIC_DIR)
 
 // The machine API (/api/v1): off unless tokens are configured, and useless
@@ -115,6 +131,9 @@ async function handleServerLibraryRoutes(req, res, url) {
       name: LIBRARY_NAME,
       authRequired: auth.required,
       authenticated: LIBRARY_ENABLED && auth.isAuthenticated(req),
+      // Whether this server will hold the assistant's settings for every
+      // device, so the app can say why it won't when it won't.
+      sharedSettings: SHARED_SETTINGS,
     })
     return true
   }
@@ -158,6 +177,71 @@ async function handleServerLibraryRoutes(req, res, url) {
   }
 
   return false
+}
+
+// ---- /api/assistant-settings -------------------------------------------------
+
+/**
+ * The assistant's settings, shared by every device signed in to this server.
+ *
+ * Gated exactly like the library routes — same-origin app header, then the
+ * session cookie — plus the password requirement above. The stored object is
+ * whatever the app sent; this endpoint is a shelf, not a schema.
+ */
+async function handleAssistantSettingsRoutes(req, res, url) {
+  if (url.pathname !== '/api/assistant-settings') return false
+
+  if (!LIBRARY_ENABLED) {
+    sendJson(res, 404, { error: 'server library disabled' })
+    return true
+  }
+  if (!hasAppHeader(req)) {
+    sendJson(res, 403, { error: 'forbidden' })
+    return true
+  }
+  if (!SHARED_SETTINGS) {
+    sendJson(res, 409, {
+      error: 'password_required',
+      message:
+        'Set DECKLE_PASSWORD to share assistant settings between devices. ' +
+        'Without it this server is open, and anyone who can reach it could read the key.',
+    })
+    return true
+  }
+  if (!auth.isAuthenticated(req)) {
+    sendJson(res, 401, { error: 'not authenticated' })
+    return true
+  }
+
+  if (req.method === 'GET') {
+    sendJson(res, 200, { settings: await settingsStore.read() })
+    return true
+  }
+
+  if (req.method === 'PUT') {
+    let body
+    try {
+      body = await readJsonBody(req, MAX_SETTINGS_BYTES)
+    } catch (err) {
+      if (err instanceof TooLargeError) throw err
+      sendJson(res, 400, { error: 'invalid request' })
+      return true
+    }
+    try {
+      await settingsStore.write(body.settings)
+    } catch (err) {
+      if (err instanceof InvalidSettingsError) {
+        sendJson(res, 400, { error: err.message })
+        return true
+      }
+      throw err
+    }
+    sendJson(res, 200, { ok: true })
+    return true
+  }
+
+  sendJson(res, 405, { error: 'method not allowed' })
+  return true
 }
 
 // ---- /api/library ------------------------------------------------------------
@@ -252,6 +336,7 @@ const server = http.createServer((req, res) => {
       // never be reachable with the app's session cookie.
       if (await handleApi(req, res, url)) return
       if (await handleServerLibraryRoutes(req, res, url)) return
+      if (await handleAssistantSettingsRoutes(req, res, url)) return
       if (await handleLibraryRoutes(req, res, url)) return
 
       if (url.pathname.startsWith('/api/')) {
@@ -327,6 +412,11 @@ server.listen(PORT, () => {
       auth.required
         ? '[deckle] server library is password protected'
         : '[deckle] WARNING: server library has no password (DECKLE_PASSWORD unset) — anyone who can reach this port can read and write your notes',
+    )
+    console.log(
+      SHARED_SETTINGS
+        ? `[deckle] assistant settings shared across devices, stored in ${STATE_DIR}`
+        : '[deckle] assistant settings stay in each browser (sharing them needs DECKLE_PASSWORD)',
     )
   } else {
     console.log('[deckle] server library disabled (set DECKLE_SERVER_LIBRARY=true to enable)')

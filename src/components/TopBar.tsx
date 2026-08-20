@@ -27,9 +27,16 @@ import { MOD_KEY } from '../lib/platform'
 
 
 interface TopBarProps {
+  /** The note the name belongs to. Null when no note is open. */
+  noteId: string | null
   title: string
-  /** Persist the (renamed) title — called on blur / Enter, not per keystroke. */
-  onTitleCommit: (title: string) => void
+  /**
+   * Persist the (renamed) title — called on blur / Enter, not per keystroke.
+   * Takes the id the name was typed for rather than reading whichever note is
+   * open when the commit lands, so a rename can never overtake a note switch
+   * and put one note's name on another's file.
+   */
+  onTitleCommit: (noteId: string, title: string) => void
   onNew: () => void
   onSaveMarkdown: () => void
   onExportPdf: () => void
@@ -54,6 +61,11 @@ interface TopBarProps {
   theme: Theme
   onToggleTheme: (e: React.MouseEvent) => void
   hasNote: boolean
+  /**
+   * Background runs that have stopped for a person. Shown on the assistant
+   * button, which is the only trace of a parked run once both panels are shut.
+   */
+  runsNeedingYou: number
 }
 
 /**
@@ -64,6 +76,7 @@ interface TopBarProps {
  * a row of unlabelled icons.
  */
 export default function TopBar({
+  noteId,
   title,
   onTitleCommit,
   onNew,
@@ -88,18 +101,22 @@ export default function TopBar({
   theme,
   onToggleTheme,
   hasNote,
+  runsNeedingYou,
 }: TopBarProps) {
   // Local state for instant typing; renaming the file happens on commit.
-  const [localTitle, setLocalTitle] = useState(title)
+  // The note it was typed for travels with it, along with the name that note
+  // started out with — that pair is what decides whether there is a rename to
+  // make, and which file it applies to.
+  const [draft, setDraft] = useState({ id: noteId, name: title, was: title })
 
-  // Keep in sync when the title changes externally (e.g. switching notes,
-  // or the file being renamed to avoid a collision).
+  // Start again whenever a different note takes the top bar, or the name
+  // changes underneath us (a switch, or a file renamed to dodge a collision).
   useEffect(() => {
-    setLocalTitle(title)
-  }, [title])
+    setDraft({ id: noteId, name: title, was: title })
+  }, [noteId, title])
 
   const commit = () => {
-    if (localTitle !== title) onTitleCommit(localTitle)
+    if (draft.id && draft.name !== draft.was) onTitleCommit(draft.id, draft.name)
   }
 
   const menuItems: MenuItem[] = [
@@ -205,8 +222,8 @@ export default function TopBar({
         <FileText size={14} aria-hidden="true" />
         <input
           className="topbar-title-input"
-          value={localTitle}
-          onChange={(e) => setLocalTitle(e.target.value)}
+          value={draft.name}
+          onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
           onBlur={commit}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
@@ -253,12 +270,23 @@ export default function TopBar({
         </button>
         <button
           type="button"
-          className="icon-btn"
+          className="icon-btn assistant-trigger"
           onClick={onOpenAssistant}
-          title="AI assistant"
-          aria-label="AI assistant"
+          title={
+            runsNeedingYou
+              ? `AI assistant — ${runsNeedingYou} background ${
+                  runsNeedingYou === 1 ? 'run needs' : 'runs need'
+                } you`
+              : 'AI assistant'
+          }
+          aria-label={
+            runsNeedingYou
+              ? `AI assistant, ${runsNeedingYou} background runs need you`
+              : 'AI assistant'
+          }
         >
           <Sparkles size={18} />
+          {runsNeedingYou > 0 && <span className="icon-btn-badge" aria-hidden="true" />}
         </button>
         <button
           type="button"

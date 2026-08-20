@@ -23,6 +23,31 @@ export function isDataDir(name: string): boolean {
 }
 
 /**
+ * Resolve a slash-separated path inside the metadata folder to its file.
+ *
+ * `getFileHandle` takes a *name*, not a path: give it "runs/index.json" and the
+ * File System Access API throws "Name is not allowed". The server library's
+ * adapter resolves paths by URL and never noticed, so a nested file worked
+ * there and failed on every local and in-browser library — which is exactly
+ * how the assistant's queue came to write run records it could never index.
+ * Anything nested walks its directories first, here, once.
+ */
+async function fileAt(
+  folder: FileSystemDirectoryHandle,
+  file: string,
+  create: boolean,
+): Promise<FileSystemFileHandle> {
+  const parts = file.split('/').filter(Boolean)
+  const name = parts.pop()
+  if (!name) throw new TypeError(`not a file path: ${file}`)
+  let here = folder
+  for (const part of parts) {
+    here = await here.getDirectoryHandle(part, { create })
+  }
+  return await here.getFileHandle(name, { create })
+}
+
+/**
  * Read and parse a JSON file from the metadata folder, preferring the current
  * name and falling back to the pre-rename one. Returns null when neither has
  * a readable copy, so callers can start from an empty store.
@@ -34,7 +59,7 @@ export async function readDataJson(
   for (const folderName of [DATA_DIR, LEGACY_DATA_DIR]) {
     try {
       const folder = await dir.getDirectoryHandle(folderName)
-      const handle = await folder.getFileHandle(file)
+      const handle = await fileAt(folder, file, false)
       return JSON.parse(await (await handle.getFile()).text())
     } catch {
       // Absent, unparseable, or unreadable — try the legacy name, then give up.
@@ -64,7 +89,7 @@ export async function writeDataJson(
   value: unknown,
 ): Promise<void> {
   const folder = await dir.getDirectoryHandle(DATA_DIR, { create: true })
-  const handle = await folder.getFileHandle(file, { create: true })
+  const handle = await fileAt(folder, file, true)
   const writable = await handle.createWritable()
   await writable.write(JSON.stringify(value, null, 2))
   await writable.close()

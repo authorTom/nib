@@ -19,6 +19,12 @@ export interface ServerLibraryInfo {
   name: string
   authRequired: boolean
   authenticated: boolean
+  /**
+   * Whether this server holds the assistant's settings for every device that
+   * signs in. False on a server with no password, which the app explains
+   * rather than silently keeping the key in one browser.
+   */
+  sharedSettings: boolean
 }
 
 /** Called when the server rejects a request as unauthenticated mid-session. */
@@ -28,8 +34,14 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
   onUnauthorized = handler
 }
 
-/** Marks requests as coming from the app itself — see hasAppHeader() server-side. */
-const APP_HEADERS = { 'X-Deckle-App': '1' }
+/**
+ * Marks requests as coming from the app itself — see hasAppHeader() server-side.
+ *
+ * Exported because every same-origin call to Deckle's own server needs it, not
+ * just the library ones: the header is half the CSRF defence, and a caller that
+ * forgets it gets a 403 rather than a subtle bug.
+ */
+export const APP_HEADERS = { 'X-Deckle-App': '1' }
 
 class NotFoundError extends DOMException {
   constructor(message: string) {

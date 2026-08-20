@@ -9,7 +9,7 @@ export const DEFAULT_SETTINGS: AssistantSettings = {
   openrouterKey: '',
   lmstudioUrl: 'http://localhost:1234/v1',
   models: {
-    anthropic: 'claude-opus-4-8',
+    anthropic: 'claude-opus-5',
     openai: 'gpt-4o',
     // OpenRouter's auto-router picks a capable model — a safe always-valid default.
     openrouter: 'openrouter/auto',

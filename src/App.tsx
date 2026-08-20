@@ -46,6 +46,7 @@ import MemoryModal from './components/MemoryModal'
 import RunModal from './components/RunModal'
 import { useQueue } from './queue/useQueue'
 import { useAssistant } from './ai/useAssistant'
+import type { Sharing } from './ai/remoteSettings'
 import { useTasks } from './tasks/useTasks'
 import { useBookmarks } from './bookmarks/useBookmarks'
 import { domainOf, findUrl, normalizeUrl } from './bookmarks/url'
@@ -226,6 +227,9 @@ export default function App() {
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [tasksOpen, setTasksOpen] = useState(false)
   const [panelTab, setPanelTab] = useState<PanelTab>('tasks')
+  // Which half of the assistant is showing. Held here so the command palette
+  // can open the panel *on* the queue rather than merely near it.
+  const [assistantView, setAssistantView] = useState<'chat' | 'queue'>('chat')
 
   /** Shut every drawer — what the scrim does, and what a phone needs on open. */
   const closeOverlays = useCallback(() => {
@@ -267,7 +271,15 @@ export default function App() {
     () => openPanelTab('bookmarks'),
     [openPanelTab],
   )
-  const toggleQueue = useCallback(() => openPanelTab('queue'), [openPanelTab])
+  /**
+   * The queue is part of the assistant now, so "show me the queue" means "open
+   * the assistant". Kept as its own command because that is what people search
+   * the palette for.
+   */
+  const openQueue = useCallback(() => {
+    setAssistantView('queue')
+    if (!assistantOpen) toggleAssistant()
+  }, [assistantOpen, toggleAssistant])
 
   // Docked panels stay mounted for the length of their slide-out, so closing
   // one animates instead of vanishing. Matches --dur-slow.
@@ -578,12 +590,30 @@ export default function App() {
   const getDir = useCallback(() => libraryDir, [libraryDir])
   const onAssistantMutated = useCallback(() => void reload(), [reload])
   const getActivePath = useCallback(() => activeNote?.id ?? null, [activeNote])
+  // Where the assistant's settings live. On a server library they belong to the
+  // server, so every device that signs in is already configured — unless that
+  // server has no password, in which case it declines to hold a provider key
+  // and the panel says why.
+  const settingsSharing: Sharing = !usingServerLibrary
+    ? 'local'
+    : serverLibrary?.sharedSettings
+      ? 'server'
+      : 'needs-password'
   const assistant = useAssistant({
     getDir,
     onMutated: onAssistantMutated,
     getActivePath,
     onMemoryChanged: bumpMemory,
+    sharing: settingsSharing,
   })
+
+  // Leaving the server library hands back what it lent: the session, and the
+  // assistant settings that came with it.
+  const forgetSharedSettings = assistant.forgetSharedSettings
+  const leaveServerLibrary = useCallback(() => {
+    forgetSharedSettings()
+    void signOutServer()
+  }, [forgetSharedSettings, signOutServer])
 
   // The assistant's background queue. It executes here, in the browser, with
   // the key already in this browser; the run records it writes are the contract
@@ -593,13 +623,8 @@ export default function App() {
     dir: libraryDir,
     settings: assistant.settings,
     onMutated: onAssistantMutated,
+    onRunFailed: (title, error) => showToast(`“${title}” — ${error}`, 'danger'),
   })
-
-  /** Has a provider actually been configured? Queueing without one just fails. */
-  const assistantReady =
-    assistant.settings.provider === 'lmstudio'
-      ? !!assistant.settings.lmstudioUrl
-      : !!assistant.settings[`${assistant.settings.provider}Key` as const]
 
   // Keyboard shortcuts: Ctrl/Cmd+K opens the palette,
   // Ctrl/Cmd+Shift+F toggles focus, Ctrl/Cmd+\ splits, Escape exits focus.
@@ -913,7 +938,7 @@ export default function App() {
         label: 'Assistant queue',
         icon: Bot,
         keywords: 'queue background job run agent task assistant batch',
-        run: toggleQueue,
+        run: openQueue,
       },
       {
         id: 'memory',
@@ -974,7 +999,8 @@ export default function App() {
           : 'Switch to the server library',
         icon: Server,
         keywords: 'server library docker remote sign out log out switch hosted',
-        run: () => (usingServerLibrary ? void signOutServer() : connectServer()),
+        run: () =>
+          usingServerLibrary ? void leaveServerLibrary() : connectServer(),
       })
     }
 
@@ -1065,7 +1091,7 @@ export default function App() {
     toggleAssistant,
     toggleTasks,
     toggleBookmarks,
-    toggleQueue,
+    openQueue,
     captureSelectionBookmark,
     activeNote,
     handleDelete,
@@ -1073,7 +1099,7 @@ export default function App() {
     serverLibrary,
     usingServerLibrary,
     connectServer,
-    signOutServer,
+    leaveServerLibrary,
   ])
 
   // ---- Library gate: shown until a library is connected ----
@@ -1143,10 +1169,6 @@ export default function App() {
           open={renderTasks}
           tab={panelTab}
           onTabChange={setPanelTab}
-          queue={queue}
-          onOpenRun={setOpenRunId}
-          activePath={activeNote?.id ?? null}
-          assistantReady={assistantReady}
           onClose={() => setTasksOpen(false)}
           tasks={tasks}
           bookmarks={bookmarks}
@@ -1197,6 +1219,7 @@ export default function App() {
         onLeaveNote={nameNoteAfterHeading}
         shouldClaimFocus={shouldClaimFocus}
         onOpenNote={handleOpenInPane}
+        runsNeedingYou={queue.counts.waiting}
         onTitleCommit={handleRenameNote}
         onNew={() => void createNote()}
         onSaveMarkdown={handleSaveMarkdown}
@@ -1234,6 +1257,10 @@ export default function App() {
           activePath={activeNote?.id ?? null}
           settings={assistant.settings}
           onUpdateSettings={assistant.updateSettings}
+          view={assistantView}
+          onViewChange={setAssistantView}
+          sharing={settingsSharing}
+          settingsError={assistant.settingsError}
           messages={assistant.messages}
           status={assistant.status}
           pending={assistant.pending}
@@ -1243,6 +1270,9 @@ export default function App() {
           onApproveAll={assistant.approveAll}
           onStop={assistant.stop}
           onClear={assistant.clear}
+          queue={queue}
+          onOpenRun={setOpenRunId}
+          onOpenNote={handleSelect}
         />
       </div>
 
@@ -1391,6 +1421,7 @@ export default function App() {
       <RunModal
         runId={openRunId}
         queue={queue}
+        settings={assistant.settings}
         onClose={() => setOpenRunId(null)}
         onOpenNote={(path) => handleSelect(path)}
       />

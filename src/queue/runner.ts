@@ -140,6 +140,11 @@ export async function executeAndRecord(
     }
   }
 
+  // Say what is about to happen before it happens: a long tool call is
+  // exactly when the list most needs to explain itself.
+  ctx.run.summary = describeProgress(call)
+  await ctx.onTurn()
+
   let content: string
   let isError = false
   try {
@@ -235,6 +240,36 @@ function buildSystem(ctx: RunContext, memory: string): string {
 }
 
 /** A one-line "what happened" for the queue list. */
+/**
+ * What the run is doing, right now, in the words of the thing it is doing it
+ * to. Written onto the run after every turn so the list can show progress
+ * rather than a spinner and a title — "working" for two minutes tells you
+ * nothing about whether it is working *well*.
+ */
+function describeProgress(call: ToolCall): string {
+  const a = call.arguments
+  const str = (k: string) => (typeof a[k] === 'string' ? (a[k] as string) : '')
+  switch (call.name) {
+    case 'read_note':
+      return `Reading ${str('path')}`
+    case 'write_file':
+      return `Writing ${str('path')}`
+    case 'move_file':
+      return `Moving ${str('from')}`
+    case 'create_folder':
+      return `Creating ${str('path')}`
+    case 'delete_file':
+    case 'delete_folder':
+      return `Deleting ${str('path')}`
+    case 'search_notes':
+      return `Searching for “${str('query')}”`
+    case 'list_notes':
+      return 'Looking through the library'
+    default:
+      return `Running ${call.name}`
+  }
+}
+
 function summarise(text: string, writes: RunWrite[]): string {
   const firstLine = text.trim().split('\n').find((l) => l.trim())?.trim()
   if (firstLine) return firstLine.length > 160 ? `${firstLine.slice(0, 157)}…` : firstLine
@@ -265,6 +300,15 @@ export async function advance(ctx: RunContext): Promise<Outcome> {
 
   for (let step = 0; step < MAX_STEPS; step++) {
     if (ctx.signal.aborted) return { kind: 'cancelled' }
+
+    // The wait for the model is the longest silence in a run, and the one most
+    // often mistaken for nothing happening.
+    ctx.run.summary = ctx.run.writes.length
+      ? `Thinking… (${ctx.run.writes.length} ${
+          ctx.run.writes.length === 1 ? 'note' : 'notes'
+        } so far)`
+      : 'Thinking…'
+    await ctx.onTurn()
 
     const turn = await runTurn(
       ctx.settings,

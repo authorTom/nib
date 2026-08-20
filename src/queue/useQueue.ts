@@ -15,7 +15,7 @@ import {
 } from './settings'
 import { deleteRun, loadIndex, newRunId, readRun, saveRun } from './store'
 import { FINISHED, type Run, type RunStatus, type RunSummary } from './types'
-import type { AssistantSettings } from '../ai/types'
+import type { AssistantSettings, Provider } from '../ai/types'
 
 interface UseQueueOptions {
   dir: FileSystemDirectoryHandle | null
@@ -23,7 +23,59 @@ interface UseQueueOptions {
   settings: AssistantSettings
   /** A run changed the library, so the note tree should reload. */
   onMutated: () => void
+  /**
+   * A background run stopped without finishing.
+   *
+   * Background work that fails quietly is indistinguishable from background
+   * work that never started, and the panel it lives in is usually closed by
+   * the time it happens — so the app gets told, and says so.
+   */
+  onRunFailed?: (title: string, error: string) => void
 }
+
+/**
+ * The settings a run executes under: the live ones, with the model it was
+ * queued against put back.
+ *
+ * A run records its model when it is queued, so changing the model in the chat
+ * panel doesn't re-point work that is already waiting, and a finished run can
+ * say what produced it. Everything else — the key, memory, the inbox — is read
+ * live, because those are properties of the browser doing the work rather than
+ * of the job.
+ */
+function settingsFor(run: Run, settings: AssistantSettings): AssistantSettings {
+  if (!run.provider || !run.model) return settings
+  return {
+    ...settings,
+    provider: run.provider,
+    models: { ...settings.models, [run.provider]: run.model },
+  }
+}
+
+/**
+ * Which runs should start right now.
+ *
+ * Pulled out of the effect so it can be tested without a browser: "why is
+ * nothing running" is a question about this decision, and it should be
+ * answerable without a React renderer and a provider key.
+ *
+ * Oldest first, so the queue is a queue.
+ */
+export function nextToStart(
+  runs: RunSummary[],
+  running: ReadonlySet<string>,
+  concurrency: number,
+): RunSummary[] {
+  const free = concurrency - running.size
+  if (free <= 0) return []
+  return runs
+    .filter((r) => r.status === 'queued' && !running.has(r.id))
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .slice(0, free)
+}
+
+/** How often the scheduler looks for work regardless of what React is doing. */
+const PUMP_INTERVAL_MS = 2500
 
 /** Trim a prompt into something that fits a list row. */
 function titleFrom(prompt: string): string {
@@ -31,7 +83,7 @@ function titleFrom(prompt: string): string {
   return line.length > 80 ? `${line.slice(0, 77)}…` : line
 }
 
-export function useQueue({ dir, settings, onMutated }: UseQueueOptions) {
+export function useQueue({ dir, settings, onMutated, onRunFailed }: UseQueueOptions) {
   const [runs, setRuns] = useState<RunSummary[]>([])
   const [queueSettings, setQueueSettings] = useState<QueueSettings>(loadQueueSettings)
   const [loaded, setLoaded] = useState(false)
@@ -42,11 +94,14 @@ export function useQueue({ dir, settings, onMutated }: UseQueueOptions) {
   settingsRef.current = settings
   const queueSettingsRef = useRef(queueSettings)
   queueSettingsRef.current = queueSettings
+  const onRunFailedRef = useRef(onRunFailed)
+  onRunFailedRef.current = onRunFailed
 
   /** Runs executing right now, and how to stop them. */
   const active = useRef(new Map<string, AbortController>())
-  /** Guards the scheduler against being re-entered by its own state updates. */
-  const pumping = useRef(false)
+  // Read by the scheduler, which can run from a timer rather than a render.
+  const runsRef = useRef(runs)
+  runsRef.current = runs
 
   const refresh = useCallback(async () => {
     const d = dirRef.current
@@ -67,29 +122,37 @@ export function useQueue({ dir, settings, onMutated }: UseQueueOptions) {
     active.current.clear()
     if (!dir) return
     void (async () => {
-      const index = await loadIndex(dir)
-      if (cancelled) return
+      try {
+        const index = await loadIndex(dir)
+        if (cancelled) return
 
-      // A run marked "running" with no worker behind it is a tab that was
-      // closed, reloaded, or crashed. Say so plainly and offer it back rather
-      // than leaving a spinner that will never stop.
-      const stranded = index.runs.filter((r) => r.status === 'running')
-      for (const row of stranded) {
-        const run = await readRun(dir, row.id)
-        if (!run) continue
-        run.status = 'failed'
-        run.error =
-          'Interrupted — the browser stopped executing this run (the tab was closed or reloaded). Resume it to carry on from where it got to.'
-        // Also the summary, not just the error: the summary is what the list
-        // row shows, and a row that says "Failed" and nothing else makes the
-        // reader open it to find out whether they broke something.
-        run.summary = 'Interrupted when the tab closed. Resume to carry on.'
-        run.finishedAt = Date.now()
-        await saveRun(dir, run)
+        // A run marked "running" with no worker behind it is a tab that was
+        // closed, reloaded, or crashed. Say so plainly and offer it back rather
+        // than leaving a spinner that will never stop.
+        const stranded = index.runs.filter((r) => r.status === 'running')
+        for (const row of stranded) {
+          const run = await readRun(dir, row.id)
+          if (!run) continue
+          run.status = 'failed'
+          run.error =
+            'Interrupted — the browser stopped executing this run (the tab was closed or reloaded). Resume it to carry on from where it got to.'
+          // Also the summary, not just the error: the summary is what the list
+          // row shows, and a row that says "Failed" and nothing else makes the
+          // reader open it to find out whether they broke something.
+          run.summary = 'Interrupted when the tab closed. Resume to carry on.'
+          run.finishedAt = Date.now()
+          await saveRun(dir, run)
+        }
+        if (cancelled) return
+        setRuns((await loadIndex(dir)).runs)
+      } catch (err) {
+        // Tidying up after a dead tab is housekeeping. If it fails — a write
+        // refused, a file half-written — the queue still has to work, so this
+        // says so and carries on rather than leaving the hook half-started.
+        console.error('[deckle] could not tidy the queue on load:', err)
+      } finally {
+        if (!cancelled) setLoaded(true)
       }
-      if (cancelled) return
-      setRuns((await loadIndex(dir)).runs)
-      setLoaded(true)
     })()
     return () => {
       cancelled = true
@@ -115,34 +178,64 @@ export function useQueue({ dir, settings, onMutated }: UseQueueOptions) {
     async (id: string) => {
       const d = dirRef.current
       if (!d || active.current.has(id)) return
-      const run = await readRun(d, id)
-      if (!run) return
 
+      // Claim the slot before the first await. The scheduler fires from a timer
+      // as well as from a render, and two calls that both got as far as reading
+      // the record before either claimed it would run the same job twice.
       const controller = new AbortController()
       active.current.set(id, controller)
 
-      run.status = 'running'
-      run.startedAt = run.startedAt ?? Date.now()
-      run.question = undefined
-      run.pendingPreview = undefined
-      run.error = undefined
-      await saveRun(d, run)
-      await refresh()
-
-      const ctx: RunContext = {
-        dir: d,
-        run,
-        settings: settingsRef.current,
-        inbox: queueSettingsRef.current.inbox,
-        signal: controller.signal,
-        onTurn: async () => {
-          await saveRun(d, run)
-          await refresh()
-        },
-      }
-
-      let wrote = run.writes.length
+      // Everything from here is inside try/finally, including reading the run
+      // and the first write. It wasn't, and that was the bug behind "queued
+      // jobs never run": a throw from any of those — a refused write, a
+      // permission that lapsed on reload, a server that blinked — escaped as
+      // an unhandled rejection with the slot still held, so every later pass
+      // saw the run as already executing and skipped it. The job then sat at
+      // "Waiting its turn" for the rest of the session with nothing to show
+      // for it. A held slot must be released on every path out of here.
+      let run: Run | null = null
+      let wrote = 0
+      // Did it actually get going? Not the same question as "what does the run
+      // object say" — the status is set in memory a moment before the write
+      // that makes it true, and a failure between the two must leave the job
+      // queued rather than recorded as a run that failed.
+      let started = false
       try {
+        run = await readRun(d, id)
+        if (!run) {
+          // The index says this run exists and its record doesn't. Drop the row
+          // rather than leaving something unstartable in the list.
+          await deleteRun(d, id)
+          await refresh()
+          console.warn(`[deckle] queued run ${id} has no record; removed from the queue`)
+          return
+        }
+        // Someone else got to it — another tab, or a pass that overlapped this
+        // one. Only work that is actually waiting gets started.
+        if (run.status !== 'queued') return
+
+        run.status = 'running'
+        run.startedAt = run.startedAt ?? Date.now()
+        run.question = undefined
+        run.pendingPreview = undefined
+        run.error = undefined
+        await saveRun(d, run)
+        await refresh()
+        started = true
+        wrote = run.writes.length
+
+        const ctx: RunContext = {
+          dir: d,
+          run,
+          settings: settingsFor(run, settingsRef.current),
+          inbox: queueSettingsRef.current.inbox,
+          signal: controller.signal,
+          onTurn: async () => {
+            await saveRun(d, run as Run)
+            await refresh()
+          },
+        }
+
         const outcome = await advance(ctx)
         switch (outcome.kind) {
           case 'done':
@@ -172,17 +265,38 @@ export function useQueue({ dir, settings, onMutated }: UseQueueOptions) {
         }
       } catch (e) {
         const err = e as Error
+        if (!run || !started) {
+          // It never got going. Leave it queued so the next pass retries it —
+          // a library that refused a write a moment ago may not refuse the
+          // next one — but say so, because a job that silently declines to
+          // start is the whole failure this code is here to prevent.
+          console.error(`[deckle] could not start run ${id}:`, err)
+          onRunFailedRef.current?.(
+            run?.title ?? 'A queued job',
+            `Couldn't start it: ${err.message}. It stays in the queue and will be tried again.`,
+          )
+          return
+        }
         run.status = err.name === 'AbortError' ? 'cancelled' : 'failed'
         run.error = err.name === 'AbortError' ? undefined : err.message
         run.summary = err.name === 'AbortError' ? 'Cancelled.' : err.message
         run.finishedAt = Date.now()
       } finally {
+        // The slot comes back no matter which way this ended.
         active.current.delete(id)
-        await saveRun(d, run)
-        await refresh()
-        if (run.writes.length !== wrote) {
-          wrote = run.writes.length
-          onMutated()
+        if (run && started) {
+          try {
+            await saveRun(d, run)
+            await refresh()
+            if (run.status === 'failed' && run.error) {
+              onRunFailedRef.current?.(run.title, run.error)
+            }
+            if (run.writes.length !== wrote) onMutated()
+          } catch (err) {
+            // Recording the outcome failed. The work itself may well have
+            // happened, so this is worth saying out loud rather than swallowing.
+            console.error(`[deckle] could not record the outcome of run ${id}:`, err)
+          }
         }
       }
     },
@@ -190,36 +304,58 @@ export function useQueue({ dir, settings, onMutated }: UseQueueOptions) {
   )
 
   // ---- The scheduler ----
-  // Start as many queued runs as the concurrency setting allows. Re-runs on
-  // every list change, which is also every time a run finishes and frees a slot.
-  useEffect(() => {
-    if (!loaded || !dir || pumping.current) return
-    const free = queueSettings.concurrency - active.current.size
-    if (free <= 0) return
-    const next = runs
-      .filter((r) => r.status === 'queued' && !active.current.has(r.id))
-      .sort((a, b) => a.createdAt - b.createdAt)
-      .slice(0, free)
-    if (!next.length) return
+  //
+  // Start as many queued runs as the concurrency setting allows.
+  //
+  // Everything it needs is read through refs, so it can be called from
+  // anywhere — a render, a timer, a hand — rather than only from an effect
+  // whose dependencies happen to have changed. It is deliberately guarded on
+  // almost nothing: a queued run that no one starts is the worst outcome this
+  // module has, and it is worth a wasted call to avoid it.
+  const pump = useCallback(() => {
+    if (!dirRef.current) return
+    // Deliberately not awaited: each execute() drives its own run to
+    // completion, and the point of concurrency is that they overlap.
+    for (const row of nextToStart(
+      runsRef.current,
+      new Set(active.current.keys()),
+      queueSettingsRef.current.concurrency,
+    )) {
+      void execute(row.id)
+    }
+  }, [execute])
 
-    pumping.current = true
-    void (async () => {
-      try {
-        // Deliberately not awaited together: each execute() drives its own run
-        // to completion, and the point of concurrency is that they overlap.
-        for (const row of next) void execute(row.id)
-      } finally {
-        pumping.current = false
-      }
-    })()
-  }, [runs, loaded, dir, queueSettings.concurrency, execute])
+  // The fast path: something changed, so look for work. Covers queueing a job
+  // and a run finishing and freeing its slot.
+  useEffect(() => {
+    if (!loaded) return
+    pump()
+  }, [runs, loaded, pump])
+
+  // The safety net. The effect above depends on a render happening; this one
+  // doesn't. Without it, one missed update — a write that never landed, a
+  // state change React batched away — leaves a job sitting at "Waiting its
+  // turn" for ever, which is indistinguishable from a queue that is broken.
+  useEffect(() => {
+    if (!dir) return
+    const timer = setInterval(pump, PUMP_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [dir, pump])
 
   // ---- Commands ----
   const enqueue = useCallback(
-    async (prompt: string, contextPath?: string) => {
+    async (
+      prompt: string,
+      contextPath?: string,
+      model?: { provider: Provider; model: string },
+    ) => {
       const d = dirRef.current
       const text = prompt.trim()
       if (!d || !text) return null
+      const pinned = model ?? {
+        provider: settingsRef.current.provider,
+        model: settingsRef.current.models[settingsRef.current.provider],
+      }
       const run: Run = {
         id: newRunId(),
         title: titleFrom(text),
@@ -227,6 +363,8 @@ export function useQueue({ dir, settings, onMutated }: UseQueueOptions) {
         status: 'queued',
         createdAt: Date.now(),
         contextPath,
+        provider: pinned.provider,
+        model: pinned.model,
         messages: [{ id: `u${Date.now()}`, role: 'user', content: text }],
         writes: [],
         attempt: 1,
@@ -272,7 +410,7 @@ export function useQueue({ dir, settings, onMutated }: UseQueueOptions) {
       const ctx: RunContext = {
         dir: d,
         run,
-        settings: settingsRef.current,
+        settings: settingsFor(run, settingsRef.current),
         inbox: queueSettingsRef.current.inbox,
         signal: new AbortController().signal,
         onTurn: async () => {},
@@ -349,6 +487,10 @@ export function useQueue({ dir, settings, onMutated }: UseQueueOptions) {
         status: 'queued',
         createdAt: Date.now(),
         contextPath: previous.contextPath,
+        // A re-run is the same job, so it goes to the same model unless the
+        // user changes it — comparing two runs is only meaningful that way.
+        provider: previous.provider,
+        model: previous.model,
         messages: [{ id: `u${Date.now()}`, role: 'user', content: previous.prompt }],
         writes: [],
         attempt: 1,
@@ -357,6 +499,27 @@ export function useQueue({ dir, settings, onMutated }: UseQueueOptions) {
       await saveRun(d, run)
       await refresh()
       return run.id
+    },
+    [refresh],
+  )
+
+  /**
+   * Point a run at a different model.
+   *
+   * Allowed until it starts, and again once it has stopped — so a run that
+   * failed on a small local model can be resumed on a bigger one, which is the
+   * moment people actually want to change it.
+   */
+  const setRunModel = useCallback(
+    async (id: string, selection: { provider: Provider; model: string }) => {
+      const d = dirRef.current
+      if (!d) return
+      const run = await readRun(d, id)
+      if (!run || run.status === 'running') return
+      run.provider = selection.provider
+      run.model = selection.model
+      await saveRun(d, run)
+      await refresh()
     },
     [refresh],
   )
@@ -394,6 +557,7 @@ export function useQueue({ dir, settings, onMutated }: UseQueueOptions) {
     reply,
     resume,
     rerun,
+    setRunModel,
     remove,
     open,
     refresh,
