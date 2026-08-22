@@ -14,12 +14,16 @@
 .ProseMirror h2,
 .ProseMirror h3 {
   line-height: var(--lh-tight);
-  font-weight: 650;
+  font-weight: var(--fw-strong);
   margin-top: 1.4em;
 }
 
+/* The h1 is the only place in the app where type gets big enough to set loose
+   on its own; pull it back in and give it the extra step of weight. */
 .ProseMirror h1 {
   font-size: var(--fs-prose-h1);
+  font-weight: var(--fw-display);
+  letter-spacing: var(--track-display);
 }
 
 .ProseMirror h2 {
@@ -63,7 +67,7 @@
 
 .ProseMirror pre {
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 8px;
   padding: 12px 14px;
   overflow-x: auto;
@@ -79,7 +83,7 @@
 
 .ProseMirror hr {
   border: none;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
   margin: 1.5em 0;
 }
 

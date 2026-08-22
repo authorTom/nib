@@ -12,6 +12,8 @@ import {
   X,
 } from 'lucide-react'
 import { MOD_KEY } from '../lib/platform'
+import { useEnterExit } from '../hooks/useEnterExit'
+import { OVERLAY_EXIT_MS } from '../lib/motion'
 import type { AssistantStatus, PendingAction } from '../ai/useAssistant'
 import { ApprovalCard } from './ApprovalCard'
 import type { AssistantSettings, ChatMessage, Provider } from '../ai/types'
@@ -29,6 +31,10 @@ import { hasThinkingToggle } from '../ai/models'
 interface AssistantPanelProps {
   open: boolean
   onClose: () => void
+  /** How tall the sheet hangs, in px — the reader's stored choice. */
+  height: number
+  /** The sheet's own bottom edge, handed in so App owns the stored height. */
+  resizeHandle: React.ReactNode
   filePaths: string[]
   activePath: string | null
   settings: AssistantSettings
@@ -252,7 +258,7 @@ function SettingsView({
               />
               <span className="assistant-note">
                 {draft.provider === 'openai'
-                  ? 'Notes are embedded via the OpenAI API when the assistant searches your library (a small per-note cost, cached until a note changes).'
+                  ? 'Notes are embedded via the OpenAI API when Trevor searches your library (a small per-note cost, cached until a note changes).'
                   : 'Requires an embedding model loaded in LM Studio — runs fully locally. If unavailable, search falls back to keyword matching.'}
               </span>
             </label>
@@ -269,7 +275,7 @@ function SettingsView({
           placeholder="e.g. Always write in British English. Keep notes concise and use bullet points."
         />
         <span className="assistant-note">
-          Added to every message to guide the assistant's behavior and style.
+          Added to every message to guide Trevor's behavior and style.
         </span>
       </label>
 
@@ -306,6 +312,33 @@ function SettingsView({
   )
 }
 
+/**
+ * The name, in six-row block capitals.
+ *
+ * A blank panel is the dullest first impression a tool can make, and a lone
+ * sparkle icon over three paragraphs of hedging was not much better. This is
+ * the joke the product is in on. Kept as a constant rather than inline JSX so
+ * that no formatter can reflow it — every row has to stay the width it was
+ * drawn at, or the letters come apart.
+ */
+const TREVOR = ` ██████╗██╗     ███████╗██╗   ██╗███████╗██████╗ 
+██╔════╝██║     ██╔════╝██║   ██║██╔════╝██╔══██╗
+██║     ██║     █████╗  ██║   ██║█████╗  ██████╔╝
+██║     ██║     ██╔══╝  ╚██╗ ██╔╝██╔══╝  ██╔══██╗
+╚██████╗███████╗███████╗ ╚████╔╝ ███████╗██║  ██║
+ ╚═════╝╚══════╝╚══════╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝
+████████╗██████╗ ███████╗██╗   ██╗ ██████╗ ██████╗ 
+╚══██╔══╝██╔══██╗██╔════╝██║   ██║██╔═══██╗██╔══██╗
+   ██║   ██████╔╝█████╗  ██║   ██║██║   ██║██████╔╝
+   ██║   ██╔══██╗██╔══╝  ╚██╗ ██╔╝██║   ██║██╔══██╗
+   ██║   ██║  ██║███████╗ ╚████╔╝ ╚██████╔╝██║  ██║
+   ╚═╝   ╚═╝  ╚═╝╚══════╝  ╚═══╝   ╚═════╝ ╚═╝  ╚═╝`
+
+/** Just the filename — the folders are already spelled out in the note list. */
+function leafOf(path: string): string {
+  return path.slice(path.lastIndexOf('/') + 1)
+}
+
 /** Detect a "/path" token being typed at the caret (for the file picker). */
 function getMention(value: string, caret: number): { start: number; query: string } | null {
   let i = caret - 1
@@ -324,6 +357,8 @@ function getMention(value: string, caret: number): { start: number; query: strin
 export default function AssistantPanel({
   open,
   onClose,
+  height,
+  resizeHandle,
   filePaths,
   activePath,
   settings,
@@ -352,12 +387,27 @@ export default function AssistantPanel({
   const [mentionIndex, setMentionIndex] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const { render, entered } = useEnterExit(open, OVERLAY_EXIT_MS)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [messages, pending, status])
 
-  if (!open) return null
+  // No Escape listener here on purpose: App arbitrates that, in one chain, and
+  // a listener of our own would have to be capture-phase to beat it — which
+  // would then fire alongside a run or the memory sheet opened from in here,
+  // closing both at once.
+
+  // A surface you summoned should already be listening. Waits for the sheet to
+  // be in the tree — on the render where `open` flips, the textarea is still
+  // one commit away from existing.
+  useEffect(() => {
+    if (!open) return
+    const raf = requestAnimationFrame(() => textareaRef.current?.focus())
+    return () => cancelAnimationFrame(raf)
+  }, [open])
+
+  if (!render) return null
 
   const busy = status === 'thinking' || status === 'awaiting-approval'
   const pendingCount = pending.filter((p) => p.status === 'pending').length
@@ -367,6 +417,8 @@ export default function AssistantPanel({
         .filter((p) => p.toLowerCase().includes(mention.query.toLowerCase()))
         .slice(0, 8)
     : []
+  /** A `/path` token is being typed *and* something matches it. */
+  const pickerOpen = suggestions.length > 0
 
   const refreshMention = (value: string, caret: number) => {
     setMention(getMention(value, caret))
@@ -422,7 +474,7 @@ export default function AssistantPanel({
 
   const composer = (
     <div className="assistant-input">
-      {mention && suggestions.length > 0 && (
+      {pickerOpen && (
         <div className="mention-pop">
           {suggestions.map((path, i) => (
             <button
@@ -456,7 +508,7 @@ export default function AssistantPanel({
           }
         }}
         onKeyDown={(e) => {
-          if (mention && suggestions.length > 0) {
+          if (pickerOpen) {
             if (e.key === 'ArrowDown') {
               e.preventDefault()
               setMentionIndex((i) => (i + 1) % suggestions.length)
@@ -492,7 +544,7 @@ export default function AssistantPanel({
             submit()
           }
         }}
-        placeholder="Ask the assistant…  (type / to reference a note)"
+        placeholder="Ask Trevor…  (type / to reference a note)"
         rows={2}
         disabled={status === 'awaiting-approval'}
       />
@@ -530,190 +582,209 @@ export default function AssistantPanel({
   )
 
   return (
-    <aside className="assistant-panel">
-      <div className="assistant-header">
-        {/* The queue is not a mode of the chat, it is the other half of the
-            same panel — so it gets a tab, a count, and equal billing. */}
-        <div className="assistant-views" role="tablist" aria-label="Assistant">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === 'chat' && !showSettings}
-            className={`assistant-view-tab${
-              view === 'chat' && !showSettings ? ' active' : ''
-            }`}
-            onClick={() => {
-              setView('chat')
-              setShowSettings(false)
-            }}
-          >
-            <Sparkles size={14} /> Chat
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === 'queue' && !showSettings}
-            className={`assistant-view-tab${
-              view === 'queue' && !showSettings ? ' active' : ''
-            }`}
-            onClick={() => {
-              setView('queue')
-              setShowSettings(false)
-            }}
-          >
-            <ListPlus size={14} /> Queue
-            {queueCounts.live > 0 && (
-              <span className="assistant-view-count">{queueCounts.live}</span>
-            )}
-            {queueCounts.parked.length > 0 && (
-              <span className="assistant-view-dot" aria-hidden="true" />
-            )}
-          </button>
+    // Anchored to the top of the screen and dropped into place, rather than
+    // parked down one side: the assistant is something you summon and dismiss,
+    // and a dock that shoves the page sideways every time reads as furniture.
+    <div
+      className={`trevor-overlay${entered ? ' entered' : ''}`}
+      onMouseDown={onClose}
+    >
+      <aside
+        className={`assistant-panel${entered ? ' entered' : ''}`}
+        style={{ '--trevor-height': `${height}px` } as React.CSSProperties}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Clever Trevor"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="assistant-header">
+          {/* The queue is not a mode of the chat, it is the other half of the
+              same panel — so it gets a tab, a count, and equal billing. */}
+          <div className="assistant-views" role="tablist" aria-label="Clever Trevor">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'chat' && !showSettings}
+              className={`assistant-view-tab${
+                view === 'chat' && !showSettings ? ' active' : ''
+              }`}
+              onClick={() => {
+                setView('chat')
+                setShowSettings(false)
+              }}
+            >
+              <Sparkles size={14} /> Chat
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'queue' && !showSettings}
+              className={`assistant-view-tab${
+                view === 'queue' && !showSettings ? ' active' : ''
+              }`}
+              onClick={() => {
+                setView('queue')
+                setShowSettings(false)
+              }}
+            >
+              <ListPlus size={14} /> Queue
+              {queueCounts.live > 0 && (
+                <span className="assistant-view-count">{queueCounts.live}</span>
+              )}
+              {queueCounts.parked.length > 0 && (
+                <span className="assistant-view-dot" aria-hidden="true" />
+              )}
+            </button>
+          </div>
+          <div className="assistant-header-actions">
+            {/* Hidden, not disabled, on a model that predates adaptive thinking:
+                a switch that can only produce an error is worse than no switch. */}
+            {hasThinkingToggle(settings.provider, settings.models[settings.provider]) && (
+                <button
+                  className={`icon-btn${settings.thinking ? ' active' : ''}`}
+                  onClick={() =>
+                    onUpdateSettings({ ...settings, thinking: !settings.thinking })
+                  }
+                  title={settings.thinking ? 'Thinking: on' : 'Thinking: off'}
+                  aria-label="Toggle thinking"
+                  aria-pressed={settings.thinking}
+                >
+                  <Brain size={17} />
+                </button>
+              )}
+            <button
+              className="icon-btn"
+              onClick={onClear}
+              title="New chat"
+              aria-label="New chat"
+            >
+              <SquarePen size={17} />
+            </button>
+            <button
+              className="icon-btn"
+              onClick={() => setShowSettings((s) => !s)}
+              title="Settings"
+              aria-label="Trevor's settings"
+            >
+              <Settings2 size={17} />
+            </button>
+            <button
+              className="icon-btn"
+              onClick={onClose}
+              title="Close (Esc)"
+              aria-label="Close Clever Trevor"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
-        <div className="assistant-header-actions">
-          {/* Hidden, not disabled, on a model that predates adaptive thinking:
-              a switch that can only produce an error is worse than no switch. */}
-          {hasThinkingToggle(settings.provider, settings.models[settings.provider]) && (
-              <button
-                className={`icon-btn${settings.thinking ? ' active' : ''}`}
-                onClick={() =>
-                  onUpdateSettings({ ...settings, thinking: !settings.thinking })
-                }
-                title={settings.thinking ? 'Thinking: on' : 'Thinking: off'}
-                aria-label="Toggle thinking"
-                aria-pressed={settings.thinking}
-              >
-                <Brain size={17} />
-              </button>
-            )}
-          <button
-            className="icon-btn"
-            onClick={onClear}
-            title="New chat"
-            aria-label="New chat"
-          >
-            <SquarePen size={17} />
-          </button>
-          <button
-            className="icon-btn"
-            onClick={() => setShowSettings((s) => !s)}
-            title="Settings"
-            aria-label="Assistant settings"
-          >
-            <Settings2 size={17} />
-          </button>
-          <button className="icon-btn" onClick={onClose} title="Close" aria-label="Close assistant">
-            <X size={18} />
-          </button>
-        </div>
-      </div>
 
-      {!showSettings && (
-        <div className="assistant-modelbar">
-          <ModelPicker
+        {!showSettings && (
+          <div className="assistant-modelbar">
+            <ModelPicker
+              settings={settings}
+              value={currentSelection(settings)}
+              onChange={({ provider, model }) =>
+                onUpdateSettings({
+                  ...settings,
+                  provider,
+                  models: { ...settings.models, [provider]: model },
+                })
+              }
+              onOpenSettings={() => setShowSettings(true)}
+              label="Model for this chat"
+            />
+          </div>
+        )}
+
+        {showSettings ? (
+          <SettingsView
             settings={settings}
-            value={currentSelection(settings)}
-            onChange={({ provider, model }) =>
-              onUpdateSettings({
-                ...settings,
-                provider,
-                models: { ...settings.models, [provider]: model },
-              })
-            }
-            onOpenSettings={() => setShowSettings(true)}
-            label="Model for this chat"
+            onUpdateSettings={onUpdateSettings}
+            sharing={sharing}
+            settingsError={settingsError}
+            onDone={() => setShowSettings(false)}
           />
-        </div>
-      )}
-
-      {showSettings ? (
-        <SettingsView
-          settings={settings}
-          onUpdateSettings={onUpdateSettings}
-          sharing={sharing}
-          settingsError={settingsError}
-          onDone={() => setShowSettings(false)}
-        />
-      ) : view === 'queue' ? (
-        <>
-          <QueueView queue={queue} onOpenRun={onOpenRun} onOpenNote={onOpenNote} />
-          {composer}
-        </>
-      ) : (
-        <>
-          <div className="assistant-messages" ref={scrollRef}>
-            {messages.length === 0 && (
-              <div className="assistant-empty">
-                <Sparkles size={26} />
-                <p>
-                  Ask me to summarize, reorganize, draft, or edit your notes. I can read
-                  the whole library and propose changes for your approval.
-                </p>
-                <p className="assistant-note">
-                  Type <strong>/</strong> to reference a specific note.
-                  {activePath && (
-                    <>
-                      {' '}I can already see the open note (<strong>{activePath}</strong>).
-                    </>
-                  )}
-                </p>
-                <p className="assistant-note">
-                  Or <strong>Queue</strong> it instead of sending, and I'll work in the
-                  background while you write — into <code>{queue.settings.inbox}</code>.
-                </p>
-              </div>
-            )}
-            {messages.map((m) => {
-              if (m.role === 'user') {
+        ) : view === 'queue' ? (
+          <>
+            <QueueView queue={queue} onOpenRun={onOpenRun} onOpenNote={onOpenNote} />
+            {composer}
+          </>
+        ) : (
+          <>
+            <div className="assistant-messages" ref={scrollRef}>
+              {messages.length === 0 && (
+                <div className="assistant-empty">
+                  <pre className="trevor-banner" role="img" aria-label="Clever Trevor">
+                    {TREVOR}
+                  </pre>
+                  <p>
+                    Ask me anything about your notes, or hand me a job. I won't
+                    touch a file without asking first.
+                  </p>
+                  <p className="assistant-note">
+                    <strong>/</strong> points at a note · <strong>Queue</strong>{' '}
+                    drafts into <code>{queue.settings.inbox}</code> while you write
+                    {activePath && (
+                      <> · already reading <strong>{leafOf(activePath)}</strong></>
+                    )}
+                  </p>
+                </div>
+              )}
+              {messages.map((m) => {
+                if (m.role === 'user') {
+                  return (
+                    <div key={m.id} className="msg msg-user">
+                      {m.content}
+                    </div>
+                  )
+                }
+                if (m.role === 'tool') {
+                  return <ToolChip key={m.id} message={m} />
+                }
+                // An assistant turn can be reasoning-only (no answer text, just
+                // tool calls that render as their own chips) — don't draw a blank
+                // bubble in that case.
+                if (!m.content && !m.reasoning) return null
                 return (
-                  <div key={m.id} className="msg msg-user">
-                    {m.content}
+                  <div key={m.id} className={`msg msg-assistant${m.isError ? ' error' : ''}`}>
+                    {m.reasoning && (
+                      <details className="msg-reasoning">
+                        <summary>Thought process</summary>
+                        <div className="msg-reasoning-body">{m.reasoning}</div>
+                      </details>
+                    )}
+                    {m.content && <div className="msg-text">{m.content}</div>}
                   </div>
                 )
-              }
-              if (m.role === 'tool') {
-                return <ToolChip key={m.id} message={m} />
-              }
-              // An assistant turn can be reasoning-only (no answer text, just
-              // tool calls that render as their own chips) — don't draw a blank
-              // bubble in that case.
-              if (!m.content && !m.reasoning) return null
-              return (
-                <div key={m.id} className={`msg msg-assistant${m.isError ? ' error' : ''}`}>
-                  {m.reasoning && (
-                    <details className="msg-reasoning">
-                      <summary>Thought process</summary>
-                      <div className="msg-reasoning-body">{m.reasoning}</div>
-                    </details>
+              })}
+
+              {pending.length > 0 && (
+                <div className="approval-group">
+                  {pendingCount > 1 && (
+                    <button className="btn-approve-all" onClick={onApproveAll}>
+                      <CheckCheck size={14} /> Approve all ({pendingCount})
+                    </button>
                   )}
-                  {m.content && <div className="msg-text">{m.content}</div>}
+                  {pending.map((a) => (
+                    <ApprovalCard key={a.id} action={a} onApprove={onApprove} onReject={onReject} />
+                  ))}
                 </div>
-              )
-            })}
+              )}
 
-            {pending.length > 0 && (
-              <div className="approval-group">
-                {pendingCount > 1 && (
-                  <button className="btn-approve-all" onClick={onApproveAll}>
-                    <CheckCheck size={14} /> Approve all ({pendingCount})
-                  </button>
-                )}
-                {pending.map((a) => (
-                  <ApprovalCard key={a.id} action={a} onApprove={onApprove} onReject={onReject} />
-                ))}
-              </div>
-            )}
+              {status === 'thinking' && <div className="assistant-thinking">Thinking…</div>}
+            </div>
 
-            {status === 'thinking' && <div className="assistant-thinking">Thinking…</div>}
-          </div>
+            {/* Ambient, not intrusive: while you are chatting, one line is enough
+                to know the background is busy — and the way through to it. */}
+            <QueueTicker queue={queue} onShow={() => setView('queue')} />
 
-          {/* Ambient, not intrusive: while you are chatting, one line is enough
-              to know the background is busy — and the way through to it. */}
-          <QueueTicker queue={queue} onShow={() => setView('queue')} />
+            {composer}
+          </>
+        )}
 
-          {composer}
-        </>
-      )}
-    </aside>
+        {resizeHandle}
+      </aside>
+    </div>
   )
 }

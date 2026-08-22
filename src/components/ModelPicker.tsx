@@ -131,7 +131,7 @@ export default function ModelPicker({
         ))}
         {onOpenSettings && (
           <optgroup label="—">
-            <option value={SETTINGS_VALUE}>Assistant settings…</option>
+            <option value={SETTINGS_VALUE}>Trevor's settings…</option>
           </optgroup>
         )}
       </select>

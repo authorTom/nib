@@ -42,6 +42,54 @@
   --lh-ui: 1.5; /*    wrapping chrome copy */
   --lh-prose: 1.7; /* the document */
 
+  /* ---- Weight ----
+   * Weight was the one axis of the type system that had never been named. It
+   * lived as thirty-six literals scattered through the stylesheets — 400, 500,
+   * 600, 650, 700 — which is why the chrome read lighter than it meant to and
+   * drifted a step either way depending on which rule you landed in.
+   *
+   * Six steps, each with a job, all set from here. The system stack is a
+   * variable font on the platforms that matter (SF, Segoe UI Variable), so the
+   * half-steps are real there; where it is static the CSS matching algorithm
+   * rounds them the sensible way — 450 falls to 400, 550 rises to 600 — and
+   * the hierarchy survives with fewer stops.
+   *
+   * Nothing here is bold for its own sake. Weight is how a face carries
+   * authority without taking more space, which is the whole trade a dense
+   * writing tool wants to make. */
+  --fw-body: 450; /*    chrome body — buttons, list items, form rows */
+  --fw-medium: 550; /*  row titles, tabs, the things the eye lands on */
+  --fw-semi: 600; /*    dialog and section titles */
+  --fw-label: 650; /*   the uppercase section label, which needs the mass */
+  --fw-strong: 680; /*  document h2 / h3 */
+  --fw-display: 700; /* document h1, the wordmark */
+
+  /* Tracking, on the two ends of the ramp that actually need it. Large type
+   * sets loose by default and small caps set tight; both want correcting, and
+   * nothing in the middle does. */
+  --track-display: -0.025em; /* h1 and the wordmark */
+  --track-label: 0.06em; /*     uppercase section labels */
+
+  /* ---- Rules ----
+   * Every divider and container edge in the app, as one value.
+   *
+   * 1.5px rather than a hairline: at 1px the chrome reads as a wireframe of
+   * itself, and the panels stop feeling like objects with edges. On a 2x
+   * display this is three crisp device pixels; on a 1x display the browser
+   * rounds it up, which is the right way for it to fail.
+   *
+   * --rule-hair stays at 1px for small inline things — chips, tags, inline
+   * code, anything the size of a word. A heavy rule around a 20px pill reads
+   * as a mistake rather than as weight. */
+  --rule: 1.5px;
+  --rule-hair: 1px;
+
+  /* Lucide draws on a 24px grid at stroke 2, which is a web-app default rather
+   * than a decision. 2.25 puts the icons on the same footing as the rules
+   * beside them; because the stroke is in viewBox units it stays proportional
+   * at every icon size. */
+  --icon-stroke: 2.25;
+
   /* Light theme (default) */
   --bg: #ffffff;
   --bg-elevated: #f7f7f8;

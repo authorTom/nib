@@ -109,7 +109,7 @@ export default function MemoryModal({
         className={`modal memory-modal${anim.entered ? ' entered' : ''}`}
         role="dialog"
         aria-modal="true"
-        aria-label="Assistant memory"
+        aria-label="Trevor's memory"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="modal-header">
@@ -141,7 +141,7 @@ export default function MemoryModal({
             <div className="modal-empty">
               {loading
                 ? 'Reading…'
-                : 'Nothing remembered yet. The assistant writes here as it learns how you work.'}
+                : 'Nothing remembered yet. Trevor writes here as he learns how you work.'}
             </div>
           ) : (
             <>

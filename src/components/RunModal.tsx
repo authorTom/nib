@@ -162,7 +162,7 @@ export default function RunModal({
                   rows={2}
                   autoFocus
                   placeholder="Your answer…"
-                  aria-label="Answer the assistant"
+                  aria-label="Answer Trevor"
                 />
                 <button
                   type="button"

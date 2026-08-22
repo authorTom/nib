@@ -199,7 +199,7 @@ async function processCalls(ctx: RunContext): Promise<Outcome | null> {
       const question =
         typeof call.arguments.question === 'string' && call.arguments.question.trim()
           ? call.arguments.question.trim()
-          : 'The assistant needs your input to continue.'
+          : 'Trevor needs your input to continue.'
       ctx.run.question = question
       return { kind: 'needs-input', question }
     }
