@@ -32,9 +32,25 @@ body {
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
     Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  /* The chrome's resting weight. Set on the body rather than per-component so
+     a control that never says otherwise still arrives at the right one. */
+  font-weight: var(--fw-body);
   background: var(--bg);
   color: var(--text);
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* The document is the exception: it is prose, and prose sets at book weight.
+   Everything else in the app is apparatus and carries the heavier step. */
+.ProseMirror {
+  font-weight: 400;
+}
+
+/* One stroke for every icon in the app. Lucide writes stroke-width as a
+   presentation attribute, which CSS outranks — so this reaches all of them
+   without threading a prop through forty components. */
+.lucide {
+  stroke-width: var(--icon-stroke);
 }
 
 /* Light text on a dark surface blooms: the glyphs read heavier and tighter
@@ -48,8 +64,19 @@ body {
   letter-spacing: 0.006em;
 }
 
-button {
+/* Form elements don't inherit type from the page — the UA stylesheet gives
+   them their own font, weight and size — so the reset has to hand it back
+   explicitly. Weight is the one that matters here: most of this app's chrome
+   is buttons, and without this line the whole ramp stops at their edge. */
+button,
+input,
+select,
+textarea {
   font-family: inherit;
+  font-weight: inherit;
+}
+
+button {
   cursor: pointer;
 }
 
@@ -95,7 +122,7 @@ button {
   width: 100%;
   min-width: 0;
   background: var(--bg-elevated);
-  border-right: 1px solid var(--border);
+  border-right: var(--rule) solid var(--border);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -116,7 +143,7 @@ button {
 
 .sidebar-title {
   font-size: var(--fs-md);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
   letter-spacing: 0.01em;
 }
 
@@ -147,6 +174,7 @@ button {
   color: var(--text);
   text-align: left;
   font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
   cursor: pointer;
   user-select: none;
   transition: background-color var(--dur-fast) var(--ease-out),
@@ -266,8 +294,9 @@ button {
   min-width: 0;
   font: inherit;
   font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
   padding: 2px 6px;
-  border: 1px solid var(--accent);
+  border: var(--rule) solid var(--accent);
   border-radius: 6px;
   background: var(--bg);
   color: var(--text);
@@ -309,7 +338,7 @@ button {
   margin: 0 12px 8px;
   padding: 6px 10px;
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 8px;
   color: var(--text-faint);
 }
@@ -382,7 +411,7 @@ button {
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--rule) solid var(--border);
   background: var(--bg);
   min-height: 56px;
   /* No overflow clipping here: the overflow menu's popover is absolutely
@@ -442,7 +471,7 @@ button {
   background: transparent;
   color: var(--text-muted);
   font-size: var(--fs-md);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   padding: 6px 4px;
   border-radius: 6px;
   outline: none;
@@ -493,7 +522,7 @@ button {
   gap: 8px;
   height: 34px;
   padding: 0 10px;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 8px;
   background: var(--bg-elevated);
   color: var(--text-faint);
@@ -514,7 +543,7 @@ button {
   font-family: inherit;
   font-size: var(--fs-meta);
   padding: 2px 6px;
-  border: 1px solid var(--border);
+  border: var(--rule-hair) solid var(--border);
   border-radius: 6px;
   background: var(--bg);
   color: var(--text-muted);
@@ -568,7 +597,7 @@ button {
   align-items: center;
   gap: 2px;
   padding: 6px 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--rule) solid var(--border);
   background: var(--bg);
 }
 
@@ -617,7 +646,7 @@ button {
   gap: 2px;
   padding: 4px;
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
 }
@@ -702,14 +731,14 @@ button {
   display: flex;
   gap: 6px;
   padding: 6px 4px 4px;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
   margin-top: 4px;
 }
 
 .inline-ai-input-row input {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 8px;
   background: var(--bg);
   color: var(--text);
@@ -771,7 +800,7 @@ button {
   flex-wrap: wrap;
   gap: 6px;
   padding: 7px 4px 4px;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
 }
 
 .inline-ai-apply,
@@ -781,7 +810,7 @@ button {
   gap: 5px;
   padding: 6px 10px;
   border-radius: 7px;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   background: transparent;
   color: var(--text);
   font-size: var(--fs-sm);
@@ -802,8 +831,7 @@ button {
    Chrome collapses rather than disappearing: the docks run their width
    transition to zero, and the bars fold up out of the way. */
 .app.focus-mode .sidebar-dock,
-.app.focus-mode .task-dock,
-.app.focus-mode .assistant-dock {
+.app.focus-mode .task-dock {
   width: 0 !important;
   opacity: 0;
 }
@@ -884,7 +912,7 @@ button {
   display: flex;
   flex-direction: column;
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
   overflow: hidden;
@@ -905,7 +933,7 @@ button {
   align-items: center;
   gap: 10px;
   padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--rule) solid var(--border);
   color: var(--text-faint);
 }
 
@@ -932,7 +960,8 @@ button {
 .palette-section {
   font-size: var(--fs-label);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-weight: var(--fw-label);
+  letter-spacing: var(--track-label);
   color: var(--text-faint);
   padding: 10px 10px 4px;
 }
@@ -972,6 +1001,7 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
 }
 
 .palette-hint {
@@ -1011,9 +1041,9 @@ button {
 .shortcut-group-title {
   margin: 0 0 8px;
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-label);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--track-label);
   color: var(--text-faint);
 }
 
@@ -1042,7 +1072,7 @@ button {
   font-size: var(--fs-meta);
   line-height: 1.4;
   padding: 2px 6px;
-  border: 1px solid var(--border);
+  border: var(--rule-hair) solid var(--border);
   border-radius: 6px;
   background: var(--bg);
   color: var(--text-muted);
@@ -1101,7 +1131,7 @@ button {
   display: flex;
   gap: 16px;
   padding: 8px 14px;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
   font-size: var(--fs-meta);
   color: var(--text-faint);
 }
@@ -1148,7 +1178,7 @@ button {
   display: flex;
   flex-direction: column;
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
   overflow: hidden;
@@ -1171,12 +1201,12 @@ button {
   align-items: center;
   justify-content: space-between;
   padding: 12px 12px 12px 18px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--rule) solid var(--border);
 }
 
 .modal-title {
   font-size: var(--fs-lg);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
 }
 
 .modal-body {
@@ -1196,7 +1226,7 @@ button {
   display: flex;
   justify-content: flex-end;
   padding: 10px 14px;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
 }
 
 .trash-row {
@@ -1220,7 +1250,7 @@ button {
 
 .trash-title {
   font-size: var(--fs-md);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1277,15 +1307,69 @@ button {
   color: var(--text-muted);
 }
 
-/* ---------- AI assistant panel ---------- */
+/* ---------- Clever Trevor ----------
+   A sheet that drops from the top of the window and hangs over the workspace,
+   rather than a dock parked down one side. The assistant is summoned and
+   dismissed, so it behaves like the command palette: it arrives over the page,
+   Escape and a click outside send it away, and nothing reflows on the way in
+   or out. Only its height is the reader's to choose. */
+.trevor-overlay {
+  position: fixed;
+  inset: 0;
+  /* Above the docked panels (30) and the focus-mode exit (40); below modals
+     and the palette (60), so a run or the memory sheet opened from in here
+     lands on top of Trevor rather than behind him. */
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.trevor-overlay.entered {
+  opacity: 1;
+  transition-duration: var(--dur-base);
+}
+
 .assistant-panel {
-  width: 100%;
+  position: relative;
+  width: min(92vw, 760px);
   min-width: 0;
-  height: 100%;
+  /* Set inline by the resize handle; the fallback is what a first run gets. */
+  height: min(var(--trevor-height, 520px), 82vh);
   display: flex;
   flex-direction: column;
   background: var(--bg-elevated);
-  border-left: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  box-shadow: var(--shadow-lg);
+  /* So the composer's background actually meets the rounded corners. The note
+     picker and the queue ticker both open upwards inside the panel, so nothing
+     that needs to escape gets clipped. */
+  overflow: hidden;
+  /* The drop. Slow rather than base: it travels its own full height, and this
+     is the one moment of the interaction worth watching. Leaving is quick —
+     see OVERLAY_EXIT_MS in lib/motion.ts. */
+  transform: translateY(-100%);
+  opacity: 0;
+  transition: transform var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
+}
+
+.assistant-panel.entered {
+  transform: none;
+  opacity: 1;
+  transition-duration: var(--dur-slow);
+}
+
+/* Mid-drag the height is already following the pointer; a transition on top of
+   that just lags behind the cursor. */
+.assistant-panel:has(.resize-handle.dragging) {
+  transition: none;
 }
 
 .assistant-header {
@@ -1294,7 +1378,7 @@ button {
   justify-content: space-between;
   gap: 8px;
   padding: 8px 10px 8px 8px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--rule) solid var(--border);
 }
 
 .assistant-header-actions {
@@ -1310,7 +1394,7 @@ button {
   align-items: center;
   gap: 8px;
   padding: 6px 10px 6px 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--rule) solid var(--border);
   background: var(--bg-elevated);
 }
 
@@ -1325,7 +1409,7 @@ button {
 .model-picker select {
   min-width: 0;
   max-width: 100%;
-  border: 1px solid transparent;
+  border: var(--rule) solid transparent;
   background: transparent;
   color: var(--text-muted);
   font-size: var(--fs-sm);
@@ -1377,7 +1461,28 @@ button {
   margin: 0;
   font-size: var(--fs-ui);
   line-height: 1.5;
-  max-width: 280px;
+  /* Wider than the old side-dock allowed: two short lines, not a column of
+     four-word rags. */
+  max-width: 44ch;
+}
+
+/* The name in block capitals. Sized off the viewport so the 51-character rows
+   never have to wrap — the letters only hold together at their drawn width —
+   and capped so it stays a greeting rather than a billboard. */
+.trevor-banner {
+  margin: 0 0 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* impeccable-disable-next-line design-system-font-size */
+  font-size: clamp(6px, 1.9vw, 12px);
+  line-height: 1.05;
+  white-space: pre;
+  color: var(--accent);
+  opacity: 0.85;
+  /* Belt and braces on a very narrow phone, where even 6px can't fit. */
+  max-width: 100%;
+  overflow-x: auto;
+  /* It's a picture of a name, not text to select. */
+  user-select: none;
 }
 
 .msg {
@@ -1440,7 +1545,7 @@ button {
   font-size: var(--fs-meta);
   color: var(--text-muted);
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: var(--rule-hair) solid var(--border);
   border-radius: 8px;
   padding: 6px 9px;
   display: flex;
@@ -1481,7 +1586,7 @@ button {
 }
 
 .approval-card {
-  border: 1px solid var(--accent);
+  border: var(--rule) solid var(--accent);
   border-radius: 8px;
   overflow: hidden;
   background: var(--bg);
@@ -1503,7 +1608,7 @@ button {
   gap: 8px;
   padding: 9px 12px;
   font-size: var(--fs-ui);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 
 /* The diff on the approval card.
@@ -1513,26 +1618,26 @@ button {
    removed in danger — rather than in the green and red of a code host, which
    no palette here contains. */
 .approval-diff {
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
   background: var(--bg-elevated);
 }
 
 .diff-stat {
   font-variant-numeric: tabular-nums;
   padding: 7px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--rule-hair) solid var(--border);
   font-size: var(--fs-meta);
   color: var(--text-muted);
 }
 
 .diff-added {
   color: var(--accent);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
 }
 
 .diff-removed {
   color: var(--danger);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
 }
 
 .diff-body {
@@ -1593,7 +1698,7 @@ button {
 
 .diff-more {
   padding: 6px 12px;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
   font-size: var(--fs-meta);
   color: var(--text-faint);
   line-height: var(--lh-ui);
@@ -1603,7 +1708,7 @@ button {
   display: flex;
   gap: 8px;
   padding: 10px 12px;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
 }
 
 .btn-approve,
@@ -1614,7 +1719,7 @@ button {
   gap: 5px;
   padding: 6px 12px;
   border-radius: 7px;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   background: transparent;
   color: var(--text);
   font-size: var(--fs-ui);
@@ -1640,7 +1745,7 @@ button {
 
 .approval-result {
   padding: 8px 12px;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
   font-size: var(--fs-sm);
   color: var(--text-muted);
 }
@@ -1659,7 +1764,7 @@ button {
   gap: 8px;
   align-items: flex-end;
   padding: 12px;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
   position: relative;
 }
 
@@ -1684,7 +1789,7 @@ button {
   color: var(--text-faint);
   font-family: inherit;
   font-size: var(--fs-sm);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
   white-space: nowrap;
 }
 
@@ -1750,7 +1855,7 @@ button {
   gap: 4px;
   max-width: 100%;
   padding: 2px 7px;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 999px;
   background: transparent;
   color: var(--text-muted);
@@ -1774,7 +1879,7 @@ button {
   width: 100%;
   padding: 7px 12px;
   border: none;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
   background: var(--bg-elevated);
   color: var(--text-muted);
   font-family: inherit;
@@ -1799,7 +1904,7 @@ button {
 }
 
 .queue-ticker-more {
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -1811,7 +1916,7 @@ button {
   right: 12px;
   margin-bottom: 6px;
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
   overflow-y: auto;
@@ -1849,7 +1954,7 @@ button {
 .assistant-input textarea {
   flex: 1;
   resize: none;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 8px;
   background: var(--bg);
   color: var(--text);
@@ -1879,7 +1984,7 @@ button {
   gap: 5px;
   height: 38px;
   padding: 0 11px;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 8px;
   background: transparent;
   color: var(--text-muted);
@@ -1920,6 +2025,10 @@ button {
 
 /* ---- Settings ---- */
 .assistant-settings {
+  flex: 1;
+  /* Without this the form sizes to its content and shoves the Save button off
+     the bottom of the sheet, where nothing can scroll to it. */
+  min-height: 0;
   padding: 16px;
   overflow-y: auto;
   display: flex;
@@ -1938,7 +2047,7 @@ button {
 .assistant-settings input,
 .assistant-settings select,
 .assistant-settings textarea {
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 8px;
   background: var(--bg);
   color: var(--text);
@@ -2014,7 +2123,7 @@ button {
 
 .empty-state h2 {
   margin: 0;
-  font-weight: 600;
+  font-weight: var(--fw-semi);
   color: var(--text-muted);
 }
 
@@ -2028,7 +2137,7 @@ button {
   background: var(--accent);
   color: var(--accent-contrast);
   font-size: var(--fs-md);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 
 .btn-primary:hover {
@@ -2041,7 +2150,7 @@ button {
   gap: 8px;
   padding: 8px 14px;
   border-radius: 8px;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   background: transparent;
   color: var(--text-muted);
   font-size: var(--fs-ui);
@@ -2129,8 +2238,8 @@ button {
 
 .gate-wordmark {
   font-size: var(--fs-brand);
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: var(--fw-display);
+  letter-spacing: var(--track-display);
   line-height: 1;
   color: var(--text);
 }
@@ -2145,7 +2254,7 @@ button {
   gap: 10px;
   margin: 0;
   font-size: var(--fs-prose-h2);
-  font-weight: 650;
+  font-weight: var(--fw-strong);
   line-height: 1.25;
   letter-spacing: -0.01em;
   color: var(--text);
@@ -2196,7 +2305,7 @@ button {
   gap: 10px;
   padding: 22px 20px;
   border-radius: 12px;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   background: var(--bg-elevated);
   color: var(--text-muted);
   text-align: left;
@@ -2237,7 +2346,7 @@ button {
 
 .library-option-title {
   font-size: var(--fs-prose);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
   line-height: 1.3;
   color: var(--text);
 }
@@ -2256,7 +2365,7 @@ button {
 .library-login-input {
   padding: 10px 12px;
   border-radius: 8px;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   background: var(--bg-elevated);
   color: var(--text);
   font-size: var(--fs-md);
@@ -2301,7 +2410,7 @@ button {
   display: flex;
   flex-direction: column;
   background: var(--bg-elevated);
-  border-right: 1px solid var(--border);
+  border-right: var(--rule) solid var(--border);
 }
 
 .task-header {
@@ -2309,7 +2418,7 @@ button {
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--rule) solid var(--border);
 }
 
 .task-nav {
@@ -2324,7 +2433,7 @@ button {
   flex-wrap: wrap;
   gap: 6px;
   padding: 0 12px 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--rule) solid var(--border);
 }
 
 .task-pill {
@@ -2334,7 +2443,7 @@ button {
   font-size: var(--fs-sm);
   padding: 4px 9px;
   border-radius: 999px;
-  border: 1px solid var(--border);
+  border: var(--rule-hair) solid var(--border);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -2366,7 +2475,7 @@ button {
   align-items: center;
   gap: 8px;
   padding: 7px 10px;
-  border: 1px dashed var(--border);
+  border: var(--rule) dashed var(--border);
   border-radius: 8px;
   margin-bottom: 8px;
   color: var(--text-faint);
@@ -2388,9 +2497,9 @@ button {
   align-items: center;
   gap: 6px;
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-label);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--track-label);
   color: var(--text-faint);
   margin: 12px 0 4px;
 }
@@ -2478,6 +2587,7 @@ button {
   gap: 2px;
   padding: 0;
   font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
   line-height: var(--lh-ui);
 }
 
@@ -2489,6 +2599,7 @@ button {
   flex-direction: column;
   gap: 2px;
   font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
 }
 
 .task-title {
@@ -2554,7 +2665,7 @@ button {
 .task-edit input,
 .task-edit select {
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 6px;
   padding: 5px 7px;
   color: var(--text);
@@ -2612,7 +2723,7 @@ button {
    ripple. Same for a +12 / −4 diff count, which is read as a comparison. */
 .minical {
   font-variant-numeric: tabular-nums;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 8px;
   padding: 8px;
   margin-bottom: 10px;
@@ -2624,7 +2735,7 @@ button {
   justify-content: space-between;
   margin: 0 2px 4px 6px;
   font-size: var(--fs-sm);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
 }
 
 .minical-nav {
@@ -2661,7 +2772,7 @@ button {
 }
 
 .minical-day.today {
-  font-weight: 700;
+  font-weight: var(--fw-display);
   color: var(--accent);
 }
 
@@ -2696,7 +2807,7 @@ button {
   transform: translateX(-50%);
   background: var(--bg-elevated);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   padding: 8px 14px;
   border-radius: 999px;
   font-size: var(--fs-ui);
@@ -2735,7 +2846,7 @@ button {
   align-items: center;
   gap: 6px;
   font-size: var(--fs-ui);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
   padding: 5px 10px;
   border-radius: 8px;
   border: none;
@@ -2772,6 +2883,7 @@ button {
   text-align: left;
   color: var(--text);
   font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
   cursor: pointer;
   overflow-wrap: anywhere;
 }
@@ -2788,7 +2900,7 @@ button {
 
 .task-edit textarea {
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 6px;
   padding: 5px 7px;
   color: var(--text);
@@ -2806,7 +2918,7 @@ button {
   flex-direction: column;
   gap: 6px;
   padding-top: 8px;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
 }
 
 .task-updates-title {
@@ -2814,15 +2926,15 @@ button {
   align-items: center;
   gap: 6px;
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-label);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--track-label);
   color: var(--text-faint);
 }
 
 .task-comment {
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 8px;
   padding: 7px 9px;
 }
@@ -2928,7 +3040,7 @@ button {
   align-items: center;
   gap: 4px;
   padding: 8px 10px;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
 }
 
 .sidebar-footer-btn {
@@ -2969,7 +3081,7 @@ button {
   gap: 10px;
   margin: 0 10px 6px;
   padding: 10px;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 8px;
   font-size: var(--fs-ui);
   cursor: pointer;
@@ -3105,7 +3217,7 @@ button {
   gap: 9px;
   margin: 10px;
   padding: 11px 12px;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 8px;
   font-size: var(--fs-ui);
   line-height: var(--lh-ui);
@@ -3126,7 +3238,7 @@ button {
   margin-top: 3px;
   font-size: var(--fs-sm);
   color: var(--text-muted);
-  font-weight: 400;
+  font-weight: var(--fw-body);
 }
 
 .import-skips {
@@ -3135,9 +3247,9 @@ button {
 
 .import-skips-title {
   font-size: var(--fs-label);
-  font-weight: 600;
+  font-weight: var(--fw-label);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--track-label);
   color: var(--text-faint);
   margin-bottom: 6px;
 }
@@ -3148,7 +3260,7 @@ button {
   padding: 0;
   max-height: 240px;
   overflow-y: auto;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 8px;
 }
 
@@ -3162,7 +3274,7 @@ button {
 }
 
 .import-skip + .import-skip {
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
 }
 
 .import-skip-name {
@@ -3201,7 +3313,7 @@ button {
   font: inherit;
   font-size: var(--fs-meta);
   padding: 3px 6px;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 6px;
   background: var(--bg);
   color: var(--text-muted);
@@ -3217,8 +3329,8 @@ button {
   gap: 8px;
   margin: 0 6px 4px;
   font-size: var(--fs-meta);
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-weight: var(--fw-label);
+  letter-spacing: var(--track-label);
   text-transform: uppercase;
   color: var(--text-faint);
 }
@@ -3288,6 +3400,7 @@ button {
 
 .run-title {
   font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3388,7 +3501,7 @@ button {
 }
 
 .run-question {
-  border: 1px solid var(--accent);
+  border: var(--rule) solid var(--accent);
   border-radius: 8px;
   padding: 12px;
   background: var(--accent-soft);
@@ -3412,7 +3525,7 @@ button {
   flex: 1;
   min-width: 0;
   padding: 7px 9px;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 7px;
   background: var(--bg);
   color: var(--text);
@@ -3432,7 +3545,7 @@ button {
    stylesheet, so it read as imported rather than designed. */
 .run-error {
   padding: 10px 12px;
-  border: 1px solid var(--danger);
+  border: var(--rule) solid var(--danger);
   border-radius: 8px;
   background: var(--bg-elevated);
   color: var(--danger);
@@ -3443,8 +3556,8 @@ button {
 .run-section-title {
   margin: 0 0 6px;
   font-size: var(--fs-meta);
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-weight: var(--fw-label);
+  letter-spacing: var(--track-label);
   text-transform: uppercase;
   color: var(--text-faint);
 }
@@ -3455,7 +3568,7 @@ button {
   gap: 8px;
   width: 100%;
   padding: 7px 10px;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 7px;
   background: transparent;
   color: var(--text);
@@ -3502,15 +3615,16 @@ button {
   grid-template-columns: 80px 1fr;
   gap: 10px;
   padding: 5px 0;
-  border-top: 1px dashed var(--border);
+  border-top: var(--rule) dashed var(--border);
   font-size: var(--fs-sm);
 }
 
 .run-message-role {
   color: var(--text-faint);
+  font-weight: var(--fw-label);
   font-size: var(--fs-meta);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--track-label);
 }
 
 .run-message-body {
@@ -3564,15 +3678,15 @@ button {
 .memory-group-title {
   margin: 0 6px 6px;
   font-size: var(--fs-meta);
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-weight: var(--fw-label);
+  letter-spacing: var(--track-label);
   text-transform: uppercase;
   color: var(--text-faint);
 }
 
 .memory-item {
   padding: 10px 10px 8px;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 8px;
   margin-bottom: 8px;
   background: var(--bg-elevated);
@@ -3588,7 +3702,7 @@ button {
   flex: 1;
   min-width: 0;
   font-size: var(--fs-md);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 
 .memory-actions {
@@ -3616,7 +3730,7 @@ button {
   width: 100%;
   margin-top: 4px;
   padding: 4px 6px;
-  border: 1px solid transparent;
+  border: var(--rule) solid transparent;
   border-radius: 6px;
   background: transparent;
   color: var(--text-muted);
@@ -3638,7 +3752,7 @@ button {
   min-height: 96px;
   margin-top: 4px;
   padding: 6px 8px;
-  border: 1px solid var(--accent);
+  border: var(--rule) solid var(--accent);
   border-radius: 6px;
   background: var(--bg);
   color: var(--text);
@@ -3723,8 +3837,8 @@ button {
 
 .about-wordmark {
   font-size: var(--fs-lg);
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-weight: var(--fw-display);
+  letter-spacing: var(--track-display);
 }
 
 /* The one string in here anyone needs to copy, so it is selectable and set in
@@ -3749,7 +3863,7 @@ button {
   flex-direction: column;
   gap: 8px;
   padding-top: 14px;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
 }
 
 .about-fact {
@@ -3779,7 +3893,7 @@ button {
   display: flex;
   gap: 16px;
   padding-top: 14px;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
 }
 
 .about-link {
@@ -3815,7 +3929,7 @@ button {
    ========================================================================= */
 .folder-picker {
   margin: 0 10px 6px;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 8px;
   overflow: hidden;
   background: var(--bg);
@@ -3826,7 +3940,7 @@ button {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--rule) solid var(--border);
   color: var(--text-faint);
 }
 
@@ -3859,6 +3973,7 @@ button {
   color: var(--text);
   text-align: left;
   font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease-out),
     color var(--dur-fast) var(--ease-out);
@@ -3941,8 +4056,7 @@ button {
    chosen size; the panel inside just fills it.
    ========================================================================= */
 .sidebar-dock,
-.task-dock,
-.assistant-dock {
+.task-dock {
   position: relative;
   flex-shrink: 0;
   height: 100%;
@@ -3958,20 +4072,14 @@ button {
 
 /* The panel's own contents follow the edge in, a beat behind it, so the slide
    reads as one movement instead of a box that suddenly contains something. */
-.task-dock > .task-panel,
-.assistant-dock > .assistant-panel {
+.task-dock > .task-panel {
   opacity: 0;
   transform: translateX(-8px);
   transition: opacity var(--dur-base) var(--ease-out) 60ms,
     transform var(--dur-base) var(--ease-out) 60ms;
 }
 
-.assistant-dock > .assistant-panel {
-  transform: translateX(8px);
-}
-
-.task-dock.open > .task-panel,
-.assistant-dock.open > .assistant-panel {
+.task-dock.open > .task-panel {
   opacity: 1;
   transform: none;
 }
@@ -3979,8 +4087,7 @@ button {
 /* A dock mid-drag must not animate — the width is already following the
    pointer, and a transition on top of that lags behind the cursor. */
 .sidebar-dock:has(.resize-handle.dragging),
-.task-dock:has(.resize-handle.dragging),
-.assistant-dock:has(.resize-handle.dragging) {
+.task-dock:has(.resize-handle.dragging) {
   transition: none;
 }
 
@@ -4005,6 +4112,18 @@ button {
   left: 0;
 }
 
+/* Trevor's edge is horizontal — he grows downwards, not sideways — so this one
+   resets the vertical geometry the base rule assumes. */
+.resize-handle-bottom {
+  top: auto;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: auto;
+  height: 9px;
+  cursor: row-resize;
+}
+
 /* A hairline that only appears once you're on it. */
 .resize-handle::after {
   content: '';
@@ -4027,6 +4146,23 @@ button {
   transform: translateX(-50%) scaleX(1);
 }
 
+/* The same hairline, laid on its side. */
+.resize-handle-bottom::after {
+  top: 50%;
+  bottom: auto;
+  left: 0;
+  right: 0;
+  width: auto;
+  height: 2px;
+  transform: translateY(-50%) scaleY(0);
+}
+
+.resize-handle-bottom:hover::after,
+.resize-handle-bottom:focus-visible::after,
+.resize-handle-bottom.dragging::after {
+  transform: translateY(-50%) scaleY(1);
+}
+
 .resize-handle:focus-visible {
   outline: none;
 }
@@ -4039,7 +4175,7 @@ button {
   align-items: stretch;
   gap: 4px;
   padding: 0 8px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--rule) solid var(--border);
   background: var(--bg);
   min-height: 38px;
 }
@@ -4101,7 +4237,7 @@ button {
   left: 8px;
   right: 8px;
   bottom: 0;
-  height: 2px;
+  height: 2.5px;
   border-radius: 999px 999px 0 0;
   background: var(--accent);
   transform: scaleX(0);
@@ -4113,7 +4249,7 @@ button {
 }
 
 .tab.in-split {
-  box-shadow: inset 0 0 0 1px var(--border);
+  box-shadow: inset 0 0 0 var(--rule) var(--border);
 }
 
 .tab.dragging {
@@ -4228,7 +4364,7 @@ button {
      a close button in it. */
   min-height: 34px;
   padding: 0 6px 0 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--rule) solid var(--border);
   background: var(--bg-elevated);
   animation: pane-in var(--dur-slow) var(--ease-out);
 }
@@ -4242,7 +4378,7 @@ button {
 
 .pane-title {
   font-size: var(--fs-sm);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -4288,7 +4424,7 @@ button {
    ========================================================================= */
 .wikilink {
   color: var(--accent);
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-bottom: var(--rule-hair) solid color-mix(in srgb, var(--accent) 35%, transparent);
   border-radius: 4px;
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease-out);
@@ -4313,7 +4449,7 @@ button {
   overflow-y: auto;
   padding: 4px;
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
   animation: suggest-in var(--dur-fast) var(--ease-out);
@@ -4365,7 +4501,7 @@ button {
    ========================================================================= */
 .backlinks {
   margin-top: 48px;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
   padding-top: 10px;
 }
 
@@ -4378,7 +4514,7 @@ button {
   background: transparent;
   color: var(--text-muted);
   font-size: var(--fs-sm);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
 }
 
 .backlinks-head:hover {
@@ -4430,7 +4566,7 @@ button {
 
 .backlink-title {
   font-size: var(--fs-ui);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 
 .backlink-context {
@@ -4459,9 +4595,10 @@ button {
 }
 
 .outline-title {
+  font-weight: var(--fw-label);
   font-size: var(--fs-label);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--track-label);
   color: var(--text-faint);
   padding: 0 8px 6px;
 }
@@ -4533,7 +4670,7 @@ button {
   min-width: 232px;
   padding: 5px;
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
   animation: menu-in var(--dur-fast) var(--ease-out);
@@ -4584,7 +4721,7 @@ button {
 .menu-item.separated {
   margin-top: 5px;
   padding-top: 11px;
-  border-top: 1px solid var(--border);
+  border-top: var(--rule) solid var(--border);
   border-radius: 0 0 7px 7px;
 }
 
@@ -4651,7 +4788,7 @@ button {
   border-radius: 999px;
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 12%, transparent);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 
 .save-indicator.saving .save-dot {
@@ -4731,7 +4868,7 @@ button {
 .confirm-title {
   margin: 0;
   font-size: var(--fs-lg);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
 }
 
 .confirm-text {
@@ -4750,7 +4887,7 @@ button {
 .btn-quiet {
   padding: 8px 14px;
   border-radius: 8px;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   background: transparent;
   color: var(--text);
   font-size: var(--fs-ui);
@@ -4771,7 +4908,7 @@ button {
   background: var(--danger);
   color: #fff;
   font-size: var(--fs-ui);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   transition: filter var(--dur-fast) var(--ease-out);
 }
 
@@ -4986,7 +5123,7 @@ button {
 
 .ProseMirror th,
 .ProseMirror td {
-  border: 1px solid var(--border);
+  border: var(--rule-hair) solid var(--border);
   padding: 7px 10px;
   vertical-align: top;
   position: relative;
@@ -4994,7 +5131,7 @@ button {
 
 .ProseMirror th {
   background: var(--bg-elevated);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
   text-align: left;
 }
 
@@ -5096,8 +5233,7 @@ button {
 
 @media (max-width: 900px) {
   .sidebar-dock,
-  .task-dock,
-  .assistant-dock {
+  .task-dock {
     position: fixed;
     top: 0;
     bottom: 0;
@@ -5112,8 +5248,7 @@ button {
   /* Only once it's on screen — a shadow on a drawer parked off the edge
      bleeds a grey band down the side of the editor. */
   .sidebar-dock:has(.sidebar.open),
-  .task-dock.open,
-  .assistant-dock.open {
+  .task-dock.open {
     box-shadow: var(--shadow-lg);
   }
 
@@ -5123,30 +5258,26 @@ button {
     transform: translateX(-100%);
   }
 
-  .assistant-dock {
-    right: 0;
-    left: auto;
-    transform: translateX(100%);
-    /* Wider: it holds a conversation rather than a list. */
-    width: min(92vw, 420px) !important;
-  }
-
   .sidebar-dock:has(.sidebar.open),
-  .task-dock.open,
-  .assistant-dock.open {
+  .task-dock.open {
     transform: none;
   }
 
   /* Focus mode collapses the docks to zero width on a desktop; here they are
      out of the flow already, so they just leave. */
   .app.focus-mode .sidebar-dock,
-  .app.focus-mode .task-dock,
-  .app.focus-mode .assistant-dock {
+  .app.focus-mode .task-dock {
     transform: translateX(-100%);
   }
 
-  .app.focus-mode .assistant-dock {
-    transform: translateX(100%);
+  /* Trevor drops the full width of the phone — the side borders would only
+     draw a line down the very edge of the screen — and is allowed more of its
+     height, there being nothing beside him worth keeping in view. */
+  .assistant-panel {
+    width: 100vw;
+    height: min(var(--trevor-height, 520px), 92vh);
+    border-left: none;
+    border-right: none;
   }
 
   /* A drawer is the full height of the screen, so its contents clear the
@@ -5414,7 +5545,7 @@ button {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 18px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--rule) solid var(--border);
 }
 
 .theme-mode-label {
@@ -5462,7 +5593,7 @@ button {
   align-items: center;
   gap: 12px;
   padding: 10px;
-  border: 1px solid var(--border);
+  border: var(--rule) solid var(--border);
   border-radius: 12px;
   background: transparent;
   color: var(--text);
@@ -5493,7 +5624,7 @@ button {
   height: 44px;
   border-radius: 6px;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: var(--rule-hair) solid var(--border);
 }
 
 .theme-swatch span {
@@ -5513,7 +5644,7 @@ button {
   align-items: center;
   gap: 7px;
   font-size: var(--fs-md);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
 }
 
 .theme-card-desc {
@@ -5525,9 +5656,10 @@ button {
 }
 
 .theme-badge {
+  font-weight: var(--fw-label);
   font-size: var(--fs-label);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--track-label);
   padding: 2px 6px;
   border-radius: 999px;
   background: var(--accent);

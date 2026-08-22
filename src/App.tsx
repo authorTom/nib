@@ -235,20 +235,13 @@ export default function App() {
   const closeOverlays = useCallback(() => {
     setSidebarOpen(false)
     setTasksOpen(false)
-    setAssistantOpen(false)
   }, [])
 
-  const toggleAssistant = useCallback(() => {
-    // As drawers they'd stack on top of each other, so opening one on a phone
-    // puts the others away first. Decided out here rather than inside a state
-    // updater: those have to stay pure, and React runs them twice in dev.
-    const opening = !assistantOpen
-    if (opening && compact) {
-      setSidebarOpen(false)
-      setTasksOpen(false)
-    }
-    setAssistantOpen(opening)
-  }, [assistantOpen, compact])
+  // Trevor is a sheet over the workspace rather than a drawer beside it, so he
+  // no longer has to shove the other panels out of the way to open — and he
+  // dismisses himself on Escape, from inside the panel.
+  const toggleAssistant = useCallback(() => setAssistantOpen((o) => !o), [])
+  const closeAssistant = useCallback(() => setAssistantOpen(false), [])
 
   /** Open the panel on a tab; clicking the active tab's button closes it. */
   const openPanelTab = useCallback(
@@ -272,9 +265,9 @@ export default function App() {
     [openPanelTab],
   )
   /**
-   * The queue is part of the assistant now, so "show me the queue" means "open
-   * the assistant". Kept as its own command because that is what people search
-   * the palette for.
+   * The queue is part of Trevor now, so "show me the queue" means "drop Trevor
+   * on it". Kept as its own command because that is what people search the
+   * palette for.
    */
   const openQueue = useCallback(() => {
     setAssistantView('queue')
@@ -285,29 +278,30 @@ export default function App() {
   // one animates instead of vanishing. Matches --dur-slow.
   const PANEL_EXIT_MS = 260
   const renderTasks = useDeferredUnmount(tasksOpen, PANEL_EXIT_MS)
-  const renderAssistant = useDeferredUnmount(assistantOpen, PANEL_EXIT_MS)
 
   // ---- Resizable docked panels ----
   const sidebarResize = useResizable({
     storageKey: 'deckle-width-sidebar',
-    defaultWidth: 280,
+    defaultSize: 280,
     min: 200,
     max: 520,
     edge: 'right',
   })
   const taskResize = useResizable({
     storageKey: 'deckle-width-tasks',
-    defaultWidth: 340,
+    defaultSize: 340,
     min: 260,
     max: 560,
     edge: 'right',
   })
+  // Trevor drops from the top, so his handle measures height. A fresh storage
+  // key on purpose: the old one holds a width, which is meaningless here.
   const assistantResize = useResizable({
-    storageKey: 'deckle-width-assistant',
-    defaultWidth: 380,
-    min: 300,
-    max: 640,
-    edge: 'left',
+    storageKey: 'deckle-height-trevor',
+    defaultSize: 520,
+    min: 320,
+    max: 900,
+    edge: 'bottom',
   })
 
   // Tasks (Todoist-style planner, stored in the library's .deckle/tasks.json)
@@ -626,7 +620,7 @@ export default function App() {
     onRunFailed: (title, error) => showToast(`“${title}” — ${error}`, 'danger'),
   })
 
-  // Keyboard shortcuts: Ctrl/Cmd+K opens the palette,
+  // Keyboard shortcuts: Ctrl/Cmd+K opens the palette, Ctrl/Cmd+J drops Trevor,
   // Ctrl/Cmd+Shift+F toggles focus, Ctrl/Cmd+\ splits, Escape exits focus.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -634,6 +628,9 @@ export default function App() {
       if (mod && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setPaletteOpen((o) => !o)
+      } else if (mod && !e.shiftKey && e.key.toLowerCase() === 'j') {
+        e.preventDefault()
+        toggleAssistant()
       } else if (mod && e.key === '\\') {
         e.preventDefault()
         toggleSplit()
@@ -660,9 +657,13 @@ export default function App() {
         // (The command palette and confirm dialog handle their own Escape.)
         if (historyOpen) setHistoryOpen(false)
         else if (trashOpen) setTrashOpen(false)
+        // Trevor hangs over everything below him, so he leaves before they do.
+        // The run and memory sheets he can open sit above him and swallow
+        // Escape themselves, so this never fires out from under one of them.
+        else if (assistantOpen) setAssistantOpen(false)
         // On a phone the drawers are the topmost layer, so they go before
         // focus mode does.
-        else if (compact && (sidebarOpen || tasksOpen || assistantOpen)) {
+        else if (compact && (sidebarOpen || tasksOpen)) {
           closeOverlays()
         } else setFocusMode(false)
       }
@@ -682,6 +683,7 @@ export default function App() {
     sidebarOpen,
     tasksOpen,
     assistantOpen,
+    toggleAssistant,
     closeOverlays,
   ])
 
@@ -905,9 +907,10 @@ export default function App() {
       },
       {
         id: 'toggle-assistant',
-        label: 'Toggle AI assistant',
+        label: 'Clever Trevor',
         icon: Sparkles,
-        keywords: 'ai assistant chat llm claude openai',
+        hint: 'Ctrl/Cmd+J',
+        keywords: 'ai assistant chat llm claude openai trevor clever ask',
         run: toggleAssistant,
       },
       {
@@ -935,16 +938,16 @@ export default function App() {
       },
       {
         id: 'queue',
-        label: 'Assistant queue',
+        label: "Trevor's queue",
         icon: Bot,
-        keywords: 'queue background job run agent task assistant batch',
+        keywords: 'queue background job run agent task assistant trevor batch',
         run: openQueue,
       },
       {
         id: 'memory',
-        label: 'Assistant memory',
+        label: "Trevor's memory",
         icon: Brain,
-        keywords: 'memory remember context assistant learned facts forget',
+        keywords: 'memory remember context assistant trevor learned facts forget',
         run: () => setMemoryOpen(true),
       },
       {
@@ -1124,7 +1127,7 @@ export default function App() {
     <div className={`app${focusMode ? ' focus-mode' : ''}`}>
       <div
         className="sidebar-dock"
-        style={{ width: sidebarResize.width }}
+        style={{ width: sidebarResize.size }}
       >
         <Sidebar
           tree={tree}
@@ -1163,7 +1166,7 @@ export default function App() {
 
       <div
         className={`task-dock${tasksOpen ? ' open' : ''}`}
-        style={{ width: tasksOpen ? taskResize.width : 0 }}
+        style={{ width: tasksOpen ? taskResize.size : 0 }}
       >
         <TaskPanel
           open={renderTasks}
@@ -1183,9 +1186,7 @@ export default function App() {
           compact media query, so on a desktop the docked panels never dim the
           editor and the scrim can't be clicked. */}
       <div
-        className={`scrim${
-          sidebarOpen || tasksOpen || assistantOpen ? ' show' : ''
-        }`}
+        className={`scrim${sidebarOpen || tasksOpen ? ' show' : ''}`}
         onClick={closeOverlays}
       />
 
@@ -1243,39 +1244,6 @@ export default function App() {
         onToggleTheme={toggleTheme}
       />
 
-      <div
-        className={`assistant-dock${assistantOpen ? ' open' : ''}`}
-        style={{ width: assistantOpen ? assistantResize.width : 0 }}
-      >
-        {assistantOpen && (
-          <div {...assistantResize.handleProps} aria-label="Resize assistant panel" />
-        )}
-        <AssistantPanel
-          open={renderAssistant}
-          onClose={() => setAssistantOpen(false)}
-          filePaths={notes.map((n) => n.id)}
-          activePath={activeNote?.id ?? null}
-          settings={assistant.settings}
-          onUpdateSettings={assistant.updateSettings}
-          view={assistantView}
-          onViewChange={setAssistantView}
-          sharing={settingsSharing}
-          settingsError={assistant.settingsError}
-          messages={assistant.messages}
-          status={assistant.status}
-          pending={assistant.pending}
-          onSend={assistant.send}
-          onApprove={assistant.approve}
-          onReject={assistant.reject}
-          onApproveAll={assistant.approveAll}
-          onStop={assistant.stop}
-          onClear={assistant.clear}
-          queue={queue}
-          onOpenRun={setOpenRunId}
-          onOpenNote={handleSelect}
-        />
-      </div>
-
       {focusMode && (
         <button
           type="button"
@@ -1293,6 +1261,35 @@ export default function App() {
         onClose={() => setPaletteOpen(false)}
         commands={commands}
         notes={notes}
+        onOpenNote={handleSelect}
+      />
+
+      <AssistantPanel
+        open={assistantOpen}
+        onClose={closeAssistant}
+        height={assistantResize.size}
+        resizeHandle={
+          <div {...assistantResize.handleProps} aria-label="Resize Clever Trevor" />
+        }
+        filePaths={notes.map((n) => n.id)}
+        activePath={activeNote?.id ?? null}
+        settings={assistant.settings}
+        onUpdateSettings={assistant.updateSettings}
+        view={assistantView}
+        onViewChange={setAssistantView}
+        sharing={settingsSharing}
+        settingsError={assistant.settingsError}
+        messages={assistant.messages}
+        status={assistant.status}
+        pending={assistant.pending}
+        onSend={assistant.send}
+        onApprove={assistant.approve}
+        onReject={assistant.reject}
+        onApproveAll={assistant.approveAll}
+        onStop={assistant.stop}
+        onClear={assistant.clear}
+        queue={queue}
+        onOpenRun={setOpenRunId}
         onOpenNote={handleSelect}
       />
 
@@ -1395,11 +1392,6 @@ export default function App() {
         dragging={taskResize.dragging}
         drag={taskResize.drag}
         handleRef={taskResize.handleRef}
-      />
-      <ResizeCrew
-        dragging={assistantResize.dragging}
-        drag={assistantResize.drag}
-        handleRef={assistantResize.handleRef}
       />
 
       <ThemePicker

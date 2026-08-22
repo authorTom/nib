@@ -274,15 +274,15 @@ export default function TopBar({
           onClick={onOpenAssistant}
           title={
             runsNeedingYou
-              ? `AI assistant — ${runsNeedingYou} background ${
+              ? `Clever Trevor — ${runsNeedingYou} background ${
                   runsNeedingYou === 1 ? 'run needs' : 'runs need'
                 } you`
-              : 'AI assistant'
+              : `Clever Trevor (${MOD_KEY}J)`
           }
           aria-label={
             runsNeedingYou
-              ? `AI assistant, ${runsNeedingYou} background runs need you`
-              : 'AI assistant'
+              ? `Clever Trevor, ${runsNeedingYou} background runs need you`
+              : 'Clever Trevor'
           }
         >
           <Sparkles size={18} />
