@@ -10,6 +10,41 @@ here.
 
 Nothing yet.
 
+## [1.5.0] — 2026-08-23
+
+### Changed
+
+- **The assistant is now Clever Trevor, and he drops down from the top.** He
+  used to live in a dock on the right, which shoved the editor sideways every
+  time you opened him and left him competing with the note list and the task
+  panel for horizontal room — on a narrow window, three docked panels could
+  squeeze the editor below phone width. He is now a sheet that drops from the
+  top of the screen over the workspace, summoned with **Ctrl/Cmd+J**, dismissed
+  with Escape or a click outside. Nothing reflows on the way in or out, and the
+  composer has focus the moment he lands.
+
+  He is resizable by his bottom edge rather than his side. The height is
+  remembered per browser; the old stored width is not carried over, because a
+  width is meaningless as a height.
+
+  The rename is the visible strings and his own self-description — he answers to
+  the name if you ask. Nothing about how he works has changed: every edit to a
+  note is still shown as a diff you approve, and background jobs still draft
+  only inside the inbox and stop for you everywhere else.
+
+- **Heavier chrome.** Type weight is now part of the design system rather than
+  thirty-six literals scattered through the stylesheets, which is why the app
+  read lighter than it meant to and drifted a step either way depending on the
+  screen. Six named weights, applied consistently; dividers and panel edges go
+  from a 1px hairline to 1.5px; icons draw at a deliberate stroke instead of
+  whatever the icon library shipped. Word-sized things — key caps, pills,
+  swatches, the table grid in a note — keep the hairline, because a heavy rule
+  around a small shape reads as a mistake.
+
+  The document is deliberately untouched by most of this. Body copy still sets
+  at book weight; only the `h1` takes the extra step. The chrome got denser so
+  the note would read as the content and the app as the apparatus.
+
 ## [1.4.0] — 2026-08-20
 
 ### Added
@@ -218,7 +253,8 @@ a command palette; light and dark mode with seven palettes; a responsive layout
 with drawers on a phone; and a token-authenticated REST API at `/api/v1`
 described by a self-served OpenAPI 3.1 document.
 
-[Unreleased]: https://github.com/authorTom/deckle/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/authorTom/deckle/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/authorTom/deckle/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/authorTom/deckle/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/authorTom/deckle/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/authorTom/deckle/compare/v1.1.0...v1.2.0
