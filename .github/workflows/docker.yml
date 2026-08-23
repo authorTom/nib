@@ -12,6 +12,23 @@
 # pull` whatever merged that morning. Tracking main is now a deliberate choice
 # (:edge), and the rolling :1.2 and :1 tags let a deployment take fixes without
 # taking features.
+#
+# Each architecture builds on its own native runner and pushes an untagged
+# image by digest; a final job stitches the digests into one manifest list and
+# puts the tags on that. It used to build both under QEMU on one amd64 runner,
+# which is what broke: `npm ci` hung forever emulating arm64, so three builds in
+# a row sat silent for six hours until GitHub's maximum job time killed them and
+# 1.5.0 never published. amd64 finished the same step in four seconds.
+#
+# The emulation layer was never pinned — setup-qemu-action pulls
+# `tonistiigi/binfmt:latest` — so the repo was one upstream release away from
+# this at any moment, and had no way to tell. Native runners remove QEMU from
+# the picture entirely rather than pinning a version and hoping. They are free
+# on public repositories, and a build that took minutes under emulation takes
+# well under one.
+#
+# Every job carries `timeout-minutes`. Without it the default is six hours, and
+# a hang costs the full six before anyone hears about it.
 
 name: Docker image
 
@@ -22,15 +39,94 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      # One architecture failing should not cancel the other: knowing whether
+      # this is "arm64 is broken" or "the build is broken" is the whole
+      # diagnosis, and fail-fast throws that away.
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
     steps:
+      # ghcr.io rejects an uppercase repository name, and this owner has one.
+      # metadata-action lowercases for you; `docker buildx imagetools` in the
+      # merge job does not, so the name is normalised once, here, and both
+      # jobs use the same value.
+      - name: Resolve image name
+        run: |
+          echo "IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+          echo "PLATFORM_PAIR=$(echo '${{ matrix.platform }}' | tr '/' '-')" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Labels only. The tags go on the manifest list in the merge job — a
+      # per-architecture image that carried :latest would have the two
+      # architectures fighting over the same tag, last push winning.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          # Scoped per architecture: one shared scope has the two builds
+          # overwriting each other's cache on every run.
+          cache-from: type=gha,scope=${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=${{ env.PLATFORM_PAIR }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest='${{ steps.build.outputs.digest }}'
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          # A silently empty artifact here becomes a manifest list missing an
+          # architecture, which only shows up when someone pulls on that one.
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Resolve image name
+        run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
 
       - uses: docker/setup-buildx-action@v3
 
@@ -43,7 +139,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ${{ env.IMAGE }}
           tags: |
             type=raw,value=edge,enable={{is_default_branch}}
             type=sha
@@ -52,12 +148,14 @@ jobs:
             type=semver,pattern={{major}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.IMAGE }}@sha256:%s ' *)
+
+      # Proves the published tag really is a manifest list with both
+      # architectures in it, rather than whichever one pushed last.
+      - name: Inspect
+        run: docker buildx imagetools inspect ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
