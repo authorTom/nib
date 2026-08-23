@@ -10,6 +10,30 @@ here.
 
 Nothing yet.
 
+## [1.5.1] — 2026-08-23
+
+No application changes. This release exists because 1.5.0 could not publish an
+image, so there was nothing to pull.
+
+### Fixed
+
+- **The container image builds again.** `npm ci` hung indefinitely on
+  `linux/arm64` under QEMU emulation — the same step finished in four seconds on
+  amd64 — so three builds in a row sat silent for six hours until GitHub's
+  maximum job time killed them. 1.5.0 got a tag and release notes but no image.
+
+  Each architecture now builds on its own native runner and the two are stitched
+  into one manifest list, so there is no emulation left to hang: a build that
+  never finished now takes about eighty seconds. Nothing in Deckle caused it —
+  the emulation layer was pulled unpinned from upstream and changed underneath
+  the repository between 1.4.0 and 1.5.0.
+
+  Every job also carries a timeout now. The default was six hours, which is why
+  each hang cost the full six before anyone noticed.
+
+  If you are on 1.5.0, this is the same application. Pull it for an image that
+  exists.
+
 ## [1.5.0] — 2026-08-23
 
 ### Changed
@@ -253,7 +277,8 @@ a command palette; light and dark mode with seven palettes; a responsive layout
 with drawers on a phone; and a token-authenticated REST API at `/api/v1`
 described by a self-served OpenAPI 3.1 document.
 
-[Unreleased]: https://github.com/authorTom/deckle/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/authorTom/deckle/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/authorTom/deckle/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/authorTom/deckle/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/authorTom/deckle/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/authorTom/deckle/compare/v1.2.0...v1.3.0
