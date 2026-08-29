@@ -10,6 +10,77 @@ here.
 
 Nothing yet.
 
+## [1.6.0] — 2026-08-29
+
+### Added
+
+- **Trevor writes where you can watch him.** Answers used to arrive all at
+  once: a "Thinking…" line, a wait of however long the model took, then a
+  finished paragraph. Every provider now streams, so the answer appears as it
+  is written — in the chat, in the selection popover, and behind the new `/`
+  commands. Nothing about how he works changed; the waiting did.
+
+- **`/` commands in the editor.** Type `/` on a blank line for `/summarize`,
+  `/explain`, `/todo`, or `/ask` followed by a question. The answer is written
+  in at the caret as one edit, so a single undo takes it back out. `/ask` can
+  search your library and cite what it read.
+
+- **The selection popover can read your other notes.** "Ask AI about
+  selection" used to see only the words you had highlighted. It can now search
+  and read the rest of the library when the answer depends on it, and cites
+  every note it drew on as a `[[wikilink]]` you can click straight through —
+  both in the preview and once the text is in the note. It still cannot write
+  anything: the tools it is given are the reading ones only.
+
+- **Edits are approved at the text.** When Trevor proposes a change to the
+  note you have open, the sheet steps aside and the diff appears at the caret
+  with Approve and Reject beside it, rather than over the note you are being
+  asked about. Anything he cannot ask for on the page — a folder, a deletion,
+  or more than one change at once — still goes through the panel as before.
+
+### Changed
+
+- **He reads what you are typing.** "Summarize this note" used to be answered
+  from the last version written to disk, which on a fresh paragraph meant the
+  version from before you wrote it. The open note's current text now goes with
+  the message, unsaved keystrokes included, trimmed from the middle if the note
+  is long enough to crowd out everything else.
+
+### Fixed
+
+- **Notes and memory can no longer give Trevor orders.** The note you have
+  open and the memory Trevor has written about you both used to be placed in
+  the system prompt, next to the app's own instructions and indistinguishable
+  from them. They now travel with your message as quoted material, marked as
+  material, and he is told plainly that nothing inside it can instruct him.
+  This matters most for text you did not write — a note pasted from the web, a
+  shared library, or a memory recorded from a misread earlier turn. Queued
+  background runs got the same treatment, where it matters more still because
+  nobody is watching them.
+
+- **A long note can no longer crowd out the conversation.** Reading a note fed
+  the whole file to the model however big it was, so one large note could spend
+  the entire context window and take the rest of the exchange down with it.
+  Reads, the open note, and the inline selection are each capped, and a trimmed
+  read says so in the text so Trevor knows he is holding an excerpt and edits in
+  place rather than rewriting the file from it.
+
+- **A failing model gives up instead of retrying forever.** The loop was
+  bounded only by a count of tool calls, which bounds a run that is getting
+  somewhere. A model stuck on a path that does not exist would retry it up to
+  fifty times, each one a paid request. Three turns where every call fails now
+  ends the turn and says so.
+
+- **An expired session hands the key back.** On a server library the API key
+  belongs to the server and is lent to each browser that signs in. Pressing
+  sign out returned it; a session that simply expired did not, leaving the key
+  cached in a browser that could no longer reach the library. Signing back in
+  fetches it again, as before.
+
+- **Extended thinking survives streaming.** Claude's thinking blocks are
+  resent with their signatures intact across a streamed turn, so switching
+  thinking on no longer risks a rejected request on the following message.
+
 ## [1.5.1] — 2026-08-23
 
 No application changes. This release exists because 1.5.0 could not publish an
@@ -277,7 +348,8 @@ a command palette; light and dark mode with seven palettes; a responsive layout
 with drawers on a phone; and a token-authenticated REST API at `/api/v1`
 described by a self-served OpenAPI 3.1 document.
 
-[Unreleased]: https://github.com/authorTom/deckle/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/authorTom/deckle/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/authorTom/deckle/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/authorTom/deckle/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/authorTom/deckle/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/authorTom/deckle/compare/v1.3.0...v1.4.0
