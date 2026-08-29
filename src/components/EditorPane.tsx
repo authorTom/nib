@@ -14,7 +14,9 @@ import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { createLowlight, common } from 'lowlight'
 import { Markdown } from 'tiptap-markdown'
 import { BookmarkPlus, Brain, SquareCheckBig, X } from 'lucide-react'
-import InlineAssistant from './InlineAssistant'
+import InlineAssistant, { type InlineAsk } from './InlineAssistant'
+import InlineApproval from './InlineApproval'
+import SlashCommands from './SlashCommands'
 import WikilinkSuggest from './WikilinkSuggest'
 import Outline from './Outline'
 import Backlinks from './Backlinks'
@@ -34,6 +36,7 @@ import {
   type FlightOrigin,
 } from '../lib/motion'
 import type { NoteFile } from '../fs/library'
+import type { PendingAction } from '../ai/useAssistant'
 
 const lowlight = createLowlight(common)
 
@@ -57,11 +60,15 @@ interface EditorPaneProps {
   onFocusPane: () => void
   onContentChange: (noteId: string, markdown: string) => void
   onOpenNote: (noteId: string) => void
-  onInlineAsk: (
-    instruction: string,
-    selectedText: string,
-    signal: AbortSignal,
-  ) => Promise<string>
+  onInlineAsk: InlineAsk
+  /**
+   * A change the assistant wants to make to *this* note, waiting on a person.
+   * Rendered at the caret rather than in the chat sheet — see InlineApproval.
+   */
+  approval?: PendingAction | null
+  onApproveAction?: (id: string) => void
+  onRejectAction?: (id: string) => void
+  onOpenAssistant?: () => void
   onAddTask: (text: string) => void
   onAddBookmark: () => void
   onEditorReady: (editor: TiptapEditor | null) => void
@@ -97,6 +104,10 @@ export default function EditorPane({
   onContentChange,
   onOpenNote,
   onInlineAsk,
+  approval,
+  onApproveAction,
+  onRejectAction,
+  onOpenAssistant,
   onAddTask,
   onAddBookmark,
   onEditorReady,
@@ -249,6 +260,12 @@ export default function EditorPane({
     onAddTask(editor.state.doc.textBetween(from, to, ' '))
   }
 
+  /** Follow a citation the assistant wrote, if the library has that note. */
+  const openWikilink = (target: string) => {
+    const id = resolveWikilink(target, notesRef.current, noteIdRef.current)
+    if (id) onOpenNoteRef.current(id)
+  }
+
   const replaceSelection = (text: string) => {
     if (!editor || !aiRange) return
     editor
@@ -325,6 +342,7 @@ export default function EditorPane({
                   ask={onInlineAsk}
                   onReplace={replaceSelection}
                   onInsertBelow={insertBelowSelection}
+                  onOpenLink={openWikilink}
                   onClose={() => setAiOpen(false)}
                 />
               ) : (
@@ -386,6 +404,17 @@ export default function EditorPane({
       </div>
 
       <WikilinkSuggest editor={editor} notes={notes} noteId={noteId} />
+      <SlashCommands editor={editor} ask={onInlineAsk} />
+
+      {approval && onApproveAction && onRejectAction && onOpenAssistant && (
+        <InlineApproval
+          editor={editor}
+          action={approval}
+          onApprove={onApproveAction}
+          onReject={onRejectAction}
+          onOpenChat={onOpenAssistant}
+        />
+      )}
     </div>
   )
 }

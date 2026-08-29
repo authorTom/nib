@@ -8,6 +8,15 @@ import type {
   ToolDef,
 } from './types'
 
+/**
+ * Called as tokens arrive, with the whole visible answer so far rather than the
+ * latest fragment. A snapshot is what every consumer here actually wants — a
+ * React bubble sets its state to it, and a `<think>` block that turns out to be
+ * reasoning can be split back out of it — and it removes any chance of two
+ * callers disagreeing about what has been delivered.
+ */
+export type OnText = (snapshot: string) => void
+
 function safeParse(text: string): Record<string, unknown> {
   try {
     return JSON.parse(text || '{}')
@@ -97,18 +106,43 @@ function toAnthropicMessages(history: ChatMessage[]): unknown[] {
   return messages
 }
 
+/**
+ * Accumulate a streamed Anthropic response into the shape a non-streamed one
+ * has, so everything downstream — including resending `raw` verbatim — is
+ * unchanged by the switch to streaming.
+ *
+ * Written here rather than handed to the SDK's `messages.stream()` helper: the
+ * pinned SDK (0.32) accumulates only `text_delta` and `input_json_delta`, so a
+ * thinking block would come back with empty text *and no signature* — and an
+ * unsigned thinking block resent on the next turn is a 400. The raw event
+ * stream carries every delta type, so accumulating it ourselves is the only
+ * version-proof way to keep extended thinking working.
+ */
+interface StreamedBlock {
+  type: string
+  text?: string
+  thinking?: string
+  signature?: string
+  id?: string
+  name?: string
+  input?: unknown
+  [key: string]: unknown
+}
+
 async function runAnthropic(
   settings: AssistantSettings,
   system: string,
   history: ChatMessage[],
   tools: ToolDef[],
   signal: AbortSignal,
+  onText?: OnText,
 ): Promise<ProviderTurn> {
   const client = anthropicClient(settings)
   const params: Record<string, unknown> = {
     model: settings.models.anthropic || 'claude-opus-5',
     max_tokens: 8000,
     system,
+    stream: true,
     tools: tools.map((t) => ({
       name: t.name,
       description: t.description,
@@ -127,18 +161,67 @@ async function runAnthropic(
     params.thinking = { type: 'adaptive', display: 'summarized' }
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const resp: any = await client.messages.create(params as any, { signal })
+  const stream: any = await client.messages.create(params as any, { signal })
+
+  const blocks: StreamedBlock[] = []
+  // Tool arguments arrive as JSON fragments; keep the raw string per block and
+  // parse once at the end, because a half-sent object doesn't parse.
+  const toolJson = new Map<number, string>()
   let text = ''
-  let reasoning = ''
-  const toolCalls: ProviderTurn['toolCalls'] = []
-  for (const block of resp.content ?? []) {
-    if (block.type === 'text') text += block.text
-    else if (block.type === 'thinking') reasoning += block.thinking ?? ''
-    else if (block.type === 'tool_use') {
-      toolCalls.push({ id: block.id, name: block.name, arguments: block.input ?? {} })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for await (const event of stream as AsyncIterable<any>) {
+    if (event.type === 'content_block_start') {
+      blocks[event.index] = { ...event.content_block }
+      continue
+    }
+    if (event.type !== 'content_block_delta') continue
+    const block = blocks[event.index]
+    if (!block) continue
+    switch (event.delta?.type) {
+      case 'text_delta':
+        block.text = (block.text ?? '') + event.delta.text
+        text += event.delta.text
+        onText?.(text)
+        break
+      case 'thinking_delta':
+        block.thinking = (block.thinking ?? '') + event.delta.thinking
+        break
+      case 'signature_delta':
+        block.signature = (block.signature ?? '') + event.delta.signature
+        break
+      case 'input_json_delta':
+        toolJson.set(event.index, (toolJson.get(event.index) ?? '') + event.delta.partial_json)
+        break
     }
   }
-  return { text, toolCalls, raw: resp.content, reasoning: reasoning.trim() || undefined }
+
+  // The SDK's SSE iterator *returns* on abort rather than throwing, so without
+  // this a stopped turn would come back looking like a finished one — and the
+  // loop would go on to execute whichever tool calls had arrived so far.
+  if (signal.aborted) throw new DOMException('The operation was aborted.', 'AbortError')
+
+  let reasoning = ''
+  const toolCalls: ProviderTurn['toolCalls'] = []
+  blocks.forEach((block, index) => {
+    if (block.type === 'thinking') reasoning += block.thinking ?? ''
+    else if (block.type === 'tool_use') {
+      block.input = safeParse(toolJson.get(index) ?? '')
+      toolCalls.push({
+        id: String(block.id),
+        name: String(block.name),
+        arguments: block.input as Record<string, unknown>,
+      })
+    }
+  })
+  return {
+    text,
+    toolCalls,
+    // Filtered, because `blocks` is index-addressed: a gap would resend as a
+    // null content block and be rejected.
+    raw: blocks.filter(Boolean),
+    reasoning: reasoning.trim() || undefined,
+  }
 }
 
 // ---- OpenAI-compatible (OpenAI + OpenRouter + LM Studio) -------------------
@@ -226,6 +309,39 @@ function compatibleKeyError(settings: AssistantSettings): string | null {
 }
 
 
+/**
+ * Walk an OpenAI-style `text/event-stream` body, handing each `data:` payload
+ * to the caller. Keep-alive comments and the trailing `[DONE]` are swallowed
+ * here so the accumulator only ever sees chunks.
+ */
+async function readSSE(
+  body: ReadableStream<Uint8Array>,
+  onChunk: (chunk: Record<string, unknown>) => void,
+): Promise<void> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let nl: number
+    while ((nl = buffer.indexOf('\n')) !== -1) {
+      const line = buffer.slice(0, nl).trim()
+      buffer = buffer.slice(nl + 1)
+      if (!line.startsWith('data:')) continue
+      const payload = line.slice(5).trim()
+      if (payload === '[DONE]') return
+      try {
+        onChunk(JSON.parse(payload))
+      } catch {
+        // A fragment, a comment, or a provider being creative — skip it rather
+        // than fail a turn that is otherwise arriving fine.
+      }
+    }
+  }
+}
+
 function toOpenAIMessages(system: string, history: ChatMessage[]): unknown[] {
   const messages: unknown[] = [{ role: 'system', content: system }]
   for (const m of history) {
@@ -260,6 +376,7 @@ async function runOpenAICompatible(
     extra?: Record<string, unknown>
     stripThink?: boolean
     extraHeaders?: Record<string, string>
+    onText?: OnText
   } = {},
 ): Promise<ProviderTurn> {
   const headers: Record<string, string> = {
@@ -270,6 +387,7 @@ async function runOpenAICompatible(
   const body = {
     model,
     messages: toOpenAIMessages(system, history),
+    stream: true,
     ...(tools.length
       ? {
           tools: tools.map((t) => ({
@@ -291,19 +409,55 @@ async function runOpenAICompatible(
     const detail = await resp.text().catch(() => '')
     throw new Error(`Request failed (${resp.status}). ${detail.slice(0, 300)}`)
   }
-  const data = await resp.json()
-  const msg = data.choices?.[0]?.message ?? {}
-  const toolCalls: ProviderTurn['toolCalls'] = (msg.tool_calls ?? []).map(
-    (tc: { id: string; function: { name: string; arguments: string } }) => ({
-      id: tc.id,
-      name: tc.function.name,
-      arguments: safeParse(tc.function.arguments),
-    }),
-  )
-  let text = msg.content ?? ''
+  if (!resp.body) throw new Error('The provider returned an empty response.')
+
+  let raw = ''
+  let reasoning = ''
+  // Keyed by the `index` the provider stamps on each fragment: a model can open
+  // a second tool call before it has finished sending the arguments of the first.
+  const calls = new Map<number, { id: string; name: string; args: string }>()
+  /** What the reader should see: the answer with any <think> block taken out. */
+  const visible = () => (opts.stripThink ? splitThink(raw).answer : raw)
+
+  await readSSE(resp.body, (chunk) => {
+    const choice = (chunk.choices as { delta?: Record<string, unknown> }[] | undefined)?.[0]
+    const delta = choice?.delta
+    if (!delta) return
+    if (typeof delta.content === 'string' && delta.content) {
+      raw += delta.content
+      opts.onText?.(visible())
+    }
+    const think = delta.reasoning ?? delta.reasoning_content
+    if (typeof think === 'string') reasoning += think
+    for (const tc of (delta.tool_calls ?? []) as {
+      index?: number
+      id?: string
+      function?: { name?: string; arguments?: string }
+    }[]) {
+      const index = tc.index ?? 0
+      const acc = calls.get(index) ?? { id: '', name: '', args: '' }
+      if (tc.id) acc.id = tc.id
+      if (tc.function?.name) acc.name = tc.function.name
+      if (tc.function?.arguments) acc.args += tc.function.arguments
+      calls.set(index, acc)
+    }
+  })
+
+  if (signal.aborted) throw new DOMException('The operation was aborted.', 'AbortError')
+
+  const toolCalls: ProviderTurn['toolCalls'] = [...calls.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([index, c]) => ({
+      // LM Studio omits the id on tool calls it streams; the id only has to be
+      // unique within the turn for the result to be matched back to the call.
+      id: c.id || `call_${index}`,
+      name: c.name,
+      arguments: safeParse(c.args),
+    }))
+
+  let text = raw
   // Reasoning models expose their chain-of-thought either in a dedicated field
   // (OpenRouter / LM Studio) or inline as a <think> block in the content.
-  let reasoning = String(msg.reasoning ?? msg.reasoning_content ?? '')
   if (opts.stripThink) {
     const split = splitThink(text)
     text = split.answer
@@ -323,43 +477,15 @@ export async function runCompletion(
   system: string,
   userText: string,
   signal: AbortSignal,
+  onText?: OnText,
 ): Promise<string> {
-  if (settings.provider === 'anthropic') {
-    const client = anthropicClient(settings)
-    const params: Record<string, unknown> = {
-      model: settings.models.anthropic || 'claude-opus-5',
-      max_tokens: 2000,
-      system,
-      messages: [{ role: 'user', content: userText }],
-    }
-    if (settings.thinking && supportsThinking('anthropic', settings.models.anthropic)) {
-      params.thinking = { type: 'adaptive' }
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const resp: any = await client.messages.create(params as any, { signal })
-    return (resp.content ?? [])
-      .filter((b: { type: string }) => b.type === 'text')
-      .map((b: { text: string }) => b.text)
-      .join('')
-      .trim()
-  }
-
-  const keyError = compatibleKeyError(settings)
-  if (keyError) throw new Error(keyError)
-  const cfg = resolveCompatible(settings)
-  const turn = await runOpenAICompatible(
-    cfg.baseUrl,
-    cfg.apiKey,
-    cfg.model,
+  const turn = await runTurn(
+    settings,
     system,
     [{ id: 'inline', role: 'user', content: userText }],
     [], // no tools — one-shot completion
     signal,
-    {
-      extra: thinkingParams(settings.provider, settings.thinking),
-      stripThink: cfg.stripThink,
-      extraHeaders: cfg.extraHeaders,
-    },
+    onText,
   )
   return turn.text.trim()
 }
@@ -370,9 +496,10 @@ export async function runTurn(
   history: ChatMessage[],
   tools: ToolDef[],
   signal: AbortSignal,
+  onText?: OnText,
 ): Promise<ProviderTurn> {
   if (settings.provider === 'anthropic') {
-    return runAnthropic(settings, system, history, tools, signal)
+    return runAnthropic(settings, system, history, tools, signal, onText)
   }
   // Everything else (OpenAI, OpenRouter, LM Studio) speaks the OpenAI wire
   // format. LM Studio toggles reasoning via a chat-template flag; cloud
@@ -392,6 +519,7 @@ export async function runTurn(
       extra: thinkingParams(settings.provider, settings.thinking),
       stripThink: cfg.stripThink,
       extraHeaders: cfg.extraHeaders,
+      onText,
     },
   )
 }

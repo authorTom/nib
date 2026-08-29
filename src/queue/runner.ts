@@ -17,6 +17,7 @@ import { buildPreview, executeTool, toolByName, TOOL_DEFS } from '../ai/tools'
 import type { ActionPreview } from '../ai/tools'
 import { SYSTEM_PROMPT } from '../ai/prompt'
 import { buildMemoryContext } from '../memory/context'
+import { buildContextBlock } from '../ai/context'
 import type { AssistantSettings, ChatMessage, ToolCall, ToolDef } from '../ai/types'
 import { isInsideInbox } from './settings'
 import type { Run, RunWrite } from './types'
@@ -218,7 +219,7 @@ async function processCalls(ctx: RunContext): Promise<Outcome | null> {
   return null
 }
 
-function buildSystem(ctx: RunContext, memory: string): string {
+function buildSystem(ctx: RunContext): string {
   return [
     SYSTEM_PROMPT,
     `You are running in the background from a queue, not in a live chat. The person who queued this is not watching.
@@ -233,7 +234,6 @@ function buildSystem(ctx: RunContext, memory: string): string {
     ctx.settings.systemPrompt.trim()
       ? `Additional instructions from the user:\n${ctx.settings.systemPrompt.trim()}`
       : '',
-    memory,
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -289,7 +289,22 @@ export async function advance(ctx: RunContext): Promise<Outcome> {
         .then((m) => m.text)
         .catch(() => '')
     : ''
-  const system = buildSystem(ctx, memory)
+  const system = buildSystem(ctx)
+
+  // Memory travels in the user turn, not the system prompt — the same rule the
+  // chat panel follows, and for the same reason: it is text the model wrote
+  // about the user, and text the model wrote must not arrive wearing the app's
+  // authority. It matters more here than in the chat, because nobody is
+  // watching a queued run. See src/ai/context.ts.
+  //
+  // Message 0 is always the prompt the run was queued with (src/queue/useQueue.ts).
+  const contextBlock = buildContextBlock({ memoryText: memory })
+  const forProvider = (turns: ChatMessage[]): ChatMessage[] =>
+    contextBlock
+      ? turns.map((m, i) =>
+          i === 0 ? { ...m, content: `${contextBlock}\n\n${m.content}` } : m,
+        )
+      : turns
 
   // Anything left over from the last stop, before asking the model for more.
   if (ctx.run.pendingCalls?.length) {
@@ -313,7 +328,7 @@ export async function advance(ctx: RunContext): Promise<Outcome> {
     const turn = await runTurn(
       ctx.settings,
       system,
-      ctx.run.messages,
+      forProvider(ctx.run.messages),
       QUEUE_TOOLS,
       ctx.signal,
     )

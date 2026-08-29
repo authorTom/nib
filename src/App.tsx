@@ -584,6 +584,26 @@ export default function App() {
   const getDir = useCallback(() => libraryDir, [libraryDir])
   const onAssistantMutated = useCallback(() => void reload(), [reload])
   const getActivePath = useCallback(() => activeNote?.id ?? null, [activeNote])
+
+  // The keystrokes that haven't reached the disk yet.
+  //
+  // `activeContent` is what was loaded from the file, and it doesn't change as
+  // the user types — so asking Trevor to "summarize this note" mid-paragraph
+  // used to hand him the version from before that paragraph existed. Only the
+  // note being typed in is held: anything else has been flushed already.
+  const liveEdit = useRef<{ id: string; text: string } | null>(null)
+  const handleContentChange = useCallback(
+    (id: string, markdown: string) => {
+      liveEdit.current = { id, text: markdown }
+      saveContent(id, markdown)
+    },
+    [saveContent],
+  )
+  const getActiveContent = useCallback(() => {
+    if (!activeNote) return null
+    const live = liveEdit.current
+    return live?.id === activeNote.id ? live.text : activeContent
+  }, [activeNote, activeContent])
   // Where the assistant's settings live. On a server library they belong to the
   // server, so every device that signs in is already configured — unless that
   // server has no password, in which case it declines to hold a provider key
@@ -593,12 +613,19 @@ export default function App() {
     : serverLibrary?.sharedSettings
       ? 'server'
       : 'needs-password'
+  // Live if there is nothing to authenticate against, or if we are authenticated.
+  // Goes false when a session expires under the user, which is the moment the
+  // key the server lent this browser stops being this browser's to keep.
+  const serverSession =
+    !usingServerLibrary || !serverLibrary?.authRequired || !!serverLibrary.authenticated
   const assistant = useAssistant({
     getDir,
     onMutated: onAssistantMutated,
     getActivePath,
+    getActiveContent,
     onMemoryChanged: bumpMemory,
     sharing: settingsSharing,
+    serverSession,
   })
 
   // Leaving the server library hands back what it lent: the session, and the
@@ -608,6 +635,24 @@ export default function App() {
     forgetSharedSettings()
     void signOutServer()
   }, [forgetSharedSettings, signOutServer])
+
+  // A proposed edit to a note that is open gets decided at the text, not in a
+  // sheet dropped over it: the panel steps aside and InlineApproval takes the
+  // question to the caret. Only writes qualify — a folder or a delete has no
+  // place on the page to point at.
+  const inlineApproval = useMemo(() => {
+    const undecided = assistant.pending.filter((a) => a.status === 'pending')
+    // Only when it is the *only* thing being asked. A turn that also wants to
+    // delete a folder has a question this card cannot put at the caret, and
+    // stepping the panel aside would hide it with the loop still waiting on it.
+    if (undecided.length !== 1) return null
+    const [only] = undecided
+    const open = only.preview.path === activeNote?.id || only.preview.path === splitNote?.id
+    return only.preview.kind === 'write' && !!only.preview.path && open ? only : null
+  }, [assistant.pending, activeNote, splitNote])
+  useEffect(() => {
+    if (inlineApproval) setAssistantOpen(false)
+  }, [inlineApproval])
 
   // The assistant's background queue. It executes here, in the browser, with
   // the key already in this browser; the run records it writes are the contract
@@ -1216,7 +1261,7 @@ export default function App() {
         onReorderTabs={moveTab}
         onToggleSplit={toggleSplit}
         onCloseSplit={() => setSplitId(null)}
-        onContentChange={saveContent}
+        onContentChange={handleContentChange}
         onLeaveNote={nameNoteAfterHeading}
         shouldClaimFocus={shouldClaimFocus}
         onOpenNote={handleOpenInPane}
@@ -1237,6 +1282,9 @@ export default function App() {
         onOpenAppearance={() => setThemePickerOpen(true)}
         onOpenAbout={() => setAboutOpen(true)}
         onInlineAsk={assistant.complete}
+        approval={inlineApproval}
+        onApproveAction={assistant.approve}
+        onRejectAction={assistant.reject}
         onAddTask={addTaskFromText}
         onAddBookmark={captureSelectionBookmark}
         onFocusedEditorChange={setEditor}
@@ -1280,6 +1328,7 @@ export default function App() {
         sharing={settingsSharing}
         settingsError={assistant.settingsError}
         messages={assistant.messages}
+        streamingText={assistant.streamingText}
         status={assistant.status}
         pending={assistant.pending}
         onSend={assistant.send}
