@@ -1,3 +1,4 @@
+import { READ_FILE_BUDGET, windowText } from './context'
 import * as library from '../fs/library'
 import * as history from '../fs/history'
 import { searchLibrary } from './retrieval'
@@ -35,7 +36,8 @@ export const TOOL_DEFS: ToolDef[] = [
   },
   {
     name: 'read_file',
-    description: 'Read the full Markdown contents of a note.',
+    description:
+      'Read the Markdown contents of a note. A very long note comes back with its middle elided and a marker saying so — when that happens you are holding an excerpt, so edit it in place rather than rewriting the whole file.',
     parameters: {
       type: 'object',
       properties: {
@@ -258,7 +260,10 @@ export async function executeTool(
       return `Most relevant notes (best first):\n\n${lines.join('\n')}\n\nUse read_file to read any of these in full.`
     }
     case 'read_file':
-      return await library.readNote(dir, str(a, 'path'))
+      // Capped, because a note is a file on the user's disk and nothing stops
+      // one being a megabyte. Unbounded, a single read_file could spend the
+      // whole context window and take the conversation down with it.
+      return windowText(await library.readNote(dir, str(a, 'path')), READ_FILE_BUDGET)
     case 'write_file': {
       const path = str(a, 'path')
       // Keep a restorable snapshot of anything the AI is about to overwrite.

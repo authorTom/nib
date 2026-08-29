@@ -6,6 +6,8 @@ import Toolbar from './Toolbar'
 import NoteTabs from './NoteTabs'
 import EditorPane from './EditorPane'
 import EditorSkeleton from './EditorSkeleton'
+import type { InlineAsk } from './InlineAssistant'
+import type { PendingAction } from '../ai/useAssistant'
 import type { NoteFile } from '../fs/library'
 import type { Pane, SaveState } from '../hooks/useNotes'
 import type { Backlink } from '../lib/wikilinks'
@@ -68,11 +70,14 @@ interface WorkspaceProps {
   onOpenExport: () => void
   onOpenAppearance: () => void
   onOpenAbout: () => void
-  onInlineAsk: (
-    instruction: string,
-    selectedText: string,
-    signal: AbortSignal,
-  ) => Promise<string>
+  onInlineAsk: InlineAsk
+  /**
+   * The assistant's proposed edit, waiting on a person. Handed to whichever
+   * pane holds the note it targets, so the question is asked at the text.
+   */
+  approval?: PendingAction | null
+  onApproveAction: (id: string) => void
+  onRejectAction: (id: string) => void
   onAddTask: (text: string) => void
   onAddBookmark: () => void
   /** The editor belonging to whichever pane has focus, for the palette. */
@@ -173,6 +178,9 @@ export default function Workspace({
   onOpenAppearance,
   onOpenAbout,
   onInlineAsk,
+  approval,
+  onApproveAction,
+  onRejectAction,
   onAddTask,
   onAddBookmark,
   onFocusedEditorChange,
@@ -194,6 +202,10 @@ export default function Workspace({
   }, [focusedEditor, onFocusedEditorChange])
 
   const split = splitNote !== null
+
+  /** An approval belongs to the pane showing the note it would change. */
+  const approvalFor = (noteId: string | undefined) =>
+    approval && noteId && approval.preview.path === noteId ? approval : null
 
   return (
     <div className="main">
@@ -263,6 +275,10 @@ export default function Workspace({
             shouldClaimFocus={shouldClaimFocus}
             onOpenNote={onOpenNote}
             onInlineAsk={onInlineAsk}
+            approval={approvalFor(activeNote.id)}
+            onApproveAction={onApproveAction}
+            onRejectAction={onRejectAction}
+            onOpenAssistant={onOpenAssistant}
             onAddTask={onAddTask}
             onAddBookmark={onAddBookmark}
             onEditorReady={setPrimaryEditor}
@@ -290,6 +306,10 @@ export default function Workspace({
                 shouldClaimFocus={shouldClaimFocus}
                 onOpenNote={onOpenNote}
                 onInlineAsk={onInlineAsk}
+                approval={approvalFor(splitNote.id)}
+                onApproveAction={onApproveAction}
+                onRejectAction={onRejectAction}
+                onOpenAssistant={onOpenAssistant}
                 onAddTask={onAddTask}
                 onAddBookmark={onAddBookmark}
                 onEditorReady={setSplitEditor}

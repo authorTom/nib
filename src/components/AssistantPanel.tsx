@@ -47,6 +47,8 @@ interface AssistantPanelProps {
   /** Set when the server wouldn't keep the last save. */
   settingsError: string | null
   messages: ChatMessage[]
+  /** The turn arriving right now, token by token; empty when nothing is. */
+  streamingText: string
   status: AssistantStatus
   pending: PendingAction[]
   onSend: (text: string) => void
@@ -368,6 +370,7 @@ export default function AssistantPanel({
   sharing,
   settingsError,
   messages,
+  streamingText,
   status,
   pending,
   onSend,
@@ -391,7 +394,7 @@ export default function AssistantPanel({
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
-  }, [messages, pending, status])
+  }, [messages, streamingText, pending, status])
 
   // No Escape listener here on purpose: App arbitrates that, in one chain, and
   // a listener of our own would have to be capture-phase to beat it — which
@@ -772,7 +775,19 @@ export default function AssistantPanel({
                 </div>
               )}
 
-              {status === 'thinking' && <div className="assistant-thinking">Thinking…</div>}
+              {/* The answer as it is written, in the bubble it will end up in —
+                  so the wait is spent reading rather than watching a word
+                  pulse. It is replaced by the committed message the moment the
+                  turn lands, which is why it isn't in `messages`. */}
+              {streamingText && (
+                <div className="msg msg-assistant streaming">
+                  <div className="msg-text">{streamingText}</div>
+                </div>
+              )}
+
+              {status === 'thinking' && !streamingText && (
+                <div className="assistant-thinking">Thinking…</div>
+              )}
             </div>
 
             {/* Ambient, not intrusive: while you are chatting, one line is enough

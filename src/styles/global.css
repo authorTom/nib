@@ -795,6 +795,23 @@ button {
   word-break: break-word;
 }
 
+/* Still arriving: dimmed, and not yet something to act on. */
+.inline-ai-result.streaming {
+  color: var(--text-muted);
+}
+
+/* A note the answer cited. Styled as the wikilink it will become once the text
+   is inserted, so following one before and after keeping it look the same. */
+.inline-ai-cite {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .inline-ai-result-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1509,6 +1526,31 @@ button {
 
 .msg-assistant.error {
   color: var(--danger);
+}
+
+/* The turn as it arrives. A cursor on the last character, so a pause between
+   tokens reads as the model thinking rather than as the app having stopped. */
+.msg-assistant.streaming .msg-text::after {
+  content: '';
+  display: inline-block;
+  width: 0.5ch;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--accent);
+  animation: caret-blink 1.1s steps(1) infinite;
+}
+
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .msg-assistant.streaming .msg-text::after {
+    animation: none;
+  }
 }
 
 /* Collapsible chain-of-thought for reasoning models. */
@@ -4494,6 +4536,137 @@ button {
   flex-shrink: 0;
   font-size: var(--fs-meta);
   color: var(--text-faint);
+}
+
+/* =========================================================================
+   Assistant at the caret — the `/` menu, its answer, and approvals
+   ========================================================================= */
+
+.slash-suggest {
+  position: fixed;
+  z-index: 70;
+  width: min(400px, 92vw);
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: var(--rule) solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  animation: suggest-in var(--dur-fast) var(--ease-out);
+}
+
+.slash-suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  background: transparent;
+  border-radius: 7px;
+  color: var(--text);
+  font-size: var(--fs-ui);
+  text-align: left;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.slash-suggest-item.selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.slash-suggest-name {
+  flex-shrink: 0;
+  font-weight: var(--fw-medium);
+}
+
+.slash-suggest-name em {
+  font-style: italic;
+  font-weight: var(--fw-body);
+  color: var(--text-faint);
+}
+
+.slash-suggest-hint {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The answer being written, before it is put in the document. Pinned to the
+   pane rather than the caret: it grows, and a box that grows upward off the
+   screen is worse than one that stays where it was first read. */
+.slash-running {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  width: min(420px, 90vw);
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border: var(--rule) solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+}
+
+.slash-running-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+}
+
+.slash-running-body {
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.inline-approval {
+  position: fixed;
+  z-index: 71;
+  width: min(420px, 92vw);
+  background: var(--bg-elevated);
+  border: var(--rule) solid var(--accent);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  animation: suggest-in var(--dur-fast) var(--ease-out);
+}
+
+.inline-approval .approval-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inline-approval-chat {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+}
+
+.inline-approval-chat:hover {
+  background: var(--bg-hover);
+  color: var(--text);
 }
 
 /* =========================================================================

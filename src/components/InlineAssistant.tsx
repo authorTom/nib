@@ -8,13 +8,67 @@ import {
   Sparkles,
   X,
 } from 'lucide-react'
+import { WIKILINK_RE } from '../lib/wikilinks'
+
+export type InlineAsk = (
+  instruction: string,
+  selectedText: string,
+  signal: AbortSignal,
+  onText?: (snapshot: string) => void,
+) => Promise<string>
 
 interface InlineAssistantProps {
   selectedText: string
-  ask: (instruction: string, selectedText: string, signal: AbortSignal) => Promise<string>
+  ask: InlineAsk
   onReplace: (text: string) => void
   onInsertBelow: (text: string) => void
+  /**
+   * Follow a `[[wikilink]]` the answer cited. Absent when nothing can resolve
+   * it, in which case citations stay plain text rather than pretending to be
+   * links that go nowhere.
+   */
+  onOpenLink?: (target: string) => void
   onClose: () => void
+}
+
+/**
+ * Render an answer with its `[[citations]]` as buttons.
+ *
+ * The assistant is told to cite the notes it read, and a citation you cannot
+ * follow is just punctuation. The same brackets become real wikilinks the
+ * moment the text is inserted into the document — this only makes them work in
+ * the preview, before the user has decided to keep anything.
+ */
+function AnswerText({
+  text,
+  onOpenLink,
+}: {
+  text: string
+  onOpenLink?: (target: string) => void
+}) {
+  if (!onOpenLink) return <>{text}</>
+  const parts: React.ReactNode[] = []
+  let cursor = 0
+  WIKILINK_RE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = WIKILINK_RE.exec(text))) {
+    if (m.index > cursor) parts.push(text.slice(cursor, m.index))
+    const target = m[1].trim()
+    parts.push(
+      <button
+        key={`${m.index}-${target}`}
+        type="button"
+        className="inline-ai-cite"
+        title={`Open ${target}`}
+        onClick={() => onOpenLink(target)}
+      >
+        {m[2]?.trim() || target}
+      </button>,
+    )
+    cursor = m.index + m[0].length
+  }
+  if (cursor < text.length) parts.push(text.slice(cursor))
+  return <>{parts}</>
 }
 
 const PRESETS = [
@@ -33,11 +87,14 @@ export default function InlineAssistant({
   ask,
   onReplace,
   onInsertBelow,
+  onOpenLink,
   onClose,
 }: InlineAssistantProps) {
   const [phase, setPhase] = useState<Phase>('menu')
   const [input, setInput] = useState('')
   const [result, setResult] = useState('')
+  /** The answer so far, while it is still arriving. */
+  const [partial, setPartial] = useState('')
   const [error, setError] = useState('')
   const [lastInstruction, setLastInstruction] = useState('')
   const abortRef = useRef<AbortController | null>(null)
@@ -45,11 +102,12 @@ export default function InlineAssistant({
   const run = async (instruction: string) => {
     if (!instruction.trim()) return
     setLastInstruction(instruction)
+    setPartial('')
     setPhase('loading')
     const controller = new AbortController()
     abortRef.current = controller
     try {
-      const out = await ask(instruction, selectedText, controller.signal)
+      const out = await ask(instruction, selectedText, controller.signal, setPartial)
       setResult(out)
       setPhase('result')
     } catch (e) {
@@ -120,12 +178,19 @@ export default function InlineAssistant({
       )}
 
       {phase === 'loading' && (
-        <div className="inline-ai-loading">
-          <span>Thinking…</span>
-          <button className="inline-ai-textbtn" onClick={cancel}>
-            Cancel
-          </button>
-        </div>
+        <>
+          {partial && (
+            <div className="inline-ai-result streaming">
+              <AnswerText text={partial} onOpenLink={onOpenLink} />
+            </div>
+          )}
+          <div className="inline-ai-loading">
+            <span>{partial ? 'Writing…' : 'Thinking…'}</span>
+            <button className="inline-ai-textbtn" onClick={cancel}>
+              Cancel
+            </button>
+          </div>
+        </>
       )}
 
       {phase === 'error' && (
@@ -139,7 +204,9 @@ export default function InlineAssistant({
 
       {phase === 'result' && (
         <>
-          <div className="inline-ai-result">{result}</div>
+          <div className="inline-ai-result">
+            <AnswerText text={result} onOpenLink={onOpenLink} />
+          </div>
           <div className="inline-ai-result-actions">
             <button className="inline-ai-apply" onClick={() => onReplace(result)}>
               <Check size={13} /> Replace
